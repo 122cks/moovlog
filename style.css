@@ -20,7 +20,7 @@ body {
 
 /* 프로필 카드 */
 .profile-card {
-    background: linear-gradient(rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.9)), url('assets/프로필 사진.png');
+    background: linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url('assets/프로필 사진.png');
     background-size: cover;
     background-position: center;
     border-radius: 30px;
