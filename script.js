@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeAnimations();
     initializeSocialLinks();
     initializeProductCards();
+    initializeRollingBanner();
+    initializeProductSearch();
 });
 
 // 애니메이션 초기화
@@ -243,3 +245,95 @@ document.querySelector('.business-button')?.addEventListener('click', function()
 document.querySelector('.inpock-branding')?.addEventListener('click', function() {
     window.open('https://inpock.co.kr', '_blank');
 });
+
+// 롤링 배너 초기화
+function initializeRollingBanner() {
+    const rollingBanner = document.querySelector('.rolling-banner');
+    if (!rollingBanner) return;
+    
+    // 배너 아이템 클릭 추적
+    const bannerItems = document.querySelectorAll('.banner-item');
+    bannerItems.forEach(item => {
+        item.addEventListener('click', function(e) {
+            const title = this.getAttribute('title');
+            console.log('SNS 배너 클릭:', title);
+        });
+    });
+    
+    // 터치/마우스 드래그로 스크롤 제어
+    let isDragging = false;
+    let startPos = 0;
+    let currentTranslate = 0;
+    let prevTranslate = 0;
+    
+    rollingBanner.addEventListener('mousedown', dragStart);
+    rollingBanner.addEventListener('touchstart', dragStart);
+    rollingBanner.addEventListener('mouseup', dragEnd);
+    rollingBanner.addEventListener('touchend', dragEnd);
+    rollingBanner.addEventListener('mousemove', drag);
+    rollingBanner.addEventListener('touchmove', drag);
+    rollingBanner.addEventListener('mouseleave', dragEnd);
+    
+    function dragStart(e) {
+        isDragging = true;
+        startPos = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+        rollingBanner.style.cursor = 'grabbing';
+        rollingBanner.style.animationPlayState = 'paused';
+    }
+    
+    function drag(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        const currentPosition = e.type.includes('mouse') ? e.pageX : e.touches[0].clientX;
+        currentTranslate = prevTranslate + currentPosition - startPos;
+    }
+    
+    function dragEnd() {
+        isDragging = false;
+        prevTranslate = currentTranslate;
+        rollingBanner.style.cursor = 'grab';
+        rollingBanner.style.animationPlayState = 'running';
+    }
+}
+
+// 상품 검색 기능
+function initializeProductSearch() {
+    const searchInput = document.getElementById('productSearch');
+    if (!searchInput) return;
+    
+    searchInput.addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase().trim();
+        const productItems = document.querySelectorAll('.product-item');
+        
+        productItems.forEach(item => {
+            const productName = item.getAttribute('data-name').toLowerCase();
+            
+            if (productName.includes(searchTerm)) {
+                item.classList.remove('hidden');
+                // 애니메이션 효과
+                item.style.animation = 'fadeInUp 0.3s ease';
+            } else {
+                item.classList.add('hidden');
+            }
+        });
+        
+        // 검색 결과가 없을 때
+        const visibleProducts = document.querySelectorAll('.product-item:not(.hidden)');
+        const productsGrid = document.querySelector('.products-grid');
+        
+        if (visibleProducts.length === 0 && searchTerm !== '') {
+            if (!document.querySelector('.no-results')) {
+                const noResults = document.createElement('div');
+                noResults.className = 'no-results';
+                noResults.innerHTML = '<p><i class="fas fa-search"></i> 검색 결과가 없습니다.</p>';
+                noResults.style.cssText = 'text-align: center; padding: 40px; color: #999; grid-column: 1 / -1;';
+                productsGrid.appendChild(noResults);
+            }
+        } else {
+            const noResults = document.querySelector('.no-results');
+            if (noResults) {
+                noResults.remove();
+            }
+        }
+    });
+}
