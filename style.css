@@ -288,19 +288,23 @@ body {
 /* 쿠팡 파트너스 고지 */
 .coupang-disclaimer {
     margin: 20px 0;
-    padding: 16px 20px;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
+    padding: 20px;
+    background: linear-gradient(145deg, #ffffff, #f5f7fa);
+    border-radius: 16px;
     text-align: center;
+    box-shadow: 
+        5px 5px 15px rgba(163, 177, 198, 0.3),
+        -5px -5px 15px rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.8);
 }
 
 .coupang-disclaimer p {
     margin: 0;
     font-size: 13px;
-    color: #6b7280;
+    color: #555;
     line-height: 1.6;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: -0.3px;
 }
 
 .mobile-br {
