@@ -413,3 +413,57 @@ html, body {
   .app-main, .result-inner { padding-left: 24px; padding-right: 24px; }
   .phone { width: 270px; }
 }
+
+/* ── SNS 태그 섹션 ──────────────────────────────────────── */
+.sns-wrap {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--rM); padding: 18px;
+}
+.sns-title {
+  font-size: 14px; font-weight: 700; color: var(--acc2);
+  display: flex; align-items: center; gap: 7px; margin-bottom: 14px;
+}
+.sns-card {
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: var(--rS); padding: 12px 14px; margin-bottom: 10px;
+}
+.sns-card:last-child { margin-bottom: 0; }
+.sns-card-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
+}
+.sns-badge {
+  font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px;
+  font-family: 'Inter', sans-serif;
+}
+.sns-badge.naver   { background: #03c75a; color: #fff; }
+.sns-badge.youtube { background: #ff0000; color: #fff; }
+.sns-badge.insta   { background: linear-gradient(135deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888); color: #fff; }
+.sns-badge.tiktok  { background: #000; color: #fff; border: 1px solid #444; }
+.sns-limit { font-size: 11px; color: var(--t3); margin-right: auto; }
+.sns-copy-btn {
+  font-size: 12px; font-weight: 600; color: var(--t2);
+  background: var(--card); border: 1px solid var(--borderL);
+  border-radius: 20px; padding: 4px 12px; cursor: pointer;
+  display: flex; align-items: center; gap: 5px; transition: all .2s;
+  font-family: 'Noto Sans KR', sans-serif; white-space: nowrap;
+}
+.sns-copy-btn:hover { color: var(--acc2); border-color: var(--acc2); }
+.sns-copy-btn.copied { color: #4ade80; border-color: #4ade80; }
+.sns-text {
+  font-size: 13px; color: var(--t2); line-height: 1.7;
+  white-space: pre-wrap; word-break: break-all;
+}
+
+/* ── 블로그 링크 버튼 ───────────────────────────────────── */
+.blog-link-btn {
+  position: fixed; right: 16px; bottom: 20px; z-index: 90;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--borderL);
+  color: var(--acc2); font-size: 13px; font-weight: 600;
+  padding: 12px 18px; border-radius: 50px;
+  text-decoration: none;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  transition: all .2s;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+.blog-link-btn:hover { background: var(--card2); transform: translateY(-2px); }

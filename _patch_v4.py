@@ -1,4 +1,7 @@
-'use strict';
+import pathlib
+
+# ─── script.js 전체 교체 ───────────────────────────────────────
+JS = r"""'use strict';
 /* ============================================================
    무브먼트 Shorts Creator v4 — script.js
    ✅ 4-Process Pipeline:
@@ -634,3 +637,7 @@ function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
 function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 document.addEventListener('click',()=>{ if(audioCtx&&audioCtx.state==='suspended') audioCtx.resume(); });
+"""
+
+pathlib.Path("shorts-creator/script.js").write_text(JS, encoding="utf-8")
+print("script.js OK:", len(JS))

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <title>무브먼트 블로그 포스팅 생성기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&family=Inter:wght@400;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* ── 블로그 페이지 전용 ─────────────────────────────── */
+    .blog-result       { background:var(--card);border:1px solid var(--border);border-radius:var(--rL);padding:22px; }
+    .blog-result[hidden]{ display:none; }
+    .blog-tabs         { display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap; }
+    .btab {
+      padding:8px 18px;border-radius:50px;font-size:13px;font-weight:600;
+      border:1px solid var(--borderL);background:var(--card2);color:var(--t2);
+      cursor:pointer;transition:all .2s;font-family:'Noto Sans KR',sans-serif;
+    }
+    .btab.active { background:var(--grd);border-color:transparent;color:#fff; }
+    .blog-pane         { display:none; }
+    .blog-pane.active  { display:block; }
+    .blog-section      { margin-bottom:20px; }
+    .blog-section-title{
+      font-size:13px;font-weight:700;color:var(--acc2);
+      display:flex;align-items:center;justify-content:space-between;
+      margin-bottom:8px;
+    }
+    .blog-copy-btn {
+      font-size:12px;font-weight:600;color:var(--t2);
+      background:var(--card);border:1px solid var(--borderL);
+      border-radius:20px;padding:4px 12px;cursor:pointer;
+      display:flex;align-items:center;gap:5px;transition:all .2s;
+      font-family:'Noto Sans KR',sans-serif;
+    }
+    .blog-copy-btn:hover{color:var(--acc2);border-color:var(--acc2);}
+    .blog-copy-btn.copied{color:#4ade80;border-color:#4ade80;}
+    .blog-text {
+      background:var(--card2);border:1px solid var(--border);border-radius:var(--rS);
+      padding:14px 16px;font-size:14px;color:var(--t1);line-height:1.9;
+      white-space:pre-wrap;word-break:break-all;min-height:80px;
+    }
+    .naver-guide {
+      background:rgba(3,199,90,.06);border:1px solid rgba(3,199,90,.2);
+      border-radius:var(--rM);padding:18px;margin-top:16px;
+    }
+    .naver-guide-title {
+      font-size:14px;font-weight:700;color:#03c75a;
+      display:flex;align-items:center;gap:7px;margin-bottom:10px;
+    }
+    .naver-guide ol { padding-left:18px; }
+    .naver-guide li { font-size:13px;color:var(--t2);line-height:1.9;margin-bottom:2px; }
+    .naver-guide li strong { color:var(--t1); }
+    .naver-open-btn {
+      display:flex;align-items:center;justify-content:center;gap:9px;
+      width:100%;background:#03c75a;border:none;color:#fff;
+      font-size:15px;font-weight:700;padding:16px;border-radius:50px;
+      cursor:pointer;margin-top:14px;font-family:'Noto Sans KR',sans-serif;
+      text-decoration:none;transition:opacity .2s;
+    }
+    .naver-open-btn:hover{opacity:.85;}
+    .blog-full-copy-btn {
+      width:100%;display:flex;align-items:center;justify-content:center;gap:9px;
+      background:var(--grd);border:none;color:#fff;
+      font-size:15px;font-weight:700;padding:16px;border-radius:50px;
+      cursor:pointer;margin-top:14px;font-family:'Noto Sans KR',sans-serif;
+      transition:opacity .2s,transform .2s;
+    }
+    .blog-full-copy-btn:hover{opacity:.85;transform:translateY(-1px);}
+    .img-preview { display:flex;gap:8px;flex-wrap:wrap;margin-top:8px; }
+    .img-preview img,.img-preview video { width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border); }
+    .back-btn {
+      display:inline-flex;align-items:center;gap:7px;
+      background:transparent;border:1px solid var(--borderL);color:var(--t2);
+      font-size:13px;padding:10px 18px;border-radius:50px;cursor:pointer;
+      margin-bottom:16px;font-family:'Noto Sans KR',sans-serif;
+      text-decoration:none;transition:all .2s;
+    }
+    .back-btn:hover{color:var(--t1);border-color:var(--t2);}
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-logo">
+        <span class="logo-play">✏</span>
+        <div class="logo-text">
+          <span class="logo-title">MOOVLOG</span>
+          <span class="logo-sub">Blog Writer</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <a href="index.html" class="back-btn"><i class="fas fa-arrow-left"></i> Shorts Creator</a>
+
+    <!-- 업로드 카드 -->
+    <section class="card">
+      <div class="card-label">
+        <span class="num">01</span>
+        <div>
+          <h2>이미지 · 영상 업로드</h2>
+          <p>음식점 사진과 영상을 올려주세요 (최대 10개)</p>
+        </div>
+      </div>
+      <div class="drop-area" id="dropArea">
+        <div class="drop-icon"><i class="fas fa-cloud-upload-alt"></i></div>
+        <p class="drop-text">여기에 끌어다 놓거나</p>
+        <label class="pick-btn" for="fileInput">
+          <i class="fas fa-folder-open"></i> 파일 선택
+        </label>
+        <input type="file" id="fileInput" accept="image/*,video/*" multiple hidden />
+        <p class="drop-hint">JPG · PNG · MP4 · MOV</p>
+      </div>
+      <div class="thumb-grid" id="thumbGrid"></div>
+    </section>
+
+    <!-- 음식점 이름 -->
+    <section class="card">
+      <div class="card-label">
+        <span class="num">02</span>
+        <div>
+          <h2>음식점 정보</h2>
+          <p>이름·지역 입력 → AI가 블로그 포스팅 전체를 작성합니다</p>
+        </div>
+      </div>
+      <div class="name-row" style="margin-bottom:10px;">
+        <i class="fas fa-store name-icon"></i>
+        <input type="text" id="restName" class="name-input" placeholder="예: 을지로 돈부리집" maxlength="40" autocomplete="off" />
+      </div>
+      <div class="name-row">
+        <i class="fas fa-map-marker-alt name-icon"></i>
+        <input type="text" id="location" class="name-input" placeholder="예: 서울 중구 을지로" maxlength="60" autocomplete="off" />
+      </div>
+    </section>
+
+    <!-- 생성 버튼 -->
+    <button class="make-btn" id="makeBtn">
+      <span class="make-glow"></span>
+      <i class="fas fa-pen-nib"></i>
+      <span>AI 블로그 포스팅 생성</span>
+    </button>
+    <p class="make-hint">이미지 분석 → 리뷰 본문 · SNS 태그 · 네이버 클립 태그 자동 생성</p>
+  </main>
+
+  <!-- 로딩 -->
+  <div class="loading-wrap" id="loadingWrap" hidden>
+    <div class="loading-card">
+      <div class="ai-loader">
+        <div class="ai-ring"></div>
+        <span class="ai-ico"><i class="fas fa-pen-nib"></i></span>
+      </div>
+      <p class="load-title" id="loadTitle">이미지를 분석 중...</p>
+      <p class="load-sub"  id="loadSub">잠시만 기다려주세요</p>
+      <div class="load-steps">
+        <div class="lstep" id="ls1"><i class="fas fa-eye"></i> 시각 자료 분석</div>
+        <div class="lstep" id="ls2"><i class="fas fa-feather-alt"></i> 블로그 본문 작성</div>
+        <div class="lstep" id="ls3"><i class="fas fa-hashtag"></i> SNS 태그 생성</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 결과 -->
+  <div id="resultWrap" class="app-main" hidden style="margin-top:0;padding-top:16px;">
+    <a href="index.html" class="back-btn" style="align-self:flex-start"><i class="fas fa-arrow-left"></i> Shorts Creator</a>
+
+    <!-- 탭 -->
+    <div class="blog-tabs">
+      <button class="btab active" data-pane="pane-blog">📝 블로그 포스팅</button>
+      <button class="btab" data-pane="pane-sns">📱 SNS 태그</button>
+      <button class="btab" data-pane="pane-guide">🟢 네이버 등록</button>
+    </div>
+
+    <!-- 탭: 블로그 본문 -->
+    <div class="blog-pane active" id="pane-blog">
+      <div class="blog-result">
+        <div class="blog-section">
+          <div class="blog-section-title">
+            제목
+            <button class="blog-copy-btn" data-target="blogTitle"><i class="fas fa-copy"></i> 복사</button>
+          </div>
+          <div class="blog-text" id="blogTitle"></div>
+        </div>
+        <div class="blog-section">
+          <div class="blog-section-title">
+            본문 (네이버 스마트에디터에 붙여넣기)
+            <button class="blog-copy-btn" data-target="blogBody"><i class="fas fa-copy"></i> 복사</button>
+          </div>
+          <div class="blog-text" id="blogBody" style="min-height:300px;"></div>
+        </div>
+        <button class="blog-full-copy-btn" id="fullCopyBtn">
+          <i class="fas fa-copy"></i> 제목 + 본문 전체 복사
+        </button>
+      </div>
+    </div>
+
+    <!-- 탭: SNS 태그 -->
+    <div class="blog-pane" id="pane-sns">
+      <div class="blog-result">
+        <div class="blog-section">
+          <div class="blog-section-title">
+            <span><span class="sns-badge naver" style="font-size:11px;padding:3px 9px;border-radius:20px;background:#03c75a;color:#fff;">N 클립</span> 태그 (300자)</span>
+            <button class="blog-copy-btn" data-target="snsNaver"><i class="fas fa-copy"></i> 복사</button>
+          </div>
+          <div class="blog-text" id="snsNaver"></div>
+        </div>
+        <div class="blog-section">
+          <div class="blog-section-title">
+            <span><span class="sns-badge youtube" style="font-size:11px;padding:3px 9px;border-radius:20px;background:#ff0000;color:#fff;">▶ 유튜브 쇼츠</span> 태그 (100자)</span>
+            <button class="blog-copy-btn" data-target="snsYoutube"><i class="fas fa-copy"></i> 복사</button>
+          </div>
+          <div class="blog-text" id="snsYoutube"></div>
+        </div>
+        <div class="blog-section">
+          <div class="blog-section-title">
+            <span>◎ 인스타 릴스 캡션</span>
+            <button class="blog-copy-btn" data-target="snsInsta"><i class="fas fa-copy"></i> 복사</button>
+          </div>
+          <div class="blog-text" id="snsInsta"></div>
+        </div>
+        <div class="blog-section">
+          <div class="blog-section-title">
+            <span>♪ 틱톡 태그 (5개)</span>
+            <button class="blog-copy-btn" data-target="snsTiktok"><i class="fas fa-copy"></i> 복사</button>
+          </div>
+          <div class="blog-text" id="snsTiktok"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 탭: 네이버 등록 가이드 -->
+    <div class="blog-pane" id="pane-guide">
+      <div class="naver-guide">
+        <div class="naver-guide-title"><i class="fas fa-info-circle"></i> 네이버 블로그 붙여넣기 방법</div>
+        <ol>
+          <li>아래 버튼으로 <strong>네이버 블로그 에디터</strong>를 엽니다</li>
+          <li><strong>새 글 쓰기</strong> → 제목 입력란에 제목 붙여넣기</li>
+          <li>본문 영역 클릭 → <strong>Ctrl+V (붙여넣기)</strong></li>
+          <li>사진은 <strong>에디터 사진 아이콘</strong>으로 직접 업로드</li>
+          <li>오른쪽 <strong>태그 입력란</strong>에 네이버 클립 태그 붙여넣기</li>
+          <li><strong>발행</strong> 버튼 클릭</li>
+        </ol>
+        <a href="https://blog.naver.com/PostWriteForm.naver" target="_blank" class="naver-open-btn">
+          <i class="fas fa-external-link-alt"></i> 네이버 블로그 에디터 열기
+        </a>
+      </div>
+      <div class="dl-box" style="margin-top:16px;">
+        <p class="dl-title"><i class="fas fa-lightbulb"></i> 더 쉽게 하는 방법</p>
+        <p class="dl-desc">
+          <b>① 전체 복사</b> 후 네이버 블로그 에디터에 <b>Ctrl+V</b>로 붙여넣기<br>
+          <b>② 사진</b>은 에디터에서 직접 드래그 앤 드롭으로 추가<br>
+          <b>③ 네이버 태그</b>는 복사 후 태그 입력란에 붙여넣기
+        </p>
+      </div>
+    </div>
+
+    <button class="re-btn" id="reBtn"><i class="fas fa-redo"></i> 다시 작성</button>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+  <script>
+    const GEMINI_KEY = 'AIzaSyA-QrlNLTWEB-6fL0KE4OvodqXTalnvMHs';
+    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+    const g = id => document.getElementById(id);
+
+    const D2 = {
+      dropArea: g('dropArea'), fileInput: g('fileInput'), thumbGrid: g('thumbGrid'),
+      restName: g('restName'), location:  g('location'),
+      makeBtn:  g('makeBtn'),  loadWrap:  g('loadingWrap'),
+      loadTitle:g('loadTitle'),loadSub:   g('loadSub'),
+      ls1:g('ls1'),ls2:g('ls2'),ls3:g('ls3'),
+      resultWrap:g('resultWrap'),
+      blogTitle:g('blogTitle'),blogBody:g('blogBody'),
+      snsNaver:g('snsNaver'),snsYoutube:g('snsYoutube'),snsInsta:g('snsInsta'),snsTiktok:g('snsTiktok'),
+      fullCopyBtn:g('fullCopyBtn'), reBtn:g('reBtn'), toasts:g('toasts'),
+    };
+
+    let files2 = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // 드롭 영역
+      D2.dropArea.addEventListener('dragover', e=>{e.preventDefault();D2.dropArea.classList.add('over');});
+      D2.dropArea.addEventListener('dragleave',()=>D2.dropArea.classList.remove('over'));
+      D2.dropArea.addEventListener('drop',e=>{e.preventDefault();D2.dropArea.classList.remove('over');addFiles2([...e.dataTransfer.files]);});
+      D2.dropArea.addEventListener('click',e=>{if(!e.target.closest('.pick-btn'))D2.fileInput.click();});
+      D2.fileInput.addEventListener('change',e=>{addFiles2([...e.target.files]);D2.fileInput.value='';});
+      D2.makeBtn.addEventListener('click', startBlog);
+      D2.reBtn.addEventListener('click', ()=>{D2.resultWrap.hidden=true;D2.makeBtn.disabled=false;});
+      D2.fullCopyBtn.addEventListener('click', fullCopy);
+
+      // 탭 전환
+      document.querySelectorAll('.btab').forEach(btn=>{
+        btn.addEventListener('click',()=>{
+          document.querySelectorAll('.btab').forEach(b=>b.classList.remove('active'));
+          document.querySelectorAll('.blog-pane').forEach(p=>p.classList.remove('active'));
+          btn.classList.add('active');
+          g(btn.dataset.pane)?.classList.add('active');
+        });
+      });
+
+      // 복사 버튼
+      document.querySelectorAll('.blog-copy-btn').forEach(btn=>{
+        btn.addEventListener('click',()=>copyEl(btn.dataset.target, btn));
+      });
+    });
+
+    function addFiles2(list) {
+      const ok = f=>f.type.startsWith('image/')||f.type.startsWith('video/');
+      if(files2.length+list.filter(ok).length>10){toast('최대 10개','err');return;}
+      list.filter(ok).forEach(f=>files2.push({file:f,url:URL.createObjectURL(f),type:f.type.startsWith('video/')?'video':'image'}));
+      renderThumbs2();
+    }
+    function renderThumbs2() {
+      D2.thumbGrid.innerHTML='';
+      files2.forEach((m,i)=>{
+        const w=document.createElement('div');w.className='ti';
+        const el=m.type==='image'?Object.assign(document.createElement('img'),{src:m.url}):Object.assign(document.createElement('video'),{src:m.url,muted:true,preload:'metadata'});
+        const badge=Object.assign(document.createElement('span'),{className:'ti-badge',textContent:i+1});
+        const del=document.createElement('button');del.className='ti-del';del.innerHTML='<i class="fas fa-times"></i>';
+        del.onclick=ev=>{ev.stopPropagation();files2.splice(i,1);renderThumbs2();};
+        w.append(el,badge,del);D2.thumbGrid.appendChild(w);
+      });
+    }
+
+    async function startBlog() {
+      const name = D2.restName.value.trim(), loc = D2.location.value.trim();
+      if(!name){toast('음식점 이름을 입력해주세요','err');D2.restName.focus();return;}
+      D2.makeBtn.disabled=true;
+      D2.loadWrap.hidden=false;
+      try {
+        setStep2(1,'이미지 분석 중...','Gemini 2.0 Flash가 사진을 읽습니다');
+        const images = files2.filter(f=>f.type==='image').slice(0,6);
+        const imgParts=[];
+        for(const img of images){
+          const b64=await fileToBase642(img.file);
+          imgParts.push({inline_data:{mime_type:img.file.type||'image/jpeg',data:b64}});
+        }
+        doneStep2(1);
+
+        setStep2(2,'블로그 포스팅 작성 중...','무브먼트 스타일로 리뷰를 작성합니다');
+        const result = await generateBlog(name,loc,imgParts);
+        D2.blogTitle.textContent  = result.title    ||'';
+        D2.blogBody.textContent   = result.body      ||'';
+        D2.snsNaver.textContent   = result.naver_clip_tags    ||'';
+        D2.snsYoutube.textContent = result.youtube_shorts_tags||'';
+        D2.snsInsta.textContent   = result.instagram_caption  ||'';
+        D2.snsTiktok.textContent  = result.tiktok_tags        ||'';
+        doneStep2(2);
+
+        setStep2(3,'SNS 태그 적용 완료','모든 콘텐츠가 준비되었습니다');
+        await sleep2(400); doneStep2(3);
+
+        D2.loadWrap.hidden=true;
+        D2.resultWrap.hidden=false;
+        toast('블로그 포스팅 생성 완료 ✓','ok');
+      } catch(err) {
+        D2.loadWrap.hidden=true; D2.makeBtn.disabled=false;
+        console.error(err); toast('오류: '+(err.message||'알 수 없는 오류'),'err');
+      }
+    }
+
+    async function generateBlog(name, loc, imgParts) {
+      const prompt = `당신은 한국의 인기 맛집 블로거 "무브먼트(moovlog)"입니다.
+다음 정보와 이미지를 바탕으로 네이버 블로그 포스팅을 작성해주세요.
+
+음식점: ${name}
+위치: ${loc||'(이미지에서 파악)'}
+
+[무브먼트 블로그 스타일 가이드]
+- 도입부: 방문 동기·기대감 표현 (친근한 구어체)
+- 음식 묘사: 구체적 맛 표현, 식감, 비주얼 설명
+- 가격·접근성 언급 (이미지에서 파악되면)
+- 솔직한 추천 의견
+- 재방문 의사 표현으로 마무리
+- 이모지 적절히 활용
+- 단락 구분 명확히
+
+[플랫폼별 태그]
+- naver_clip_tags: 300자 이내, #맛집 #${name.replace(/\s/g,'')} 등 지역·음식 위주
+- youtube_shorts_tags: 100자 이내
+- instagram_caption: 소개 2~3줄 + 해시태그 10개
+- tiktok_tags: 핵심 5개
+
+JSON만 반환:
+{
+  "title": "블로그 제목 (클릭률 높은 제목)",
+  "body": "블로그 본문 전체\\n\\n단락은 \\n\\n으로 구분",
+  "naver_clip_tags": "#태그들",
+  "youtube_shorts_tags": "#태그들",
+  "instagram_caption": "캡션\\n\\n#태그들",
+  "tiktok_tags": "#태그1 #태그2 #태그3 #태그4 #태그5"
+}`;
+
+      const parts = [...imgParts, {text:prompt}];
+      const res = await fetch(GEMINI_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({contents:[{parts}],generationConfig:{temperature:0.85,responseMimeType:'application/json'}})
+      });
+      if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e?.error?.message||`API ${res.status}`);}
+      const data=await res.json();
+      const raw=data?.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
+      return JSON.parse(raw.replace(/```json|```/g,'').trim());
+    }
+
+    function fullCopy() {
+      const title = D2.blogTitle.textContent, body = D2.blogBody.textContent;
+      const text = (title ? title + '\n\n' : '') + body;
+      navigator.clipboard.writeText(text).then(()=>{
+        toast('제목 + 본문 복사 완료 ✓','ok');
+        D2.fullCopyBtn.innerHTML='<i class="fas fa-check"></i> 복사됨';
+        setTimeout(()=>{D2.fullCopyBtn.innerHTML='<i class="fas fa-copy"></i> 제목 + 본문 전체 복사';},2000);
+      }).catch(()=>toast('복사 실패 — 텍스트를 직접 선택해주세요','err'));
+    }
+
+    function copyEl(id, btn) {
+      const el=g(id); if(!el?.textContent) return;
+      navigator.clipboard.writeText(el.textContent).then(()=>{
+        toast('복사 완료 ✓','ok');
+        if(btn){btn.innerHTML='<i class="fas fa-check"></i> 복사됨';btn.classList.add('copied');
+          setTimeout(()=>{btn.innerHTML='<i class="fas fa-copy"></i> 복사';btn.classList.remove('copied');},2000);}
+      }).catch(()=>{
+        const r=document.createRange();r.selectNodeContents(el);window.getSelection().removeAllRanges();window.getSelection().addRange(r);
+        toast('선택됨 — Ctrl+C로 복사','inf');
+      });
+    }
+
+    function fileToBase642(file){return new Promise((ok,fail)=>{const r=new FileReader();r.onload=e=>ok(e.target.result.split(',')[1]);r.onerror=fail;r.readAsDataURL(file);});}
+    function setStep2(n,title,sub){g('loadTitle').textContent=title;g('loadSub').textContent=sub;[g('ls1'),g('ls2'),g('ls3')].forEach((el,i)=>{el.classList.toggle('active',i===n-1);if(i<n-1)el.classList.add('done');});}
+    function doneStep2(n){const el=[g('ls1'),g('ls2'),g('ls3')][n-1];if(el){el.classList.remove('active');el.classList.add('done');}}
+    function sleep2(ms){return new Promise(r=>setTimeout(r,ms));}
+    function toast(msg,type='inf'){
+      const icons={ok:'fa-check-circle',err:'fa-exclamation-circle',inf:'fa-info-circle'};
+      const el=document.createElement('div');el.className=`toast ${type}`;
+      el.innerHTML=`<i class="fas ${icons[type]||icons.inf}"></i><span>${msg}</span>`;
+      D2.toasts.appendChild(el);
+      setTimeout(()=>{el.style.animation='tOut .3s ease forwards';setTimeout(()=>el.remove(),350);},3500);
+    }
+  </script>
+</body>
+</html>
