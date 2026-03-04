@@ -1,3 +1,6 @@
+import pathlib
+
+YML = """\
 name: Build Android APK
 
 on:
@@ -86,7 +89,7 @@ jobs:
           BEOF
 
           # gradle wrapper
-          echo 'distributionUrl=https\://services.gradle.org/distributions/gradle-8.4-bin.zip' \
+          echo 'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.4-bin.zip' \\
             > apk/gradle/wrapper/gradle-wrapper.properties
 
           # AndroidManifest.xml
@@ -153,16 +156,16 @@ jobs:
           declare -A SIZES=([mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192)
           for dpi in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             s=${SIZES[$dpi]}
-            rsvg-convert -w $s -h $s shorts-creator/icon-192.svg \
-              -o apk/app/src/main/res/mipmap-${dpi}/ic_launcher.png 2>/dev/null || \
+            rsvg-convert -w $s -h $s shorts-creator/icon-192.svg \\
+              -o apk/app/src/main/res/mipmap-${dpi}/ic_launcher.png 2>/dev/null || \\
             python3 - << PYEOF
           import struct, zlib
           w = h = $s
           def chunk(name, data):
               crc = zlib.crc32(name + data) & 0xffffffff
               return struct.pack('>I', len(data)) + name + data + struct.pack('>I', crc)
-          raw = b'\x00' + bytes([26, 26, 26, 255]) * w
-          png = (b'\x89PNG\r\n\x1a\n'
+          raw = b'\\x00' + bytes([26, 26, 26, 255]) * w
+          png = (b'\\x89PNG\\r\\n\\x1a\\n'
               + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
               + chunk(b'IDAT', zlib.compress(raw * h))
               + chunk(b'IEND', b''))
@@ -174,10 +177,10 @@ jobs:
       - name: Generate keystore
         working-directory: apk
         run: |
-          keytool -genkey -v \
-            -keystore moovlog.keystore -alias moovlog \
-            -keyalg RSA -keysize 2048 -validity 36500 \
-            -storepass moovlog2024 -keypass moovlog2024 \
+          keytool -genkey -v \\
+            -keystore moovlog.keystore -alias moovlog \\
+            -keyalg RSA -keysize 2048 -validity 36500 \\
+            -storepass moovlog2024 -keypass moovlog2024 \\
             -dname "CN=Moovlog,OU=App,O=Moovlog,L=Seoul,S=Seoul,C=KR"
 
       - name: Build release APK
@@ -214,3 +217,7 @@ jobs:
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+"""
+
+pathlib.Path(".github/workflows/build-apk.yml").write_text(YML, encoding="utf-8")
+print("OK:", len(YML), "chars")
