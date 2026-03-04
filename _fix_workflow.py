@@ -57,7 +57,16 @@ jobs:
 
       - name: Build release APK
         working-directory: android-app
-        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g --stacktrace
+        run: |
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g 2>&1 | tee build.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "## Build Error Log" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -80 build.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          exit $EXIT_CODE
 
       - name: Copy APK
         run: cp $(find android-app -name "*.apk" | tail -1) moovlog-shorts-creator.apk
