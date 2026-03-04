@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.moovlog.shorts'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.moovlog.shorts"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    signingConfigs {
+        release {
+            storeFile     file(System.getenv("KEYSTORE_PATH") ?: "moovlog.keystore")
+            storePassword System.getenv("STORE_PASS") ?: "moovlog2024"
+            keyAlias      System.getenv("KEY_ALIAS")  ?: "moovlog"
+            keyPassword   System.getenv("KEY_PASS")   ?: "moovlog2024"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig  signingConfigs.release
+            minifyEnabled  false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.browser:browser:1.7.0'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+}
