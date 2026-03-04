@@ -66,10 +66,10 @@ android {
 
     signingConfigs {
         release {
-            storeFile     file(System.getenv("KEYSTORE_PATH") ?: "moovlog.keystore")
-            storePassword System.getenv("STORE_PASS") ?: "moovlog2024"
-            keyAlias      System.getenv("KEY_ALIAS")  ?: "moovlog"
-            keyPassword   System.getenv("KEY_PASS")   ?: "moovlog2024"
+            storeFile     file("../moovlog.keystore")
+            storePassword "moovlog2024"
+            keyAlias      "moovlog"
+            keyPassword   "moovlog2024"
         }
     }
 

@@ -54,17 +54,10 @@ jobs:
         run: |
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
-        env:
-          GRADLE_VERSION: "8.4"
 
       - name: Build release APK
         working-directory: android-app
         run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g --stacktrace
-        env:
-          KEYSTORE_PATH: moovlog.keystore
-          STORE_PASS: moovlog2024
-          KEY_ALIAS: moovlog
-          KEY_PASS: moovlog2024
 
       - name: Copy APK
         run: cp $(find android-app -name "*.apk" | tail -1) moovlog-shorts-creator.apk
