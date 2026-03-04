@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import pathlib
 
 content = """\
@@ -34,6 +35,11 @@ jobs:
         with:
           gradle-version: "8.4"
 
+      - name: Install SDK components
+        run: |
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
+          yes | sdkmanager --licenses --sdk_root=$ANDROID_HOME || true
+
       - name: Set Android SDK path
         working-directory: android-app
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -43,9 +49,17 @@ jobs:
         run: |
           keytool -genkey -v -keystore moovlog.keystore -alias moovlog -keyalg RSA -keysize 2048 -validity 36500 -storepass moovlog2024 -keypass moovlog2024 -dname "CN=Moovlog,OU=App,O=Moovlog,L=Seoul,S=Seoul,C=KR"
 
+      - name: Generate gradlew
+        working-directory: android-app
+        run: |
+          gradle wrapper --gradle-version 8.4
+          chmod +x gradlew
+        env:
+          GRADLE_VERSION: "8.4"
+
       - name: Build release APK
         working-directory: android-app
-        run: gradle assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g --stacktrace
         env:
           KEYSTORE_PATH: moovlog.keystore
           STORE_PASS: moovlog2024
@@ -73,14 +87,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: apk-latest
-          name: "무브먼트 Shorts Creator APK"
+          name: "Moovlog Shorts Creator APK"
           body: |
-            ## 설치 방법
-            1. moovlog-shorts-creator.apk 다운로드
-            2. 설정 > 보안 > 알 수 없는 앱 허용
-            3. APK 탭 > 설치
+            ## Install
+            1. Download moovlog-shorts-creator.apk
+            2. Settings > Security > Allow unknown apps
+            3. Tap APK > Install
 
-            웹 버전: https://122cks.github.io/moovlog/shorts-creator/
+            Web: https://122cks.github.io/moovlog/shorts-creator/
           files: moovlog-shorts-creator.apk
           make_latest: true
         env:
