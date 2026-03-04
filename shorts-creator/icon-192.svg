@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff4d6d"/>
+      <stop offset="100%" stop-color="#c77dff"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="40" fill="#0d0d0d"/>
+  <rect x="12" y="12" width="168" height="168" rx="32" fill="url(#g)"/>
+  <polygon points="72,52 72,140 148,96" fill="#fff" opacity="0.97"/>
+  <text x="96" y="178" font-family="'Inter',sans-serif" font-size="18" font-weight="800"
+        text-anchor="middle" fill="#fff" opacity="0.65" letter-spacing="2">MOOV</text>
+</svg>

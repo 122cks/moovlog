@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Shorts Creator" />
+  <meta name="description" content="무브먼트 Shorts Creator — AI로 숏폼 영상 제작" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.svg" />
+  <title>무브먼트 Shorts Creator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- 헤더 -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-logo">
+        <span class="logo-icon">▶</span>
+        <div>
+          <span class="logo-title">MOOVLOG</span>
+          <span class="logo-sub">Shorts Creator</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+
+    <!-- STEP 1: 미디어 업로드 -->
+    <section class="step-section" id="stepUpload">
+      <div class="step-header">
+        <span class="step-badge">01</span>
+        <div>
+          <h2>이미지 / 영상 업로드</h2>
+          <p>숏폼에 사용할 이미지나 영상 클립을 올려주세요</p>
+        </div>
+      </div>
+
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-zone-content">
+          <div class="upload-icon-wrap">
+            <i class="fas fa-cloud-upload-alt"></i>
+          </div>
+          <p class="upload-main-text">여기에 파일을 드래그하거나</p>
+          <label class="upload-label-btn" for="mediaInput">
+            <i class="fas fa-folder-open"></i> 파일 선택
+          </label>
+          <input type="file" id="mediaInput" accept="image/*,video/*" multiple hidden />
+          <p class="upload-hint">JPG · PNG · GIF · MP4 · MOV 지원 / 최대 10개</p>
+        </div>
+      </div>
+
+      <!-- 업로드된 파일 미리보기 -->
+      <div class="media-preview-grid" id="mediaPreviewGrid"></div>
+    </section>
+
+    <!-- STEP 2: 콘텐츠 입력 -->
+    <section class="step-section" id="stepContent">
+      <div class="step-header">
+        <span class="step-badge">02</span>
+        <div>
+          <h2>콘텐츠 정보 입력</h2>
+          <p>영상 주제와 내용을 입력하면 AI가 스크립트를 작성합니다</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label"><i class="fas fa-heading"></i> 영상 제목 / 주제</label>
+        <input type="text" class="form-input" id="videoTitle" placeholder="예: 성수동 핫플 맛집 투어 🔥" maxlength="60" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label"><i class="fas fa-align-left"></i> 블로그 내용 / 설명</label>
+        <textarea class="form-textarea" id="videoContent" placeholder="블로그에 쓸 내용을 붙여넣거나 간략히 요약해 주세요.&#10;예) 성수동에서 발견한 숨겨진 맛집! 시그니처 메뉴는 트러플 파스타. 줄 서서 먹을 만한 맛." rows="5"></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label"><i class="fas fa-hashtag"></i> 해시태그 (선택)</label>
+        <input type="text" class="form-input" id="videoHashtags" placeholder="#맛집 #성수동 #서울맛집 #vlog" />
+      </div>
+    </section>
+
+    <!-- STEP 3: 설정 -->
+    <section class="step-section" id="stepSettings">
+      <div class="step-header">
+        <span class="step-badge">03</span>
+        <div>
+          <h2>영상 설정</h2>
+          <p>영상 스타일과 자막·나레이션을 설정하세요</p>
+        </div>
+      </div>
+
+      <div class="settings-grid">
+        <div class="setting-card">
+          <label class="setting-label"><i class="fas fa-stopwatch"></i> 장면당 시간</label>
+          <select class="form-select" id="sceneDuration">
+            <option value="3">3초</option>
+            <option value="4" selected>4초</option>
+            <option value="5">5초</option>
+            <option value="6">6초</option>
+          </select>
+        </div>
+
+        <div class="setting-card">
+          <label class="setting-label"><i class="fas fa-film"></i> 전환 효과</label>
+          <select class="form-select" id="transitionEffect">
+            <option value="fade" selected>페이드</option>
+            <option value="slide">슬라이드</option>
+            <option value="zoom">줌</option>
+          </select>
+        </div>
+
+        <div class="setting-card">
+          <label class="setting-label"><i class="fas fa-microphone"></i> 나레이션 언어</label>
+          <select class="form-select" id="narrationLang">
+            <option value="ko-KR" selected>한국어</option>
+            <option value="en-US">영어</option>
+          </select>
+        </div>
+
+        <div class="setting-card">
+          <label class="setting-label"><i class="fas fa-tachometer-alt"></i> 나레이션 속도</label>
+          <select class="form-select" id="narrationSpeed">
+            <option value="0.8">느리게</option>
+            <option value="1.0" selected>보통</option>
+            <option value="1.2">빠르게</option>
+            <option value="1.4">매우 빠르게</option>
+          </select>
+        </div>
+
+        <div class="setting-card full-width">
+          <label class="setting-label"><i class="fas fa-palette"></i> 자막 스타일</label>
+          <div class="subtitle-style-group" id="subtitleStyleGroup">
+            <button class="style-btn active" data-style="white">흰색 기본</button>
+            <button class="style-btn" data-style="yellow">노란 강조</button>
+            <button class="style-btn" data-style="gradient">그라데이션</button>
+            <button class="style-btn" data-style="outline">아웃라인</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI 생성 버튼 -->
+    <div class="generate-section">
+      <button class="btn-generate" id="generateBtn">
+        <span class="btn-generate-icon"><i class="fas fa-magic"></i></span>
+        <span class="btn-generate-text">AI로 숏폼 스크립트 생성</span>
+      </button>
+      <p class="generate-hint">Gemini AI가 이미지와 내용을 분석해 자막·나레이션 스크립트를 작성합니다</p>
+    </div>
+
+    <!-- 로딩 -->
+    <div class="loading-overlay" id="loadingOverlay" hidden>
+      <div class="loading-card">
+        <div class="loading-spinner"></div>
+        <p class="loading-title">AI가 스크립트를 작성 중...</p>
+        <p class="loading-sub" id="loadingSubText">Gemini가 콘텐츠를 분석하고 있습니다</p>
+      </div>
+    </div>
+
+    <!-- STEP 4: 미리보기 & 내보내기 -->
+    <section class="step-section preview-step" id="stepPreview" hidden>
+      <div class="step-header">
+        <span class="step-badge">04</span>
+        <div>
+          <h2>숏폼 미리보기</h2>
+          <p>재생하여 확인하고 영상으로 내보내세요</p>
+        </div>
+      </div>
+
+      <!-- 폰 목업 프레임 -->
+      <div class="phone-mockup-wrapper">
+        <div class="phone-mockup">
+          <div class="phone-notch"></div>
+          <div class="phone-screen">
+            <canvas id="shortsCanvas"></canvas>
+            <!-- 오버레이 UI (폰 화면 안) -->
+            <div class="canvas-overlay-ui">
+              <div class="overlay-top">
+                <span class="overlay-title" id="overlayTitle"></span>
+              </div>
+              <div class="overlay-bottom">
+                <div class="overlay-hashtags" id="overlayHashtags"></div>
+                <div class="overlay-progress">
+                  <div class="progress-bar" id="progressBar"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="phone-chin"></div>
+        </div>
+
+        <!-- 오른쪽 SNS 버튼 (데코) -->
+        <div class="reel-actions">
+          <div class="reel-action-btn"><i class="fas fa-heart"></i><span>5.2K</span></div>
+          <div class="reel-action-btn"><i class="fas fa-comment"></i><span>127</span></div>
+          <div class="reel-action-btn"><i class="fas fa-share"></i><span>공유</span></div>
+          <div class="reel-action-btn"><i class="fas fa-bookmark"></i><span>저장</span></div>
+        </div>
+      </div>
+
+      <!-- 플레이어 컨트롤 -->
+      <div class="player-controls">
+        <button class="ctrl-btn" id="replayBtn" title="처음부터">
+          <i class="fas fa-undo"></i>
+        </button>
+        <button class="ctrl-btn ctrl-play" id="playPauseBtn" title="재생/정지">
+          <i class="fas fa-play" id="playIcon"></i>
+        </button>
+        <button class="ctrl-btn" id="muteBtn" title="음소거">
+          <i class="fas fa-volume-up" id="muteIcon"></i>
+        </button>
+      </div>
+
+      <!-- 스크립트 카드 -->
+      <div class="script-preview-section">
+        <button class="script-toggle-btn" id="scriptToggleBtn">
+          <i class="fas fa-scroll"></i> 생성된 스크립트 보기
+          <i class="fas fa-chevron-down script-chevron" id="scriptChevron"></i>
+        </button>
+        <div class="script-content" id="scriptContent" hidden>
+          <div class="script-scene-list" id="scriptSceneList"></div>
+        </div>
+      </div>
+
+      <!-- 내보내기 섹션 -->
+      <div class="export-section">
+        <h3 class="export-title"><i class="fas fa-download"></i> 영상 내보내기</h3>
+        <p class="export-desc">캔버스 영상을 WebM 파일로 저장합니다. 나레이션 포함 녹화는 화면 녹화를 이용하세요.</p>
+        <div class="export-buttons">
+          <button class="btn-export" id="exportBtn">
+            <i class="fas fa-video"></i> 영상 다운로드 (WebM)
+          </button>
+          <button class="btn-export btn-export-secondary" id="recordBtn">
+            <i class="fas fa-circle-dot"></i> 나레이션 포함 녹화
+          </button>
+        </div>
+        <div class="record-status" id="recordStatus" hidden>
+          <div class="record-dot"></div>
+          <span id="recordStatusText">녹화 중... <span id="recordTimer">0:00</span></span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 토스트 알림 -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () =>
+        navigator.serviceWorker.register('sw.js').catch(() => {})
+      );
+    }
+  </script>
+  <script src="script.js"></script>
+</body>
+</html>
