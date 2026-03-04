@@ -124,9 +124,10 @@
 
       <div class="dl-box">
         <p class="dl-title"><i class="fas fa-download"></i> 영상 다운로드</p>
-        <p class="dl-desc">버튼을 누르면 전체 영상을 자동 녹화 후 저장합니다.<br>
-          <b>나레이션 포함</b>은 재생 중 기기 화면녹화를 이용하세요.</p>
-        <button class="dl-btn" id="dlBtn"><i class="fas fa-download"></i> WebM 영상 저장</button>
+        <p class="audio-status" id="audioStatus"><i class="fas fa-microphone-alt"></i> 음성 생성 중...</p>
+        <p class="dl-desc">AI 나레이션이 영상에 자동으로 합성됩니다.<br>
+          버튼을 누르면 <b>음성 포함 WebM 영상</b>이 저장됩니다.</p>
+        <button class="dl-btn" id="dlBtn"><i class="fas fa-download"></i> AI 음성 포함 영상 저장</button>
         <div class="rec-status" id="recStatus" hidden>
           <span class="rec-dot"></span> 자동 녹화 중... <span id="recTimer">0:00</span>
         </div>
