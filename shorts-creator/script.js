@@ -12,7 +12,8 @@
 const GEMINI_KEY  = '__GEMINI_KEY__';
 // ✅ 2026년 최신 모델 - Vision에 가장 뛰어난 모델
 const GEMINI_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
-const TTS_URL     = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GEMINI_KEY}`;
+// ✅ Gemini TTS - AI Studio 키로 동작하는 음성 합성
+const GEMINI_TTS_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_KEY}`;
 
 const CW = 720, CH = 1280;
 
@@ -173,18 +174,19 @@ async function visionAnalysis(restaurantName) {
     imgParts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } });
   }
 
-  const prompt = `당신은 맛집 영상 분석 전문가입니다.
-업로드된 음식 사진들을 분석하여 아래 JSON을 반환하세요.
+  const prompt = `당신은 한국 맛집 전문 영상 분석 AI입니다.
+업로드된 음식 사진들을 정밀 분석하여 아래 JSON을 반환하세요.
 음식점: "${restaurantName}"
 
-분석 항목:
-- 음식 종류와 메뉴명 (최대한 구체적으로)
-- 분위기 (모던/전통/캐주얼/고급/포장마차 등)
-- 시각적 특징 (색감, 플레이팅, 특이점)
-- 식욕 자극 포인트
+[정밀 분석 항목]
+1. 음식 종류·메뉴명 (구체적 명칭: 된장찌개 X → 돌솥 된장찌개 O)
+2. 식재료 색감·플레이팅 스타일 (윤기, 두께, 볼륨감, 스팀 등)
+3. 분위기 (모던/전통/캐주얼/힙/고급/포장마차/이자카야 등)
+4. 사람들이 이 음식을 보면 느끼는 감각적 반응 (군침, 궁금증, 설렘)
+5. 틱톡·인스타 바이럴 가능성이 높은 시각 포인트
 
 JSON만 반환:
-{"keywords":["키워드1","키워드2","키워드3","키워드4","키워드5"],"mood":"분위기","menu":["메뉴1","메뉴2"],"visual_hook":"가장 임팩트 있는 시각적 특징 1문장"}`;
+{"keywords":["키워드1","키워드2","키워드3","키워드4","키워드5"],"mood":"분위기","menu":["메뉴1","메뉴2"],"visual_hook":"식욕 자극 포인트 1문장 (예: 두께 3cm 흑돼지 삼겹살에서 기름이 지글지글)","viral_angle":"바이럴 각도 1문장"}`;
 
   const res = await fetch(GEMINI_URL, {
     method: 'POST',
@@ -313,22 +315,43 @@ async function generateAllTTS(scenes) {
   }
   return buffers;
 }
+// ✅ Gemini TTS - AI Studio 키로 동작, 한국어 남성 음성
 async function fetchGoogleTTS(text) {
-  const res = await fetch(TTS_URL, {
+  const res = await fetch(GEMINI_TTS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      input: { text },
-      voice: { languageCode: 'ko-KR', ssmlGender: 'MALE', name: 'ko-KR-Wavenet-C' },
-      audioConfig: { audioEncoding: 'MP3', speakingRate: 1.05, pitch: -2.5, volumeGainDb: 1.0 },
+      contents: [{ parts: [{ text }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }, // 한국어 남성
+        },
+      },
     }),
   });
   const data = await res.json();
-  if (!res.ok || !data.audioContent) throw new Error(data.error?.message || `TTS ${res.status}`);
-  const binary = atob(data.audioContent);
-  const buf = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) buf[i] = binary.charCodeAt(i);
-  return audioCtx.decodeAudioData(buf.buffer.slice());
+  if (!res.ok) throw new Error(data.error?.message || `TTS ${res.status}`);
+  const part = data?.candidates?.[0]?.content?.parts?.[0];
+  if (!part?.inlineData?.data) throw new Error('TTS 응답 없음');
+  return decodePCMAudio(part.inlineData.data, part.inlineData.mimeType);
+}
+
+// PCM(24kHz 16bit) 또는 일반 오디오 디코딩
+function decodePCMAudio(b64, mimeType) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  if (mimeType && mimeType.includes('pcm')) {
+    const sampleRate = parseInt(mimeType.match(/rate=(\d+)/)?.[1] || '24000');
+    const samples = bytes.length / 2;
+    const audioBuffer = audioCtx.createBuffer(1, samples, sampleRate);
+    const ch = audioBuffer.getChannelData(0);
+    const view = new DataView(bytes.buffer);
+    for (let i = 0; i < samples; i++) ch[i] = view.getInt16(i * 2, true) / 32768;
+    return Promise.resolve(audioBuffer);
+  }
+  return audioCtx.decodeAudioData(bytes.buffer.slice());
 }
 
 function playSceneAudio(si, capture = false) {
@@ -338,6 +361,7 @@ function playSceneAudio(si, capture = false) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
+    src.playbackRate.value = 1.25; // ✅ 25% 빠르게
     src.connect(audioCtx.destination);
     if (capture) src.connect(audioMixDest);
     src.start(); S.currentAudio = src;
@@ -345,7 +369,7 @@ function playSceneAudio(si, capture = false) {
     const sc = S.script?.scenes?.[si];
     if (sc?.narration) {
       const u = new SpeechSynthesisUtterance(sc.narration);
-      u.lang = 'ko-KR'; u.pitch = 0.8; u.rate = 1.0;
+      u.lang = 'ko-KR'; u.pitch = 0.7; u.rate = 1.3; // ✅ 빠르고 낮은 남성 톤
       const voices = speechSynthesis.getVoices();
       const male = voices.find(v => v.lang.startsWith('ko') && /male|남|Man/i.test(v.name)) || voices.find(v => v.lang.startsWith('ko'));
       if (male) u.voice = male;
@@ -561,31 +585,45 @@ function highlightScene(i) {
   const c = g(`sc${i}`); if(c){c.classList.add('active');c.scrollIntoView({behavior:'smooth',block:'nearest'});}
 }
 
-/* ── 영상 내보내기 ───────────────────────────────────────── */
+/* ── 영상 내보내기 (원클릭 즉시 저장) ─────────────────────── */
 async function doExport() {
   if (!S.script || !S.loaded.length) { toast('먼저 영상을 생성해주세요','err'); return; }
   if (!audioCtx) ensureAudio();
   if (audioCtx.state==='suspended') await audioCtx.resume();
-  D.dlBtn.disabled = true; D.recStatus.hidden = false;
-  let sec = 0;
-  const ticker = setInterval(() => { sec++; const m=Math.floor(sec/60),s=String(sec%60).padStart(2,'0'); D.recTimer.textContent=`${m}:${s}`; }, 1000);
-  const mime = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'video/webm';
+
+  // UI: 저장 중 표시
+  D.dlBtn.disabled = true;
+  D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 저장 중...';
+  if (D.recStatus) D.recStatus.hidden = false;
+
+  const mime = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm']
+    .find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
   const canvasStream = D.canvas.captureStream(30);
-  const hasAudio = S.audioBuffers.some(b=>b!==null);
-  const recStream = hasAudio ? new MediaStream([...canvasStream.getVideoTracks(),...audioMixDest.stream.getAudioTracks()]) : canvasStream;
-  const recorder = new MediaRecorder(recStream, {mimeType:mime, videoBitsPerSecond:8_000_000});
+  const hasAudio = S.audioBuffers.some(b => b !== null);
+  const recStream = hasAudio
+    ? new MediaStream([...canvasStream.getVideoTracks(), ...audioMixDest.stream.getAudioTracks()])
+    : canvasStream;
+
+  const recorder = new MediaRecorder(recStream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
   const chunks = [];
-  recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
   recorder.onstop = () => {
-    clearInterval(ticker); D.recStatus.hidden = true; D.dlBtn.disabled = false;
-    const blob = new Blob(chunks, {type:mime});
-    const a = Object.assign(document.createElement('a'), {href:URL.createObjectURL(blob), download:`moovlog_${D.restName.value.replace(/\s/g,'_')||Date.now()}.webm`});
-    a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),8000);
-    toast(hasAudio?'✓ AI 음성 포함 영상 저장 완료!':'✓ 영상 저장 완료!','ok');
+    if (D.recStatus) D.recStatus.hidden = true;
+    D.dlBtn.disabled = false;
+    D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 영상 저장하기';
+    const blob = new Blob(chunks, { type: mime });
+    const name = `moovlog_${(D.restName.value||'video').replace(/\s/g,'_')}_${Date.now()}.webm`;
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: name });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+    toast(hasAudio ? '✓ AI 음성 포함 영상 저장!' : '✓ 영상 저장 완료!', 'ok');
   };
+
   recorder.start(100);
+  // 일시정지 중이면 재생 시작
+  if (!S.playing) { pausePlay(); }
   await exportRender();
-  await sleep(300);
+  await sleep(200);
   recorder.stop();
 }
 async function exportRender() {
