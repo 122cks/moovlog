@@ -55,6 +55,20 @@ jobs:
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
 
+      - name: Check wrapper files
+        working-directory: android-app
+        run: |
+          echo "=== gradle/wrapper/ ==="
+          ls -la gradle/wrapper/ || echo "wrapper dir not found"
+          echo "=== gradlew exists: ===" 
+          ls -la gradlew || echo "gradlew not found"
+          echo "=== ANDROID_HOME ==="
+          echo "$ANDROID_HOME"
+          echo "=== local.properties ==="
+          cat local.properties || echo "not found"
+          echo "=== gradle version ==="
+          ./gradlew --version 2>&1 | head -20 || echo "gradlew version check failed"
+
       - name: Build release APK
         id: gradle_build
         continue-on-error: true
