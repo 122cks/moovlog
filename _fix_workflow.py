@@ -56,17 +56,22 @@ jobs:
           chmod +x gradlew
 
       - name: Build release APK
+        id: gradle_build
+        continue-on-error: true
         working-directory: android-app
-        run: |
-          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g 2>&1 | tee build.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          if [ $EXIT_CODE -ne 0 ]; then
-            echo "## Build Error Log" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -80 build.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-          exit $EXIT_CODE
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: android-app/build.log
+          retention-days: 7
+
+      - name: Fail if build failed
+        if: steps.gradle_build.outcome == 'failure'
+        run: exit 1
 
       - name: Copy APK
         run: cp $(find android-app -name "*.apk" | tail -1) moovlog-shorts-creator.apk
