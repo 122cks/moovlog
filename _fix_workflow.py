@@ -1,3 +1,6 @@
+import pathlib
+
+content = """\
 name: Build Android APK
 
 on:
@@ -82,3 +85,7 @@ jobs:
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+"""
+
+pathlib.Path(".github/workflows/build-apk.yml").write_text(content, encoding="utf-8")
+print("OK, lines:", content.count("\n"))
