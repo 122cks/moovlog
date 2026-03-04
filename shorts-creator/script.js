@@ -9,7 +9,7 @@
    ============================================================ */
 
 /* ── API 설정 ─────────────────────────────────────────────── */
-const GEMINI_KEY  = 'AIzaSyA-QrlNLTWEB-6fL0KE4OvodqXTalnvMHs';
+const GEMINI_KEY  = '__GEMINI_KEY__';
 // ✅ 2026년 최신 모델 - Vision에 가장 뛰어난 모델
 const GEMINI_URL  = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 const TTS_URL     = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${GEMINI_KEY}`;
