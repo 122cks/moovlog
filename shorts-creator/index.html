@@ -143,22 +143,9 @@
       <span class="apk-icon"><i class="fab fa-android"></i></span>
       <span class="apk-text">
         <strong>안드로이드 앱 다운로드</strong>
-        <small id="apkBannerSub">릴리스 페이지 →</small>
+        <small id="apkBannerSub">moovlog-shorts-creator.apk →</small>
       </span>
     </a>
-    <script>
-    (function () {
-      var APK = 'https://github.com/122cks/moovlog/releases/download/apk-latest/moovlog-shorts-creator.apk';
-      fetch(APK, { method: 'HEAD' })
-        .then(function (r) {
-          if (r.ok || r.status === 302 || r.redirected) {
-            document.getElementById('apkBanner').href = APK;
-            document.getElementById('apkBannerSub').textContent = 'moovlog-shorts-creator.apk →';
-          }
-        })
-        .catch(function () {});
-    })();
-    </script>
   </main>
 
   <!-- 로딩 오버레이 -->
@@ -228,16 +215,16 @@
         <div class="phone">
           <div class="phone-notch"></div>
           <div class="phone-screen">
-            <canvas id="vc"></canvas>
+            <canvas id="videoCanvas"></canvas>
             <div class="scene-dots" id="sceneDots"></div>
           </div>
           <div class="phone-bar"></div>
         </div>
         <div class="reel-side">
-          <div class="rsb rsb-like"><i class="fas fa-heart"></i></div>
-          <div class="rsb rsb-comment"><i class="fas fa-comment"></i></div>
-          <div class="rsb rsb-share"><i class="fas fa-share"></i></div>
-          <div class="rsb rsb-save"><i class="fas fa-bookmark"></i></div>
+          <button type="button" class="rsb rsb-like" aria-label="좋아요"><i class="fas fa-heart"></i></button>
+          <button type="button" class="rsb rsb-comment" aria-label="댓글"><i class="fas fa-comment"></i></button>
+          <button type="button" class="rsb rsb-share" aria-label="공유"><i class="fas fa-share"></i></button>
+          <button type="button" class="rsb rsb-save" aria-label="저장"><i class="fas fa-bookmark"></i></button>
         </div>
       </div>
 
@@ -306,14 +293,15 @@
 
   <div class="toasts" id="toasts"></div>
 
+  <a href="index2.html" class="blog-link-btn">
+    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
+  </a>
+
   <script>
     if ('serviceWorker' in navigator)
       navigator.serviceWorker.register('sw.js').catch(() => {});
   </script>
   <script src="https://cdn.jsdelivr.net/npm/webm-muxer@3.2.0/build/webm-muxer.js"></script>
   <script src="script.js"></script>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
 </body>
 </html>

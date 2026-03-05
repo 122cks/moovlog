@@ -37,7 +37,7 @@ const D  = {
   ls1: g('ls1'), ls2: g('ls2'), ls3: g('ls3'), ls4: g('ls4'),
   ls1s: g('ls1s'), ls2s: g('ls2s'), ls3s: g('ls3s'), ls4s: g('ls4s'),
   ls1c: g('ls1c'), ls2c: g('ls2c'), ls3c: g('ls3c'), ls4c: g('ls4c'),
-  resultWrap: g('resultWrap'), canvas: g('vc'),
+  resultWrap: g('resultWrap'), canvas: g('videoCanvas') || g('vc'),
   vProg: g('vProg'), playBtn: g('playBtn'), playIco: g('playIco'),
   replayBtn: g('replayBtn'), muteBtn: g('muteBtn'), muteIco: g('muteIco'),
   sceneList: g('sceneList'), dlBtn: g('dlBtn'),
@@ -876,6 +876,24 @@ async function doExportWebCodecs() {
   const nFrames  = Math.ceil(totalDur * FPS);
   const hasAudio = S.audioBuffers.some(b => b !== null);
 
+  // 0. 코덱 자동 감지 (VP9 level 4.1 -> 3.1 -> VP8 순서)
+  D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 코덱 확인 중...';
+  const VIDEO_CODECS = [
+    { enc: 'vp09.00.41.08', mux: 'V_VP9' },
+    { enc: 'vp09.00.31.08', mux: 'V_VP9' },
+    { enc: 'vp08.00.41.08', mux: 'V_VP8' },
+  ];
+  let chosenCodec = null;
+  for (const c of VIDEO_CODECS) {
+    try {
+      const sup = await VideoEncoder.isConfigSupported({
+        codec: c.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS,
+      });
+      if (sup.supported) { chosenCodec = c; break; }
+    } catch {}
+  }
+  if (!chosenCodec) throw new Error('이 브라우저는 VP9/VP8 코덱을 지원하지 않습니다. Chrome을 이용해주세요.');
+
   // 1. 오디오 사전 렌더링
   let pcm = null;
   if (hasAudio) {
@@ -899,24 +917,6 @@ async function doExportWebCodecs() {
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
     error:  err => { throw err; },
   });
-  // 0. 코덱 자동 감지 (VP9 level 4.1 → 3.1 → VP8 순서)
-  D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 코덱 확인 중...';
-  const VIDEO_CODECS = [
-    { enc: 'vp09.00.41.08', mux: 'V_VP9' },
-    { enc: 'vp09.00.31.08', mux: 'V_VP9' },
-    { enc: 'vp08.00.41.08', mux: 'V_VP8' },
-  ];
-  let chosenCodec = null;
-  for (const c of VIDEO_CODECS) {
-    try {
-      const sup = await VideoEncoder.isConfigSupported({
-        codec: c.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS,
-      });
-      if (sup.supported) { chosenCodec = c; break; }
-    } catch {}
-  }
-  if (!chosenCodec) throw new Error('이 브라우저는 VP9/VP8 코덱을 지원하지 않습니다. Chrome을 이용해주세요.');
-
   videoEnc.configure({ codec: chosenCodec.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
 
   // 4. 프레임별 렌더 + 인코딩
