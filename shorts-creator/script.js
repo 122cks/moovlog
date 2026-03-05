@@ -364,21 +364,16 @@ async function generateAllTTS(scenes) {
       buffers.push(buf);
       successCount++;
     } catch (err) {
-      console.warn(`[TTS] 씬${i + 1} 실패 (Web Speech 폴백):`, err.message);
+      console.warn(`[TTS] 씬${i + 1} 실패:`, err.message);
       failCount++;
       buffers.push(null);
     }
   }
-  if (successCount === 0) {
-    updateAudioStatus('web-speech');
-    if (failCount > 0) toast('AI 음성 생성 실패 → 웹 음성으로 재생됩니다', 'inf');
-  } else {
-    updateAudioStatus('google-tts');
-    const msg = failCount > 0
-      ? `AI 남성 보이스 ${successCount}/${scenes.length}씬 완료 (${failCount}씬 웹음성 폴백)`
-      : `AI 남성 보이스 ${successCount}씬 생성 완료 ✓`;
-    toast(msg, successCount === scenes.length ? 'ok' : 'inf');
+  if (failCount > 0 || successCount !== scenes.length) {
+    throw new Error(`남성 AI 보이스 생성 실패: ${successCount}/${scenes.length}씬만 완료`);
   }
+  updateAudioStatus('google-tts');
+  toast(`AI 남성 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
   return buffers;
 }
 
@@ -453,8 +448,11 @@ function playSceneAudio(si, capture = false) {
     src.connect(audioCtx.destination);
     if (capture && audioMixDest) src.connect(audioMixDest);
     src.start(); S.currentAudio = src;
-  } else if (!S.muted) {
-    playWebSpeech(S.script?.scenes?.[si]);
+  } else {
+    console.error(`씬 ${si + 1}의 남성 나레이션 오디오가 없습니다.`);
+    toast('남성 나레이션 오디오가 누락되어 재생을 중단했습니다', 'err');
+    S.playing = false;
+    setPlayIcon(false);
   }
 }
 // Web Speech 폴백 — 목소리에서 pitch=0 + 명시적 남성 탐색
