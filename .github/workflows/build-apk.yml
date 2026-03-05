@@ -26,11 +26,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: "8.4"
-
       - name: Install SDK components
         run: |
           sdkmanager --install "platforms;android-34" "build-tools;34.0.0" --sdk_root=$ANDROID_HOME
@@ -39,6 +34,21 @@ jobs:
       - name: Set Android SDK path
         working-directory: android-app
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
+      - name: Bootstrap Gradle 8.4 wrapper
+        working-directory: android-app
+        run: |
+          echo "=== Downloading Gradle 8.4 ==="
+          curl -sSL https://services.gradle.org/distributions/gradle-8.4-bin.zip -o /tmp/gradle-8.4.zip
+          unzip -q /tmp/gradle-8.4.zip -d /tmp/
+          chmod +x /tmp/gradle-8.4/bin/gradle
+          echo "=== Generating gradlew ==="
+          /tmp/gradle-8.4/bin/gradle wrapper --gradle-version 8.4 --distribution-type bin
+          chmod +x gradlew
+          echo "=== Wrapper files ==="
+          ls -la gradlew gradle/wrapper/
+          echo "=== gradlew version ==="
+          ./gradlew --version 2>&1 | head -10
 
       - name: Generate keystore
         working-directory: android-app
@@ -54,16 +64,12 @@ jobs:
       - name: Check wrapper files
         working-directory: android-app
         run: |
-          echo "=== gradle/wrapper/ ==="
-          ls -la gradle/wrapper/ || echo "wrapper dir not found"
-          echo "=== gradlew exists: ===" 
-          ls -la gradlew || echo "gradlew not found"
+          echo "=== gradlew ==="
+          ls -la gradlew || echo "gradlew not found!"
           echo "=== ANDROID_HOME ==="
           echo "$ANDROID_HOME"
           echo "=== local.properties ==="
           cat local.properties || echo "not found"
-          echo "=== gradle version ==="
-          ./gradlew --version 2>&1 | head -20 || echo "gradlew version check failed"
 
       - name: Build release APK
         id: gradle_build
@@ -81,7 +87,10 @@ jobs:
 
       - name: Fail if build failed
         if: steps.gradle_build.outcome == 'failure'
-        run: exit 1
+        run: |
+          echo "=== BUILD FAILED: TAIL OF LOG ==="
+          tail -80 android-app/build.log
+          exit 1
 
       - name: Copy APK
         run: cp $(find android-app -name "*.apk" | tail -1) moovlog-shorts-creator.apk

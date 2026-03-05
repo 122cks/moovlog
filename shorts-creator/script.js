@@ -374,17 +374,20 @@ function playSceneAudio(si, capture = false) {
     playWebSpeech(S.script?.scenes?.[si]);
   }
 }
-// Web Speech 폴백 — pitch 최저, 남성 보이스 우선
+// Web Speech 폴백 — 목소리에서 pitch=0 + 명시적 남성 탐색
 function playWebSpeech(sc) {
   if (!sc?.narration) return;
   const u = new SpeechSynthesisUtterance(sc.narration);
-  u.lang = 'ko-KR'; u.pitch = 0.1; u.rate = 0.88; u.volume = 1;
+  u.lang = 'ko-KR'; u.pitch = 0; u.rate = 0.85; u.volume = 1;
   const v = speechSynthesis.getVoices();
-  // Heami = 여성, 피함
-  const male = v.find(x => x.lang.startsWith('ko') && !/heami|female|여성/i.test(x.name))
-            || v.find(x => x.lang.startsWith('ko'))
-            || null;
-  if (male) u.voice = male;
+  // 1순위: 명시적 male 태그가 있는 한국어
+  // 2순위: Heami/여성 제외한 한국어
+  // 3순위: 데우지 없으면 한국어 아뭐거나 (pitch 0으로 남성치)
+  const pick = v.find(x => /male|남성/i.test(x.name) && x.lang.startsWith('ko'))
+             || v.find(x => x.lang.startsWith('ko') && !/heami|female|여성/i.test(x.name))
+             || v.find(x => x.lang.startsWith('ko'))
+             || null;
+  if (pick) u.voice = pick;
   speechSynthesis.speak(u);
 }
 function stopAudio() {
@@ -642,85 +645,92 @@ function drawSubtitle(sc, animProg) {
   ctx.restore();
 }
 
-/* ① Hook — 대형 그라디언트 텍스트 + scale-pop */
+/* ── CapCut 스타일 공통 렌더러 ────────────────────────────────
+   hlIdx: 강조할 단어 인덱스 (null = 없음)
+   단어별 순차 팝인 + 오버슛 바운스 + 두꺼운 검은 스트로크
+   ──────────────────────────────────────────────────────────── */
+function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return;
+  ctx.save();
+  let sz = maxSz;
+  ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  let wM = words.map(w => ctx.measureText(w).width);
+  const sp = () => sz * 0.28;
+  const tot = () => wM.reduce((a, b) => a + b, 0) + sp() * (words.length - 1);
+  // 캔버스 폭 초과 시 자동 축소
+  if (tot() > CW - 56) {
+    sz = Math.max(34, Math.floor(sz * (CW - 56) / tot()));
+    ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
+    wM = words.map(w => ctx.measureText(w).width);
+  }
+  const N  = words.length;
+  const step = 0.55 / N;           // 전체 애니메이션의 55%에 모든 단어 등장
+  const sw   = Math.max(sz * 0.13, 7); // 스트로크 두께
+  let x = cx - tot() / 2;
+  words.forEach((word, i) => {
+    const wProg = Math.max(0, Math.min(1, (ap - i * step) / (step * 1.65)));
+    const drawX = x;
+    x += wM[i] + sp();
+    if (wProg <= 0) return;
+    // Overshoot bounce: 0 → 1.18 → 1.0
+    const scl = wProg < 0.6 ? (wProg / 0.6) * 1.18 : 1.18 - ((wProg - 0.6) / 0.4) * 0.18;
+    const alpha = Math.min(wProg * 4, 1);
+    const wx = drawX + wM[i] / 2;
+    const isHL = (i === hlIdx);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(wx, cy); ctx.scale(scl, scl);
+    if (isHL) {
+      // 노란 하이라이트 박스 + 검정 텍스트
+      const pad = 9;
+      ctx.fillStyle = '#FFE033';
+      roundRect(ctx, -wM[i] / 2 - pad, -sz * 0.58, wM[i] + pad * 2, sz * 1.16, 7); ctx.fill();
+      ctx.lineWidth = sw * 0.35; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.strokeText(word, -wM[i] / 2, 0);
+      ctx.fillStyle = '#111'; ctx.fillText(word, -wM[i] / 2, 0);
+    } else {
+      // 흰색(또는 color) + 두꺼운 검정 스트로크
+      ctx.lineWidth = sw; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.97)';
+      ctx.strokeText(word, -wM[i] / 2, 0);
+      ctx.fillStyle = color; ctx.fillText(word, -wM[i] / 2, 0);
+    }
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+/* ① Hook — CapCut 최대 임팩트: 첫 단어 노란 강조 */
 function drawSubHook(text, pos, ap) {
-  const eased  = ease(Math.min(ap * 3.5, 1));
-  const scale  = 0.65 + eased * 0.35;   // 0.65 → 1.0
-  const alpha  = Math.min(ap * 4, 1);
-  const y      = pos === 'upper' ? CH * 0.22 : (pos === 'center' ? CH * 0.50 : CH * 0.72);
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.font = 'bold 82px "Noto Sans KR", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.translate(CW / 2, y); ctx.scale(scale, scale);
-  // 섀도우
-  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 28;
-  ctx.fillStyle = '#ffffff'; ctx.fillText(text, 0, 4); ctx.shadowBlur = 0;
-  // 그라디언트
-  const grd = ctx.createLinearGradient(-260, 0, 260, 0);
-  grd.addColorStop(0, '#ff6b9d'); grd.addColorStop(0.45, '#ffffff'); grd.addColorStop(1, '#c77dff');
-  ctx.fillStyle = grd; ctx.fillText(text, 0, 0);
-  ctx.restore();
+  const y = pos === 'upper' ? CH * 0.22 : pos === 'center' ? CH * 0.50 : CH * 0.72;
+  capWords(text, CW / 2, y, 96, '#FFFFFF', 0, ap);
 }
 
-/* ② Detail — 반투명 박스 + 좌측 액센트 바 + slide-up */
+/* ② Detail — CapCut 기본: 슬라이드업 + 흰 텍스트 */
 function drawSubDetail(text, pos, ap) {
-  const eased  = ease(Math.min(ap * 2.8, 1));
-  const slideY = (1 - eased) * 38;
-  const alpha  = Math.min(ap * 3.5, 1);
-  const baseY  = pos === 'upper' ? CH * 0.18 : (pos === 'center' ? CH * 0.50 : CH - 218);
-  const y      = baseY + slideY;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.font = 'bold 60px "Noto Sans KR", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  const tw = ctx.measureText(text).width, padX = 44, boxH = 86;
-  const boxW = Math.min(tw + padX * 2, CW - 48), boxX = CW / 2 - boxW / 2, boxY = y - boxH / 2;
-  // 배경
-  ctx.fillStyle = 'rgba(6,6,14,0.78)'; roundRect(ctx, boxX, boxY, boxW, boxH, 18); ctx.fill();
-  // 액센트 바
-  const bg = ctx.createLinearGradient(0, boxY, 0, boxY + boxH);
-  bg.addColorStop(0, '#ff6b9d'); bg.addColorStop(1, '#c77dff');
-  ctx.fillStyle = bg; roundRect(ctx, boxX, boxY + 10, 5, boxH - 20, 3); ctx.fill();
-  // 텍스트
-  ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8;
-  ctx.fillText(text, CW / 2, y);
-  ctx.restore();
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const baseY = pos === 'upper' ? CH * 0.18 : pos === 'center' ? CH * 0.50 : CH - 200;
+  const y     = baseY + (1 - eased) * 30;
+  capWords(text, CW / 2, y, 74, '#FFFFFF', null, ap);
 }
 
-/* ③ Hero — 대형 + 그라디언트 언더라인 + slide-up */
+/* ③ Hero — CapCut 대형: 마지막 단어 클라이맥스 강조 */
 function drawSubHero(text, ap) {
-  const eased  = ease(Math.min(ap * 2.8, 1));
-  const slideY = (1 - eased) * 28;
-  const alpha  = Math.min(ap * 3.5, 1);
-  const y      = CH - 196 + slideY;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.font = 'bold 70px "Noto Sans KR", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.95)'; ctx.shadowBlur = 30;
-  ctx.fillStyle = '#ffffff'; ctx.fillText(text, CW / 2, y); ctx.shadowBlur = 0;
-  const tw = ctx.measureText(text).width;
-  const ug = ctx.createLinearGradient(CW / 2 - tw / 2, 0, CW / 2 + tw / 2, 0);
-  ug.addColorStop(0, '#ff6b9d'); ug.addColorStop(1, '#c77dff');
-  ctx.fillStyle = ug; ctx.fillRect(CW / 2 - tw / 2, y + 44, tw * eased, 5);
-  ctx.restore();
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = CH - 188 + (1 - eased) * 24;
+  const words = text.split(/\s+/).filter(Boolean);
+  capWords(text, CW / 2, y, 88, '#FFFFFF', words.length - 1, ap);
 }
 
-/* ④ CTA — 미니멀 + bounce */
+/* ④ CTA — CapCut 노란 콜투액션 + 파워풀 바운스 */
 function drawSubCTA(text, ap) {
   const eased  = ease(Math.min(ap * 2.5, 1));
-  const bounce = ap < 0.5 ? Math.sin(ap * Math.PI * 2) * 10 : 0;
-  const slideY = (1 - eased) * 32;
-  const alpha  = Math.min(ap * 4, 1);
-  const y      = CH - 120 - bounce + slideY;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.font = 'bold 56px "Noto Sans KR", sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
-  ctx.shadowColor = 'rgba(0,0,0,0.88)'; ctx.shadowBlur = 20;
-  ctx.fillStyle = 'rgba(255,255,255,0.97)'; ctx.fillText(text, CW / 2, y);
-  ctx.restore();
+  const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * 14 : 0;
+  const y      = CH - 128 + (1 - eased) * 28 - bounce;
+  capWords(text, CW / 2, y, 80, '#FFE033', 0, ap);
 }
 
 /* ── MOOVLOG 배지 ────────────────────────────────────────── */
