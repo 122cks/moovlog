@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#0d0d0d" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="Shorts Creator" />
   <meta name="description" content="무브먼트 Shorts Creator" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="apple-touch-icon" href="icon-192.svg" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
   <title>무브먼트 Shorts Creator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -138,7 +138,7 @@
     </button>
     <p class="make-hint">Gemini 2.5 Pro로 자막·나레이션·컷 배치를 자동 설계합니다</p>
 
-    <a href="https://github.com/122cks/moovlog/releases"
+    <a href="https://github.com/122cks/moovlog/releases/latest"
        id="apkBanner" target="_blank" rel="noopener noreferrer" class="apk-banner">
       <span class="apk-icon"><i class="fab fa-android"></i></span>
       <span class="apk-text">
@@ -146,7 +146,6 @@
         <small id="apkBannerSub">moovlog-shorts-creator.apk →</small>
       </span>
     </a>
-  </main>
 
   <!-- 로딩 오버레이 -->
   <div class="loading-wrap" id="loadingWrap" hidden>
@@ -296,6 +295,8 @@
   <a href="index2.html" class="blog-link-btn">
     <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
   </a>
+
+  </main>
 
   <script>
     if ('serviceWorker' in navigator)

@@ -108,6 +108,9 @@ document.addEventListener('DOMContentLoaded', () => {
   D.restName.addEventListener('input', () => {
     if (S.files.length) updateStepUI(2);
   });
+  D.restName.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); D.makeBtn.click(); }
+  });
   D.makeBtn.addEventListener('click',   startMake);
   D.playBtn.addEventListener('click',   togglePlay);
   D.canvas.addEventListener('click',    togglePlay);  // 모바일: 캔버스 탭으로 재생/일시정지

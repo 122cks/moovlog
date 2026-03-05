@@ -82,7 +82,14 @@ jobs:
           retention-days: 7
 
       - name: Copy APK
-        run: cp $(find android-app -name "*.apk" | tail -1) moovlog-shorts-creator.apk
+        run: |
+          APK_PATH=$(find android-app -name "*.apk" -type f | head -1)
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::No APK file found after build"
+            exit 1
+          fi
+          echo "Found APK: $APK_PATH"
+          cp "$APK_PATH" moovlog-shorts-creator.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

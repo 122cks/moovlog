@@ -3,7 +3,7 @@
    Network-first: 배포 즉시 반영
    ============================================= */
 
-const CACHE = 'moovlog-shorts-v1';
+const CACHE = 'moovlog-shorts-v2';
 
 // App shell: network-first (배포 즉시 반영)
 const APP_SHELL = ['.html', '.js', '.css'];
@@ -11,7 +11,7 @@ const APP_SHELL = ['.html', '.js', '.css'];
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE).then(c => c.addAll([
-      './manifest.json', './icon-192.svg', './icon-512.svg',
+      './manifest.json', './icon-192.png', './icon-512.png',
     ])).then(() => self.skipWaiting())
   );
 });
