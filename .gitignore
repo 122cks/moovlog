@@ -25,4 +25,4 @@ build/
 openJdk-25/
 *.keystore
 local.properties
-moovlog-shorts-creator.apk
+/moovlog-shorts-creator.apk
