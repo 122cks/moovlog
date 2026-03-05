@@ -21,3 +21,6 @@ desktop.ini
 # Build outputs
 dist/
 build/
+.gradle/
+openJdk-25/
+*.keystore

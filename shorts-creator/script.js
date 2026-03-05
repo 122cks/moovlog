@@ -12,17 +12,14 @@
    ============================================================ */
 
 /* ── API ─────────────────────────────────────────────────── */
-let geminiKey = localStorage.getItem('moovlog_gemini_key') || '';
+const _INJECTED_KEY = '__GEMINI_KEY__';
+let geminiKey = _INJECTED_KEY.includes('__') ? (localStorage.getItem('moovlog_gemini_key') || '') : _INJECTED_KEY;
 function getApiUrl(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 }
 function ensureApiKey() {
   if (geminiKey) return true;
-  const k = prompt('Gemini API 키를 입력하세요.\n(Google AI Studio → aistudio.google.com 에서 발급)');
-  if (!k?.trim()) return false;
-  geminiKey = k.trim();
-  localStorage.setItem('moovlog_gemini_key', geminiKey);
-  return true;
+  return false;
 }
 
 async function apiPost(url, body) {
@@ -377,11 +374,15 @@ async function generateAllTTS(scenes) {
       buffers.push(null);
     }
   }
-  if (failCount > 0 || successCount !== scenes.length) {
-    throw new Error(`남성 AI 보이스 생성 실패: ${successCount}/${scenes.length}씬만 완료`);
+  if (successCount === 0) {
+    throw new Error(`남성 AI 보이스 생성 실패: 모든 씬 실패 — API 키를 확인하세요`);
+  }
+  if (failCount > 0) {
+    toast(`AI 남성 보이스 ${successCount}/${scenes.length}씬 성공 (${failCount}씬은 무음 처리)`, 'warn');
+  } else {
+    toast(`AI 남성 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
   }
   updateAudioStatus('google-tts');
-  toast(`AI 남성 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
   return buffers;
 }
 

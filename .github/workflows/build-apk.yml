@@ -71,7 +71,7 @@ jobs:
 
       - name: Build release APK
         working-directory: android-app
-        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs=-Xmx2g 2>&1 | tee build.log
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Upload build log
         if: always()
@@ -83,8 +83,15 @@ jobs:
 
       - name: Copy APK
         run: |
-          APK_PATH=$(find android-app -name "*.apk" -type f | head -1)
-          if [ -z "$APK_PATH" ]; then
+          echo "=== Searching for APK files ==="
+          find android-app -name "*.apk" -type f 2>/dev/null || true
+          echo "=== Listing build outputs ==="
+          ls -laR android-app/app/build/outputs/ 2>/dev/null || echo "No build outputs directory"
+          APK_PATH="android-app/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            APK_PATH=$(find android-app -name "*.apk" -type f | head -1)
+          fi
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
             echo "::error::No APK file found after build"
             exit 1
           fi
