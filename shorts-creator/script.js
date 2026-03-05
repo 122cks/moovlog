@@ -198,8 +198,14 @@ async function startMake() {
     doneStep(2);
 
     setStep(3, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
-    S.audioBuffers = await generateAllTTS(script.scenes);
-    // 어 duration을 TTS 오디오 실제 길이에 맞춤 (자막·내레이션 싱크 보정)
+    try {
+      S.audioBuffers = await generateAllTTS(script.scenes);
+    } catch (ttsErr) {
+      console.warn('[TTS] 전체 실패, 무음 진행:', ttsErr.message);
+      S.audioBuffers = script.scenes.map(() => null);
+      toast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
+    }
+    // duration을 TTS 오디오 실제 길이에 맞춤 (자막·내레이션 싱크 보정)
     for (let i = 0; i < script.scenes.length; i++) {
       const buf = S.audioBuffers[i];
       if (buf && buf.duration > script.scenes[i].duration) {
@@ -376,14 +382,14 @@ async function generateAllTTS(scenes) {
     }
   }
   if (successCount === 0) {
-    throw new Error(`남성 AI 보이스 생성 실패: 모든 씬 실패 — API 키를 확인하세요`);
-  }
-  if (failCount > 0) {
-    toast(`AI 남성 보이스 ${successCount}/${scenes.length}씬 성공 (${failCount}씬은 무음 처리)`, 'warn');
+    console.warn('[TTS] 모든 씬 실패 — 무음으로 진행');
+    toast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
+  } else if (failCount > 0) {
+    toast(`AI 남성 보이스 ${successCount}/${scenes.length}씬 성공 (${failCount}씬 무음)`, 'inf');
   } else {
     toast(`AI 남성 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
   }
-  updateAudioStatus('google-tts');
+  if (successCount > 0) updateAudioStatus('google-tts');
   return buffers;
 }
 
