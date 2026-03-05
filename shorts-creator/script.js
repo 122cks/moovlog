@@ -66,26 +66,31 @@ function ensureAudio() {
   audioMixDest = audioCtx.createMediaStreamDestination();
 }
 
-/* ── Template / Hook 전역 상태 ──────────────────────────── */
-let selectedTemplate = 'story';
+/* ── Template / Hook 전역 상태 (Instagram/TikTok 스타일) ── */
+let selectedTemplate = 'aesthetic';
 let selectedHook     = 'question';
-const HOOK_PREVIEWS = {
-  question:  '"이거 진짜 먹어본 사람 없음? 🤯"',
-  reveal:    '"여기서 이걸 판다고? 충격 실화 🔥"',
-  challenge: '"나는 여기 매주 오는 중 💥"',
-  secret:    '"현지인들만 아는 숨은 맛집 🤫"',
-};
 const TEMPLATE_HINTS = {
-  story:      '감성적 여정 스타일: 공간 → 음식 → 감정 → 여운',
-  facts:      '정보 전달 스타일: 위치·가격·메뉴·특징 핵심 전달',
-  motivation: 'FOMO 자극 스타일: 못 가면 후회, 지금 당장 가야 함을 강조',
-  history:    '스토리텔링 스타일: 탄생 스토리·전통·진정성 강조',
+  cinematic:  '시네마틱 스타일: 슬로우 컷, 무디 색감, 영화 같은 구성, 감성 BGM 느낌',
+  viral:      '바이럴 스타일: 빠른 컷 전환, FOMO 극대화, "저장 필수" 포맷, 틱톡 트렌딩',
+  aesthetic:  '감성 스타일: 따뜻한 톤, 소프트 무드, 카페·맛집 바이브, 인스타 감성',
+  mukbang:    '먹방 스타일: 음식 클로즈업 극대화, 식감·소리 묘사, ASMR 느낌 나레이션',
+  vlog:       '브이로그 스타일: 일상 기록, 친근한 1인칭 시점, 맛집 탐방 일기',
+  review:     '리뷰 스타일: 솔직 평가, 장단점 분석, 가성비 중심, 별점 느낌',
+  story:      '스토리 스타일: 감성 여정, 도입→전개→클라이맥스→여운, 내러티브 중심',
+  info:       '정보 스타일: 핵심 정보 간결 전달, 위치·가격·메뉴·특징, 카드뉴스 느낌',
+};
+const TEMPLATE_NAMES = {
+  cinematic: '🎬 시네마틱', viral: '🔥 바이럴', aesthetic: '✨ 감성',
+  mukbang: '🍜 먹방', vlog: '📹 브이로그', review: '⭐ 리뷰',
+  story: '📖 스토리', info: '📊 정보',
 };
 const HOOK_HINTS = {
-  question:  '첫 씬: 질문형 훅 - "이거 진짜야?", "이걸 모르면 손해?"',
-  reveal:    '첫 씬: 반전형 훅 - "여기서 이걸?", "이게 진짜 있다고?"',
-  challenge: '첫 씬: 챌린지형 훅 - "나 여기 10번째 옴", "이거 안 먹으면 후회"',
-  secret:    '첫 씬: 비밀형 훅 - "아는 사람만 아는", "현지인 픽"',
+  question:  '질문형 훅: "이거 진짜야?", "이 가격 실화?", "여기 가봤어?"',
+  shock:     '충격형 훅: "이게 가능해?", "미쳤다 진짜", "실화냐 이거"',
+  challenge: '도전형 훅: "3초 안에 저장해", "나만 알고 싶었는데", "이거 안 먹으면 후회"',
+  secret:    '비밀형 훅: "아는 사람만 아는", "현지인 전용", "절대 알려주기 싫은"',
+  ranking:   '랭킹형 훅: "TOP 1 맛집", "내 인생 최고", "1등 메뉴는?"',
+  pov:       'POV형 훅: "너가 여기 왔을 때", "맛집 찾았을 때 기분", "혼밥 성공 POV"',
 };
 
 /* ── State ───────────────────────────────────────────────── */
@@ -104,9 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
   D.dropArea.addEventListener('drop',      e => { e.preventDefault(); D.dropArea.classList.remove('over'); addFiles([...e.dataTransfer.files]); });
   D.dropArea.addEventListener('click',     e => { if (!e.target.closest('.pick-btn')) D.fileInput.click(); });
   D.fileInput.addEventListener('change',   e => { addFiles([...e.target.files]); D.fileInput.value = ''; });
-  D.restName.addEventListener('input', () => {
-    if (S.files.length) updateStepUI(2);
-  });
+  D.restName.addEventListener('input', () => {});
   D.restName.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); D.makeBtn.click(); }
   });
@@ -118,24 +121,6 @@ document.addEventListener('DOMContentLoaded', () => {
   D.dlBtn.addEventListener('click',     doExport);
   D.reBtn.addEventListener('click',     goBack);
   if (D.reBtnBottom) D.reBtnBottom.addEventListener('click', goBack);
-  // 템플릿 선택
-  document.querySelectorAll('.tpl-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tpl-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedTemplate = btn.dataset.tpl;
-    });
-  });
-  // 훅 스타일 선택
-  document.querySelectorAll('.hchip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.hchip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      selectedHook = chip.dataset.hook;
-      const prev = document.getElementById('hookPreview');
-      if (prev) prev.textContent = HOOK_PREVIEWS[selectedHook] || '';
-    });
-  });
   updateStepUI(1);
   document.querySelectorAll('.sns-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -161,7 +146,6 @@ function addFiles(files) {
   if (S.files.length + valid.length > 10) { toast('최대 10개까지 가능합니다', 'err'); return; }
   valid.forEach(f => S.files.push({ file: f, url: URL.createObjectURL(f), type: f.type.startsWith('video/') ? 'video' : 'image' }));
   renderThumbs();
-  if (S.files.length) updateStepUI(2);
 }
 function renderThumbs() {
   D.thumbGrid.innerHTML = '';
@@ -188,10 +172,24 @@ async function startMake() {
   if (!ensureApiKey()) { toast('API 키가 필요합니다', 'err'); return; }
   D.makeBtn.disabled = true;
   if (D.snsWrap) D.snsWrap.hidden = true;
-  updateStepUI(3); showLoad(); ensureAudio();
+  updateStepUI(2); showLoad(); ensureAudio();
   try {
-    setStep(1, '이미지 정밀 분석 중...', 'Gemini 2.5 Pro가 각 컷을 분석합니다');
+    setStep(1, '이미지 분석 + 스타일 자동 선택 중...', 'AI가 최적의 템플릿과 훅을 찾고 있습니다');
     const analysis = await visionAnalysis(name);
+    // AI 자동 스타일 선택
+    if (analysis.recommended_template && TEMPLATE_HINTS[analysis.recommended_template]) {
+      selectedTemplate = analysis.recommended_template;
+    }
+    if (analysis.recommended_hook && HOOK_HINTS[analysis.recommended_hook]) {
+      selectedHook = analysis.recommended_hook;
+    }
+    const styleBadge = document.getElementById('autoStyleBadge');
+    const styleName  = document.getElementById('autoStyleName');
+    if (styleBadge && styleName) {
+      styleName.textContent = TEMPLATE_NAMES[selectedTemplate] || selectedTemplate;
+      styleBadge.hidden = false;
+    }
+    toast(`AI 추천: ${TEMPLATE_NAMES[selectedTemplate] || selectedTemplate}`, 'inf');
     doneStep(1);
 
     setStep(2, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');
@@ -221,7 +219,7 @@ async function startMake() {
     buildSceneDots();
     buildSNSTags(script);
     await sleep(300);
-    updateStepUI(4); hideLoad(); D.resultWrap.hidden = false;
+    updateStepUI(3); hideLoad(); D.resultWrap.hidden = false;
     setupPlayer();
     if (AUTO_EXPORT_ON_CREATE) {
       toast('영상 생성 완료: 자동 저장을 시작합니다', 'inf');
@@ -265,9 +263,12 @@ async function visionAnalysis(restaurantName) {
 - menu: 발견된 메뉴명
 - visual_hook: 식욕/호기심 자극 1문장 (감각적, 구체적)
 - recommended_order: emotional_score+스토리흐름 기준 정렬된 인덱스 배열
+- recommended_template: 이미지 분위기에 가장 적합한 콘텐츠 스타일 하나 선택: "cinematic"|"viral"|"aesthetic"|"mukbang"|"vlog"|"review"|"story"|"info"
+  (고급감·무디→cinematic, 자극·트렌드→viral, 감성·따뜻→aesthetic, 음식클로즈업→mukbang, 일상·가벼움→vlog, 평가·비교→review, 내러티브→story, 정보중심→info)
+- recommended_hook: 가장 어울리는 오프닝 훅 하나 선택: "question"|"shock"|"challenge"|"secret"|"ranking"|"pov"
 
 JSON만 반환:
-{"keywords":["k1","k2","k3","k4","k5"],"mood":"감성","menu":["메뉴"],"visual_hook":"훅","recommended_order":[0,1,2],"per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":3,"focus":"설명"}]}`;
+{"keywords":["k1","k2","k3","k4","k5"],"mood":"감성","menu":["메뉴"],"visual_hook":"훅","recommended_order":[0,1,2],"recommended_template":"aesthetic","recommended_hook":"question","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":3,"focus":"설명"}]}`;
 
   const data = await geminiWithFallback({ contents: [{ parts: [...parts, { text: prompt }] }], generationConfig: { temperature: 0.6, responseMimeType: 'application/json' } });
   const raw  = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
@@ -1102,6 +1103,8 @@ function goBack() {
   D.sceneList.innerHTML = '';
   if (D.sceneDots) D.sceneDots.innerHTML = '';
   if (D.snsWrap) D.snsWrap.hidden = true;
+  const styleBadge = document.getElementById('autoStyleBadge');
+  if (styleBadge) styleBadge.hidden = true;
   updateStepUI(1);
 }
 function showLoad() { D.loadWrap.hidden = false; }
@@ -1126,7 +1129,7 @@ function doneStep(n) {
   if (ch) ch.style.opacity = '1';
 }
 function updateStepUI(n) {
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 3; i++) {
     const el = g('si' + i);
     if (!el) continue;
     el.classList.toggle('active', i === n);

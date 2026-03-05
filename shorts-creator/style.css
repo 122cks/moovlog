@@ -144,6 +144,9 @@ html, body {
 .ti-del:hover { background: var(--acc1); }
 
 /* ── 음식점 이름 ── */
+.name-card {
+  margin: 0 16px;
+}
 .name-row {
   display: flex; align-items: center; gap: 12px;
   background: var(--card2); border: 1px solid var(--border);
@@ -159,6 +162,49 @@ html, body {
   padding: 14px 0; outline: none;
 }
 .name-input::placeholder { color: var(--t3); font-weight: 400; }
+
+/* ── AI 자동 선택 힌트 ── */
+.ai-auto-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--acc2);
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: rgba(199,125,255,.06);
+  border: 1px solid rgba(199,125,255,.15);
+  border-radius: 10px;
+}
+.ai-auto-hint i { font-size: 13px; }
+
+/* ── 자동 스타일 배지 (로딩 오버레이) ── */
+.auto-style-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 18px;
+  margin-bottom: 12px;
+  background: linear-gradient(135deg, rgba(255,77,109,.12), rgba(199,125,255,.12));
+  border: 1px solid rgba(199,125,255,.3);
+  border-radius: 20px;
+  animation: tIn .3s ease;
+}
+.auto-style-badge[hidden] { display: none; }
+.asb-label {
+  font-size: 11px;
+  color: var(--t2);
+  font-weight: 600;
+}
+.asb-value {
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--grd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
 
 /* ── 메이크 버튼 ── */
 .make-btn {
@@ -494,6 +540,31 @@ html, body {
 }
 .blog-link-btn:hover { background: var(--card2); transform: translateY(-2px); }
 
+/* ===== FEATURE TAGS ===== */
+.feature-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 8px 20px 0;
+}
+.ftag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.08);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t2);
+  backdrop-filter: blur(6px);
+}
+.ftag i { font-size: 10px; color: var(--acc2); }
+
 /* ===== STEP INDICATOR ===== */
 .step-indicator {
   display: flex;
@@ -556,86 +627,8 @@ html, body {
 .si-item.done .si-label { color: var(--acc1); }
 .si-item.done + .si-line { background: var(--acc1); }
 
-/* ===== TEMPLATE GRID ===== */
-.tpl-section {
-  margin-top: 18px;
-}
-.hook-section {
-  margin-top: 14px;
-}
-.tpl-label {
-  font-size: 12px;
-  color: var(--t2);
-  font-weight: 600;
-  margin-bottom: 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.tpl-label i { color: var(--acc1); }
-.tpl-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.tpl-btn {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 3px;
-  padding: 12px 14px;
-  background: var(--card2);
-  border: 2px solid transparent;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all .2s;
-  text-align: left;
-}
-.tpl-btn:hover { border-color: rgba(116,80,255,.4); background: var(--card2); }
-.tpl-btn.active {
-  border-color: var(--acc1);
-  background: rgba(116,80,255,.12);
-}
-.tpl-ico { font-size: 22px; line-height: 1; }
-.tpl-name { font-size: 13px; font-weight: 700; color: var(--t1); }
-.tpl-desc { font-size: 11px; color: var(--t2); }
-
-/* ===== HOOK CHIPS ===== */
-.hook-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.hchip {
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: 2px solid var(--card2);
-  background: var(--card2);
-  color: var(--t2);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .2s;
-  font-family: 'Noto Sans KR', sans-serif;
-}
-.hchip:hover { border-color: rgba(116,80,255,.5); color: var(--t1); }
-.hchip.active {
-  background: linear-gradient(135deg, var(--acc1), var(--acc2));
-  border-color: transparent;
-  color: #fff;
-}
-.hook-preview {
-  font-size: 12px;
-  color: var(--t2);
-  font-style: italic;
-  padding: 8px 12px;
-  background: rgba(116,80,255,.08);
-  border-left: 3px solid var(--acc1);
-  border-radius: 0 8px 8px 0;
-  margin: 0;
-  transition: opacity .25s;
-}
+/* ===== TEMPLATE GRID (removed — AI auto-selects) ===== */
+.tpl-section, .hook-section { display: none; }
 
 /* ===== LOAD PIPELINE (4-step) ===== */
 .load-pipeline {

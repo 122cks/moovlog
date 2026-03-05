@@ -31,6 +31,14 @@
     </div>
   </header>
 
+  <!-- 피처 태그 -->
+  <div class="feature-tags">
+    <span class="ftag"><i class="fas fa-wand-magic-sparkles"></i> AI 자동 스타일</span>
+    <span class="ftag"><i class="fab fa-instagram"></i> 릴스 최적화</span>
+    <span class="ftag"><i class="fab fa-tiktok"></i> 틱톡 트렌드</span>
+    <span class="ftag"><i class="fas fa-robot"></i> 남성 AI 보이스</span>
+  </div>
+
   <!-- STEP 인디케이터 -->
   <div class="step-indicator" id="stepIndicator">
     <div class="si-item active" id="si1">
@@ -40,16 +48,11 @@
     <div class="si-line"></div>
     <div class="si-item" id="si2">
       <span class="si-num">2</span>
-      <span class="si-label">스타일</span>
+      <span class="si-label">AI 생성</span>
     </div>
     <div class="si-line"></div>
     <div class="si-item" id="si3">
       <span class="si-num">3</span>
-      <span class="si-label">생성</span>
-    </div>
-    <div class="si-line"></div>
-    <div class="si-item" id="si4">
-      <span class="si-num">4</span>
       <span class="si-label">결과</span>
     </div>
   </div>
@@ -76,67 +79,22 @@
       <div class="thumb-grid" id="thumbGrid"></div>
     </section>
 
-    <!-- STEP 2: 스타일 설정 -->
-    <section class="card" id="secStyle">
-      <div class="card-label">
-        <span class="num">02</span>
-        <div>
-          <h2>음식점 이름 &amp; 스타일</h2>
-          <p>이름과 영상 테마를 선택하세요</p>
-        </div>
-      </div>
+    <!-- 이름 입력 (간소화) -->
+    <div class="name-card">
       <div class="name-row">
         <i class="fas fa-store name-icon"></i>
         <input type="text" id="restName" class="name-input"
-               placeholder="예: 을지로 돈부리집" maxlength="40" autocomplete="off" />
+               placeholder="음식점 이름 입력 (예: 을지로 돈부리집)" maxlength="40" autocomplete="off" />
       </div>
-
-      <!-- 콘텐츠 템플릿 -->
-      <div class="tpl-section">
-        <p class="tpl-label"><i class="fas fa-layer-group"></i> 콘텐츠 템플릿</p>
-        <div class="tpl-grid">
-          <button class="tpl-btn active" data-tpl="story">
-            <span class="tpl-ico">🍽️</span>
-            <span class="tpl-name">스토리</span>
-            <span class="tpl-desc">감성 맛집 탐방</span>
-          </button>
-          <button class="tpl-btn" data-tpl="facts">
-            <span class="tpl-ico">🔥</span>
-            <span class="tpl-name">핵심정보</span>
-            <span class="tpl-desc">장소·메뉴·가격</span>
-          </button>
-          <button class="tpl-btn" data-tpl="motivation">
-            <span class="tpl-ico">💥</span>
-            <span class="tpl-name">자극형</span>
-            <span class="tpl-desc">FOMO 극대화</span>
-          </button>
-          <button class="tpl-btn" data-tpl="history">
-            <span class="tpl-ico">📖</span>
-            <span class="tpl-name">히스토리</span>
-            <span class="tpl-desc">스토리텔링</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- 훅 스타일 -->
-      <div class="hook-section">
-        <p class="tpl-label"><i class="fas fa-bolt"></i> 오프닝 훅 스타일</p>
-        <div class="hook-chips" id="hookChips">
-          <button class="hchip active" data-hook="question">❓ 질문형</button>
-          <button class="hchip" data-hook="reveal">😱 반전형</button>
-          <button class="hchip" data-hook="challenge">🏆 챌린지형</button>
-          <button class="hchip" data-hook="secret">🤫 비밀형</button>
-        </div>
-        <p class="hook-preview" id="hookPreview">"이거 진짜 먹어본 사람 없음? 🤯"</p>
-      </div>
-    </section>
+      <p class="ai-auto-hint"><i class="fas fa-sparkles"></i> AI가 이미지를 분석해 최적의 스타일 · 훅 · 템플릿을 자동 선택합니다</p>
+    </div>
 
     <button class="make-btn" id="makeBtn">
       <span class="make-glow"></span>
-      <i class="fas fa-magic"></i>
-      <span>AI 숏폼 영상 제작</span>
+      <i class="fas fa-wand-magic-sparkles"></i>
+      <span>AI 숏폼 자동 생성</span>
     </button>
-    <p class="make-hint">Gemini 2.5 Pro로 자막·나레이션·컷 배치를 자동 설계합니다</p>
+    <p class="make-hint">이미지 분석 → 스타일 자동 선택 → 스크립트 → 나레이션 → 영상 완성</p>
 
     <a href="moovlog-shorts-creator.apk" download="moovlog-shorts-creator.apk"
        id="apkBanner" class="apk-banner">
@@ -156,11 +114,15 @@
       </div>
       <p class="load-title" id="loadTitle">Gemini가 이미지를 분석 중...</p>
       <p class="load-sub" id="loadSub">잠시만 기다려주세요</p>
+      <div id="autoStyleBadge" class="auto-style-badge" hidden>
+        <span class="asb-label">AI 추천 스타일</span>
+        <span class="asb-value" id="autoStyleName">—</span>
+      </div>
       <div class="load-pipeline">
         <div class="lp-item" id="ls1">
           <div class="lp-icon"><i class="fas fa-eye"></i></div>
           <div class="lp-info">
-            <span class="lp-name">시각 분석</span>
+            <span class="lp-name">시각 분석 + 스타일 선택</span>
             <span class="lp-status" id="ls1s">대기중</span>
           </div>
           <div class="lp-check" id="ls1c"><i class="fas fa-check"></i></div>
