@@ -283,7 +283,7 @@ html, body {
   position: relative; width: 100%; aspect-ratio: 9/16;
   background: #000; overflow: hidden;
 }
-#vc { width: 100%; height: 100%; object-fit: cover; display: block; }
+#videoCanvas, #vc { width: 100%; height: 100%; object-fit: cover; display: block; }
 .phone-bar {
   height: 22px; background: #111;
   display: flex; align-items: center; justify-content: center;
@@ -296,7 +296,6 @@ html, body {
 /* ── 릴스 사이드 버튼 ── */
 .reel-side { display: flex; flex-direction: column; gap: 16px; }
 /* rsb moved to new section */
-.rsb span { font-size: 10px; font-family: 'Inter', sans-serif; }
 .rsb:hover { color: var(--acc1); }
 
 /* ── 진행 바 ── */
@@ -795,8 +794,11 @@ html, body {
 
 /* reel-side: icon only (no fake stats) */
 .rsb {
+  appearance: none;
   width: 40px;
   height: 40px;
+  border: none;
+  padding: 0;
   border-radius: 50%;
   background: rgba(255,255,255,.1);
   backdrop-filter: blur(4px);
@@ -809,3 +811,4 @@ html, body {
   transition: background .2s;
 }
 .rsb:hover { background: rgba(255,255,255,.18); }
+.rsb:focus-visible { outline: 2px solid var(--acc1); outline-offset: 2px; }

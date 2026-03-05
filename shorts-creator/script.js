@@ -12,10 +12,18 @@
    ============================================================ */
 
 /* ── API ─────────────────────────────────────────────────── */
-const GEMINI_KEY   = '__GEMINI_KEY__';
-const GEMINI_PRO   = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${GEMINI_KEY}`;
-const GEMINI_FLASH = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_KEY}`;
-const GEMINI_TTS   = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_KEY}`;
+let geminiKey = localStorage.getItem('moovlog_gemini_key') || '';
+function getApiUrl(model) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+}
+function ensureApiKey() {
+  if (geminiKey) return true;
+  const k = prompt('Gemini API 키를 입력하세요.\n(Google AI Studio → aistudio.google.com 에서 발급)');
+  if (!k?.trim()) return false;
+  geminiKey = k.trim();
+  localStorage.setItem('moovlog_gemini_key', geminiKey);
+  return true;
+}
 
 async function apiPost(url, body) {
   const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -23,8 +31,8 @@ async function apiPost(url, body) {
   return r.json();
 }
 async function geminiWithFallback(body) {
-  try { return await apiPost(GEMINI_PRO, body); }
-  catch (e) { console.warn('[Gemini] Pro → Flash 폴백:', e.message); return apiPost(GEMINI_FLASH, body); }
+  try { return await apiPost(getApiUrl('gemini-2.5-pro'), body); }
+  catch (e) { console.warn('[Gemini] Pro → Flash 폴백:', e.message); return apiPost(getApiUrl('gemini-2.5-flash'), body); }
 }
 
 /* ── Canvas ──────────────────────────────────────────────── */
@@ -171,6 +179,7 @@ async function startMake() {
   if (!S.files.length) { toast('이미지 또는 영상을 올려주세요', 'err'); return; }
   const name = D.restName.value.trim();
   if (!name) { toast('음식점 이름을 입력해주세요', 'err'); D.restName.focus(); return; }
+  if (!ensureApiKey()) { toast('API 키가 필요합니다', 'err'); return; }
   D.makeBtn.disabled = true;
   if (D.snsWrap) D.snsWrap.hidden = true;
   updateStepUI(3); showLoad(); ensureAudio();
@@ -186,6 +195,13 @@ async function startMake() {
 
     setStep(3, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
     S.audioBuffers = await generateAllTTS(script.scenes);
+    // 어 duration을 TTS 오디오 실제 길이에 맞춤 (자막·내레이션 싱크 보정)
+    for (let i = 0; i < script.scenes.length; i++) {
+      const buf = S.audioBuffers[i];
+      if (buf && buf.duration > script.scenes[i].duration) {
+        script.scenes[i].duration = Math.ceil(buf.duration * 10) / 10 + 0.3;
+      }
+    }
     doneStep(3);
 
     setStep(4, '렌더링 준비 중...', '컷 배치 · 애니메이션 · 효과 적용');
@@ -311,8 +327,8 @@ JSON만 반환:
     if (!Array.isArray(obj.scenes) || !obj.scenes.length) throw new Error('스크립트 오류');
     return obj;
   };
-  try { return await makeReq(GEMINI_PRO); }
-  catch (e) { console.warn('[Script] Pro → Flash 폴백:', e.message); return makeReq(GEMINI_FLASH); }
+  try { return await makeReq(getApiUrl('gemini-2.5-pro')); }
+  catch (e) { console.warn('[Script] Pro → Flash 폴백:', e.message); return makeReq(getApiUrl('gemini-2.5-flash')); }
 }
 
 function toB64(file) {
@@ -364,7 +380,7 @@ async function fetchGeminiTTS(text) {
   const maleVoices = ['Charon', 'Fenrir', 'Orus'];
   for (const voiceName of maleVoices) {
     try {
-      const res = await fetch(GEMINI_TTS, {
+      const res = await fetch(getApiUrl('gemini-2.5-flash-preview-tts'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: '낮고 굵은 남성 목소리로 천천히 자신감 있게 읽어주세요. 성조는 최대한 낮게 유지하세요.' }] },
@@ -385,6 +401,7 @@ async function fetchGeminiTTS(text) {
 }
 
 function decodePCMAudio(b64, mimeType) {
+  if (!audioCtx) ensureAudio();
   const binary = atob(b64), bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   if (mimeType?.includes('pcm')) {
@@ -846,7 +863,7 @@ async function doExport() {
     typeof VideoEncoder !== 'undefined' &&
     typeof AudioEncoder !== 'undefined' &&
     typeof VideoEncoder.isConfigSupported === 'function' &&
-    typeof window.WebmMuxer !== 'undefined'
+    (typeof window.WebmMuxer !== 'undefined' || typeof window.Mp4Muxer !== 'undefined')
   );
 
   // iOS Safari: canvas.captureStream() 미지원, WebCodecs 미지원
@@ -876,23 +893,31 @@ async function doExportWebCodecs() {
   const nFrames  = Math.ceil(totalDur * FPS);
   const hasAudio = S.audioBuffers.some(b => b !== null);
 
-  // 0. 코덱 자동 감지 (VP9 level 4.1 -> 3.1 -> VP8 순서)
+  // 0. 코덱 자동 감지: MP4(H264) 우선 → WebM(VP9/VP8) 폴백
   D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 코덱 확인 중...';
-  const VIDEO_CODECS = [
-    { enc: 'vp09.00.41.08', mux: 'V_VP9' },
-    { enc: 'vp09.00.31.08', mux: 'V_VP9' },
-    { enc: 'vp08.00.41.08', mux: 'V_VP8' },
-  ];
-  let chosenCodec = null;
-  for (const c of VIDEO_CODECS) {
-    try {
-      const sup = await VideoEncoder.isConfigSupported({
-        codec: c.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS,
-      });
-      if (sup.supported) { chosenCodec = c; break; }
-    } catch {}
+  let fmt = null;
+  // MP4 (H.264) — 모든 기기·SNS 호환
+  if (typeof window.Mp4Muxer !== 'undefined') {
+    for (const vc of [{ enc: 'avc1.42001f', mux: 'avc' }, { enc: 'avc1.4d001f', mux: 'avc' }]) {
+      try {
+        const s = await VideoEncoder.isConfigSupported({ codec: vc.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
+        if (s.supported) { fmt = { vc, MuxLib: window.Mp4Muxer, ext: 'mp4', mime: 'video/mp4', ac: { enc: 'mp4a.40.2', mux: 'aac' } }; break; }
+      } catch {}
+    }
+    if (fmt) {
+      try { const as = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 1, bitrate: 128000 }); if (!as.supported) fmt.ac = { enc: 'opus', mux: 'opus' }; } catch { fmt.ac = { enc: 'opus', mux: 'opus' }; }
+    }
   }
-  if (!chosenCodec) throw new Error('이 브라우저는 VP9/VP8 코덱을 지원하지 않습니다. Chrome을 이용해주세요.');
+  // WebM (VP9/VP8) 폴백
+  if (!fmt && typeof window.WebmMuxer !== 'undefined') {
+    for (const vc of [{ enc: 'vp09.00.41.08', mux: 'V_VP9' }, { enc: 'vp09.00.31.08', mux: 'V_VP9' }, { enc: 'vp08.00.41.08', mux: 'V_VP8' }]) {
+      try {
+        const s = await VideoEncoder.isConfigSupported({ codec: vc.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
+        if (s.supported) { fmt = { vc, MuxLib: window.WebmMuxer, ext: 'webm', mime: 'video/webm', ac: { enc: 'opus', mux: 'A_OPUS' } }; break; }
+      } catch {}
+    }
+  }
+  if (!fmt) throw new Error('지원하는 코덱이 없습니다. Chrome을 이용해주세요.');
 
   // 1. 오디오 사전 렌더링
   let pcm = null;
@@ -903,12 +928,12 @@ async function doExportWebCodecs() {
   }
 
   // 2. Muxer 초기화
-  const { Muxer, ArrayBufferTarget } = window.WebmMuxer;
+  const { Muxer, ArrayBufferTarget } = fmt.MuxLib;
   const muxTarget = new ArrayBufferTarget();
   const muxer     = new Muxer({
     target:   muxTarget,
-    video:    { codec: chosenCodec.mux, width: CW, height: CH, frameRate: FPS },
-    ...(pcm ? { audio: { codec: 'A_OPUS', numberOfChannels: 1, sampleRate: 48000 } } : {}),
+    video:    { codec: fmt.vc.mux, width: CW, height: CH, frameRate: FPS },
+    ...(pcm ? { audio: { codec: fmt.ac.mux, numberOfChannels: 1, sampleRate: 48000 } } : {}),
     firstTimestampBehavior: 'offset',
   });
 
@@ -917,7 +942,7 @@ async function doExportWebCodecs() {
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
     error:  err => { throw err; },
   });
-  videoEnc.configure({ codec: chosenCodec.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
+  videoEnc.configure({ codec: fmt.vc.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
 
   // 4. 프레임별 렌더 + 인코딩
   for (let f = 0; f < nFrames; f++) {
@@ -943,7 +968,7 @@ async function doExportWebCodecs() {
       output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
       error:  err => { throw err; },
     });
-    audioEnc.configure({ codec: 'opus', sampleRate: 48000, numberOfChannels: 1, bitrate: 128_000 });
+    audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 1, bitrate: 128_000 });
     const CHUNK = 1920; // 40ms @48kHz
     for (let i = 0; i < pcm.length; i += CHUNK) {
       const slice = new Float32Array(pcm.subarray(i, Math.min(i + CHUNK, pcm.length)));
@@ -965,10 +990,10 @@ async function doExportWebCodecs() {
   const { buffer } = muxTarget;
   if (!buffer || buffer.byteLength < 1000) throw new Error('영상 데이터 생성 실패');
 
-  downloadBlob(new Blob([buffer], { type: 'video/webm' }), `moovlog_${sanitizeName()}.webm`);
+  downloadBlob(new Blob([buffer], { type: fmt.mime }), `moovlog_${sanitizeName()}.${fmt.ext}`);
   D.dlBtn.disabled  = false;
   D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 다시 저장하기';
-  toast(pcm ? '✓ AI 음성 포함 영상 저장 완료!' : '✓ 영상 저장 완료!', 'ok');
+  toast(pcm ? `✓ AI 음성 포함 ${fmt.ext.toUpperCase()} 영상 저장 완료!` : `✓ ${fmt.ext.toUpperCase()} 영상 저장 완료!`, 'ok');
 }
 
 /* ── MediaRecorder 폴백 ──────────────────────────────────── */
@@ -983,7 +1008,8 @@ async function doExportMediaRecorder() {
     D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 영상 저장하기';
     return;
   }
-  const mime     = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+  const mime     = ['video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+  const recExt   = mime.includes('mp4') ? 'mp4' : 'webm';
   const hasAudio = S.audioBuffers.some(b => b !== null);
   const cs       = D.canvas.captureStream(30);
   const stream   = hasAudio
@@ -997,7 +1023,7 @@ async function doExportMediaRecorder() {
     if (D.recStatus) D.recStatus.hidden = true;
     const blob = new Blob(chunks, { type: mime });
     if (blob.size < 1000) { toast('영상 데이터 없음. 다시 시도해주세요', 'err'); return; }
-    downloadBlob(blob, `moovlog_${sanitizeName()}.webm`);
+    downloadBlob(blob, `moovlog_${sanitizeName()}.${recExt}`);
     D.dlBtn.disabled  = false;
     D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 다시 저장하기';
     toast(hasAudio ? '✓ 음성 포함 영상 저장 완료!' : '✓ 영상 저장 완료!', 'ok');
@@ -1048,7 +1074,18 @@ function downloadBlob(blob, name) {
 function sanitizeName() { return (D.restName?.value || 'video').replace(/\s+/g, '_') + '_' + Date.now(); }
 
 /* ── UI 유틸 ─────────────────────────────────────────────── */
-function goBack()   { pausePlay(); D.resultWrap.hidden = true; D.makeBtn.disabled = false; }
+function goBack() {
+  pausePlay();
+  D.resultWrap.hidden = true;
+  D.makeBtn.disabled = false;
+  S.files = []; S.loaded = []; S.script = null; S.audioBuffers = [];
+  S.currentAudio = null; S.scene = 0; S.startTs = null; S.subAnimProg = 0;
+  D.thumbGrid.innerHTML = '';
+  D.sceneList.innerHTML = '';
+  if (D.sceneDots) D.sceneDots.innerHTML = '';
+  if (D.snsWrap) D.snsWrap.hidden = true;
+  updateStepUI(1);
+}
 function showLoad() { D.loadWrap.hidden = false; }
 function hideLoad() { D.loadWrap.hidden = true; }
 function setStep(n, title, sub) {
