@@ -315,17 +315,20 @@ async function generateAllTTS(scenes) {
   }
   return buffers;
 }
-// ✅ Gemini TTS - AI Studio 키로 동작, 한국어 남성 음성
+// ✅ Gemini TTS - 낮고 굵은 남성 목소리 (Charon 보이스)
 async function fetchGoogleTTS(text) {
   const res = await fetch(GEMINI_TTS_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: '낮고 굵은 남성 목소리로 천천히 자신감 있게 읽어주세요. 성조는 낮게 유지하세요.' }]
+      },
       contents: [{ parts: [{ text }] }],
       generationConfig: {
         responseModalities: ['AUDIO'],
         speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }, // 한국어 남성
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } }, // 낮고 굵은 남성 보이스
         },
       },
     }),
@@ -361,7 +364,7 @@ function playSceneAudio(si, capture = false) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const src = audioCtx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = 1.25; // ✅ 25% 빠르게
+    src.playbackRate.value = 1.0; // ✅ 자연 속도 유지 (빠르게 하면 남성 낮은 음이 올라감)
     src.connect(audioCtx.destination);
     if (capture) src.connect(audioMixDest);
     src.start(); S.currentAudio = src;
@@ -369,7 +372,7 @@ function playSceneAudio(si, capture = false) {
     const sc = S.script?.scenes?.[si];
     if (sc?.narration) {
       const u = new SpeechSynthesisUtterance(sc.narration);
-      u.lang = 'ko-KR'; u.pitch = 0.7; u.rate = 1.3; // ✅ 빠르고 낮은 남성 톤
+      u.lang = 'ko-KR'; u.pitch = 0.5; u.rate = 1.1; // ✅ 낮은 남성 톤 (pitch 0.5)
       const voices = speechSynthesis.getVoices();
       const male = voices.find(v => v.lang.startsWith('ko') && /male|남|Man/i.test(v.name)) || voices.find(v => v.lang.startsWith('ko'));
       if (male) u.voice = male;
