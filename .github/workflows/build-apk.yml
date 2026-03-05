@@ -27,6 +27,11 @@ jobs:
           java-version: "17"
           distribution: temurin
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.4"
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
@@ -39,39 +44,16 @@ jobs:
         working-directory: android-app
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
-      - name: Bootstrap Gradle 8.4 wrapper
-        working-directory: android-app
-        run: |
-          echo "=== Downloading Gradle 8.4 ==="
-          curl -sSL https://services.gradle.org/distributions/gradle-8.4-bin.zip -o /tmp/gradle-8.4.zip
-          unzip -q /tmp/gradle-8.4.zip -d /tmp/
-          chmod +x /tmp/gradle-8.4/bin/gradle
-          echo "=== Generating gradlew ==="
-          /tmp/gradle-8.4/bin/gradle wrapper --gradle-version 8.4 --distribution-type bin
-          chmod +x gradlew
-          echo "=== Wrapper files ==="
-          ls -la gradlew gradle/wrapper/
-          echo "=== gradlew version ==="
-          ./gradlew --version 2>&1 | head -10
-
       - name: Generate keystore
         working-directory: android-app
         run: |
           keytool -genkey -v -keystore moovlog.keystore -alias moovlog -keyalg RSA -keysize 2048 -validity 36500 -storepass moovlog2024 -keypass moovlog2024 -dname "CN=Moovlog,OU=App,O=Moovlog,L=Seoul,S=Seoul,C=KR"
 
-      - name: Check wrapper files
-        working-directory: android-app
-        run: |
-          echo "=== gradlew ==="
-          ls -la gradlew || echo "gradlew not found!"
-          echo "=== ANDROID_HOME ==="
-          echo "$ANDROID_HOME"
-          echo "=== local.properties ==="
-          cat local.properties || echo "not found"
-
       - name: Build release APK
         working-directory: android-app
-        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+        run: |
+          set -o pipefail
+          gradle :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: Upload build log
         if: always()
@@ -85,14 +67,14 @@ jobs:
         run: |
           echo "=== Searching for APK files ==="
           find android-app -name "*.apk" -type f 2>/dev/null || true
-          echo "=== Listing build outputs ==="
-          ls -laR android-app/app/build/outputs/ 2>/dev/null || echo "No build outputs directory"
+          echo "=== Build outputs ==="
+          ls -laR android-app/app/build/outputs/ 2>/dev/null || echo "No outputs dir"
           APK_PATH="android-app/app/build/outputs/apk/release/app-release.apk"
           if [ ! -f "$APK_PATH" ]; then
             APK_PATH=$(find android-app -name "*.apk" -type f | head -1)
           fi
           if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
-            echo "::error::No APK file found after build"
+            echo "::error::No APK file found"
             exit 1
           fi
           echo "Found APK: $APK_PATH"
