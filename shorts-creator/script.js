@@ -105,6 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
   D.dropArea.addEventListener('drop',      e => { e.preventDefault(); D.dropArea.classList.remove('over'); addFiles([...e.dataTransfer.files]); });
   D.dropArea.addEventListener('click',     e => { if (!e.target.closest('.pick-btn')) D.fileInput.click(); });
   D.fileInput.addEventListener('change',   e => { addFiles([...e.target.files]); D.fileInput.value = ''; });
+  D.restName.addEventListener('input', () => {
+    if (S.files.length) updateStepUI(2);
+  });
   D.makeBtn.addEventListener('click',   startMake);
   D.playBtn.addEventListener('click',   togglePlay);
   D.canvas.addEventListener('click',    togglePlay);  // 모바일: 캔버스 탭으로 재생/일시정지
@@ -156,6 +159,7 @@ function addFiles(files) {
   if (S.files.length + valid.length > 10) { toast('최대 10개까지 가능합니다', 'err'); return; }
   valid.forEach(f => S.files.push({ file: f, url: URL.createObjectURL(f), type: f.type.startsWith('video/') ? 'video' : 'image' }));
   renderThumbs();
+  if (S.files.length) updateStepUI(2);
 }
 function renderThumbs() {
   D.thumbGrid.innerHTML = '';
@@ -456,14 +460,14 @@ function playWebSpeech(sc) {
   const u = new SpeechSynthesisUtterance(sc.narration);
   u.lang = 'ko-KR'; u.pitch = 0; u.rate = 0.85; u.volume = 1;
   const v = speechSynthesis.getVoices();
-  // 1순위: 명시적 male 태그가 있는 한국어
-  // 2순위: Heami/여성 제외한 한국어
-  // 3순위: 데우지 없으면 한국어 아뭐거나 (pitch 0으로 남성치)
+  // 남성 보이스만 허용. 없으면 여성 보이스로 폴백하지 않음.
   const pick = v.find(x => /male|남성/i.test(x.name) && x.lang.startsWith('ko'))
-             || v.find(x => x.lang.startsWith('ko') && !/heami|female|여성/i.test(x.name))
-             || v.find(x => x.lang.startsWith('ko'))
              || null;
-  if (pick) u.voice = pick;
+  if (!pick) {
+    toast('이 기기 브라우저에는 남성 웹 음성이 없어 무음 처리됩니다', 'inf');
+    return;
+  }
+  u.voice = pick;
   speechSynthesis.speak(u);
 }
 function stopAudio() {
