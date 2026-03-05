@@ -34,6 +34,11 @@ jobs:
           sed -i "s|__GEMINI_KEY__|${{ secrets.GEMINI_KEY }}|g" shorts-creator/script.js
           sed -i "s|__GEMINI_KEY__|${{ secrets.GEMINI_KEY }}|g" shorts-creator/index2.html
 
+      - name: Update SW cache version (배포마다 캐시 무효화)
+        run: |
+          VERSION=$(echo "$GITHUB_SHA" | cut -c1-8)
+          sed -i "s|const CACHE = 'moovlog-shorts-[^']*'|const CACHE = 'moovlog-shorts-$VERSION'|g" shorts-creator/sw.js
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

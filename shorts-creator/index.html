@@ -74,14 +74,27 @@
     </button>
     <p class="make-hint">Gemini 2.5 Pro로 자막·나레이션·컷 배치를 자동 설계합니다</p>
 
-    <a href="https://github.com/122cks/moovlog/releases/download/apk-latest/moovlog-shorts-creator.apk"
-       target="_blank" rel="noopener noreferrer" class="apk-banner">
+    <a href="https://github.com/122cks/moovlog/releases"
+       id="apkBanner" target="_blank" rel="noopener noreferrer" class="apk-banner">
       <span class="apk-icon"><i class="fab fa-android"></i></span>
       <span class="apk-text">
         <strong>안드로이드 앱 다운로드</strong>
-        <small>moovlog-shorts-creator.apk →</small>
+        <small id="apkBannerSub">릴리스 페이지 →</small>
       </span>
     </a>
+    <script>
+    (function () {
+      var APK = 'https://github.com/122cks/moovlog/releases/download/apk-latest/moovlog-shorts-creator.apk';
+      fetch(APK, { method: 'HEAD' })
+        .then(function (r) {
+          if (r.ok || r.status === 302 || r.redirected) {
+            document.getElementById('apkBanner').href = APK;
+            document.getElementById('apkBannerSub').textContent = 'moovlog-shorts-creator.apk →';
+          }
+        })
+        .catch(function () { /* 네트워크 오류: 릴리스 페이지 유지 */ });
+    })();
+    </script>
   </main>
 
   <div class="loading-wrap" id="loadingWrap" hidden>

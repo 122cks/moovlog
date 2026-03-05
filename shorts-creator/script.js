@@ -48,7 +48,7 @@ const ctx = D.canvas.getContext('2d');
 D.canvas.width = CW; D.canvas.height = CH;
 
 /* ── Audio ───────────────────────────────────────────────── */
-let audioCtx = null, audioMixDest = null, useTTSApi = true;
+let audioCtx = null, audioMixDest = null;
 function ensureAudio() {
   if (audioCtx) return;
   audioCtx     = new (window.AudioContext || window.webkitAudioContext)();
@@ -126,7 +126,6 @@ async function startMake() {
   if (!name) { toast('음식점 이름을 입력해주세요', 'err'); D.restName.focus(); return; }
   D.makeBtn.disabled = true;
   if (D.snsWrap) D.snsWrap.hidden = true;
-  useTTSApi = true;
   showLoad(); ensureAudio();
   try {
     setStep(1, '이미지 정밀 분석 중...', 'Gemini 2.5 Pro가 각 컷을 분석합니다');
@@ -270,17 +269,34 @@ function buildSNSTags(script) {
 
 /* ════════════════════════════════════════════════════════════
    STEP 3 — TTS: Gemini Charon→Fenrir→Orus (남성) + Web Speech 폴백
+   각 씬 독립 처리: 한 씬 실패해도 나머지 씬은 계속 시도
    ════════════════════════════════════════════════════════════ */
 async function generateAllTTS(scenes) {
-  const buffers = []; let hasErr = false;
+  const buffers = [];
+  let successCount = 0, failCount = 0;
   for (let i = 0; i < scenes.length; i++) {
     const sc = scenes[i];
-    if (!sc.narration || !useTTSApi) { buffers.push(null); continue; }
-    try { buffers.push(await fetchGeminiTTS(sc.narration)); }
-    catch (err) { console.warn(`TTS 씬${i + 1} 실패:`, err.message); hasErr = true; useTTSApi = false; buffers.push(null); }
+    if (!sc.narration) { buffers.push(null); continue; }
+    try {
+      const buf = await fetchGeminiTTS(sc.narration);
+      buffers.push(buf);
+      successCount++;
+    } catch (err) {
+      console.warn(`[TTS] 씬${i + 1} 실패 (Web Speech 폴백):`, err.message);
+      failCount++;
+      buffers.push(null);
+    }
   }
-  if (hasErr || !useTTSApi) { updateAudioStatus('web-speech'); toast('AI 음성: 웹 음성으로 재생됩니다', 'inf'); }
-  else { updateAudioStatus('google-tts'); toast('AI 남성 보이스 생성 완료 ✓', 'ok'); }
+  if (successCount === 0) {
+    updateAudioStatus('web-speech');
+    if (failCount > 0) toast('AI 음성 생성 실패 → 웹 음성으로 재생됩니다', 'inf');
+  } else {
+    updateAudioStatus('google-tts');
+    const msg = failCount > 0
+      ? `AI 남성 보이스 ${successCount}/${scenes.length}씬 완료 (${failCount}씬 웹음성 폴백)`
+      : `AI 남성 보이스 ${successCount}씬 생성 완료 ✓`;
+    toast(msg, successCount === scenes.length ? 'ok' : 'inf');
+  }
   return buffers;
 }
 
@@ -314,12 +330,16 @@ function decodePCMAudio(b64, mimeType) {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   if (mimeType?.includes('pcm')) {
     const sr = parseInt(mimeType.match(/rate=(\d+)/)?.[1] || '24000');
-    const n  = bytes.length / 2, buf = audioCtx.createBuffer(1, n, sr);
-    const ch = buf.getChannelData(0), dv = new DataView(bytes.buffer);
+    const n  = bytes.length / 2;
+    if (n < 1) throw new Error('PCM 데이터 없음');
+    const buf = audioCtx.createBuffer(1, n, sr);
+    const ch  = buf.getChannelData(0);
+    const dv  = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
     return Promise.resolve(buf);
   }
-  return audioCtx.decodeAudioData(bytes.buffer.slice());
+  // WAV or other: decodeAudioData requires a copy of the buffer
+  return audioCtx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
 
 // OfflineAudioContext로 전체 오디오 사전 렌더링 (추후 export용)
@@ -442,14 +462,50 @@ function renderFrame(si, prog) {
   ctx.clearRect(0, 0, CW, CH);
   drawMedia(media, sc.effect, prog);
   drawVignetteGrad();
+  // [강화1] 씬 분위기 색상 오버레이
+  drawMoodOverlay(sc.subtitle_style, Math.min(prog * 3, 1));
+  // [강화2] Hero 씬: 시네마틱 레터박스 + 스파클
+  if (sc.subtitle_style === 'hero') {
+    drawLetterbox(Math.min(prog * 4, 1));
+    drawSparkles(prog);
+  }
   drawSubtitle(sc, S.subAnimProg);
   if (si === 0) drawTopBadge();
 }
 function drawTransition(fi, t) {
   const e = ease(t);
-  ctx.save(); renderFrame(fi, 1);
-  ctx.globalAlpha = e; renderFrame(fi + 1, 0);
-  ctx.restore();
+  // [강화3] 씬 스타일별 전환 효과 4종
+  const nextStyle = S.script.scenes[fi + 1]?.subtitle_style || 'detail';
+  if (nextStyle === 'hero') {
+    // Zoom-in 전환: hero 씬 등장 임팩트
+    renderFrame(fi, 1);
+    ctx.save();
+    ctx.globalAlpha = e;
+    ctx.translate(CW / 2, CH / 2);
+    ctx.scale(0.88 + e * 0.12, 0.88 + e * 0.12);
+    ctx.translate(-CW / 2, -CH / 2);
+    renderFrame(fi + 1, 0);
+    ctx.restore();
+  } else if (nextStyle === 'hook') {
+    // Slide-up 전환: 시선 강탈 훅 등장
+    renderFrame(fi, 1);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, CH * (1 - e), CW, CH * e); ctx.clip();
+    renderFrame(fi + 1, 0);
+    ctx.restore();
+  } else if (nextStyle === 'cta') {
+    // Fade + scale-down: CTA 여운
+    ctx.save(); renderFrame(fi, 1);
+    const outScale = 1 - e * 0.05;
+    ctx.save(); ctx.translate(CW/2, CH/2); ctx.scale(outScale, outScale); ctx.translate(-CW/2, -CH/2);
+    ctx.globalAlpha = 1 - e; renderFrame(fi, 1); ctx.restore();
+    ctx.globalAlpha = e; renderFrame(fi + 1, 0);
+    ctx.restore();
+  } else {
+    // 기본 crossfade
+    renderFrame(fi, 1);
+    ctx.save(); ctx.globalAlpha = e; renderFrame(fi + 1, 0); ctx.restore();
+  }
 }
 // 특정 시간 t(초)에 해당하는 프레임 렌더링 (export용, 실시간 불필요)
 function renderFrameAtTime(t) {
@@ -458,14 +514,22 @@ function renderFrameAtTime(t) {
   for (let i = 0; i < sc.length; i++) {
     const dur = sc[i].duration;
     if (t < elapsed + dur || i === sc.length - 1) {
-      const prog       = Math.max(0, Math.min((t - elapsed) / dur, 1));
+      const prog        = Math.max(0, Math.min((t - elapsed) / dur, 1));
       const subAnimProg = Math.min(prog * 2.8, 1);
-      const media      = getMedia(sc[i]);
+      const prevSubAnim = S.subAnimProg;
+      S.subAnimProg = subAnimProg;
+      const media       = getMedia(sc[i]);
       ctx.clearRect(0, 0, CW, CH);
       drawMedia(media, sc[i].effect, prog);
       drawVignetteGrad();
+      drawMoodOverlay(sc[i].subtitle_style, Math.min(prog * 3, 1));
+      if (sc[i].subtitle_style === 'hero') {
+        drawLetterbox(Math.min(prog * 4, 1));
+        drawSparkles(prog);
+      }
       drawSubtitle(sc[i], subAnimProg);
       if (i === 0) drawTopBadge();
+      S.subAnimProg = prevSubAnim;
       return;
     }
     elapsed += dur;
@@ -481,14 +545,17 @@ function drawMedia(media, effect, prog) {
     media.src.play().catch(() => {});
   }
   const e = ease(prog); let sc = 1, ox = 0, oy = 0;
+  // [강화4] Ken Burns 8종으로 확장
   switch (effect) {
-    case 'zoom-in':      sc = 1.0 + e * 0.10; break;
-    case 'zoom-in-slow': sc = 1.0 + e * 0.06; break;
-    case 'zoom-out':     sc = 1.10 - e * 0.10; break;
-    case 'pan-left':     sc = 1.08; ox = (1 - e) * CW * 0.07; break;
-    case 'pan-right':    sc = 1.08; ox = -(1 - e) * CW * 0.07; break;
-    case 'float-up':     sc = 1.06; oy = (1 - e) * CH * 0.04; break;
-    default:             sc = 1.04 + e * 0.04;
+    case 'zoom-in':       sc = 1.0 + e * 0.12; break;
+    case 'zoom-in-slow':  sc = 1.0 + e * 0.06; break;
+    case 'zoom-out':      sc = 1.12 - e * 0.12; break;
+    case 'pan-left':      sc = 1.09; ox = (1 - e) * CW * 0.08; break;
+    case 'pan-right':     sc = 1.09; ox = -(1 - e) * CW * 0.08; break;
+    case 'float-up':      sc = 1.06; oy = (1 - e) * CH * 0.05; break;
+    case 'pan-up':        sc = 1.08; oy = (1 - e) * CH * 0.06; break;  // 새로 추가
+    case 'zoom-pan':      sc = 1.0 + e * 0.08; ox = (0.5 - e) * CW * 0.06; break; // 새로 추가
+    default:              sc = 1.04 + e * 0.04;
   }
   const el = media.src;
   const sw = media.type === 'video' ? (el.videoWidth  || CW) : el.naturalWidth;
@@ -508,6 +575,55 @@ function drawVignetteGrad() {
   const bot = ctx.createLinearGradient(0, CH * 0.36, 0, CH);
   bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, 'rgba(0,0,0,0.72)'); bot.addColorStop(1, 'rgba(0,0,0,0.94)');
   ctx.fillStyle = bot; ctx.fillRect(0, CH * 0.36, CW, CH * 0.64);
+}
+
+/* ── [강화1] 씬 무드 컬러 오버레이 ──────────────────────── */
+function drawMoodOverlay(style, alpha) {
+  if (!alpha) return;
+  const colors = {
+    hook:   `rgba(255, 30, 80, ${0.07 * alpha})`,
+    hero:   `rgba(255, 120, 0, ${0.06 * alpha})`,
+    detail: `rgba(60, 160, 255, ${0.045 * alpha})`,
+    cta:    `rgba(160, 50, 255, ${0.07 * alpha})`,
+  };
+  ctx.fillStyle = colors[style] || 'transparent';
+  ctx.fillRect(0, 0, CW, CH);
+}
+
+/* ── [강화2] 시네마틱 레터박스 ───────────────────────────── */
+function drawLetterbox(alpha) {
+  if (!alpha) return;
+  const barH = CH * 0.065;
+  ctx.fillStyle = `rgba(0, 0, 0, ${0.88 * alpha})`;
+  ctx.fillRect(0, 0, CW, barH);
+  ctx.fillRect(0, CH - barH, CW, barH);
+}
+
+/* ── [강화2] Hero 스파클 파티클 ──────────────────────────── */
+function drawSparkles(prog) {
+  // deterministic: export 시에도 동일한 위치
+  const phase = prog * Math.PI * 4;
+  ctx.save();
+  for (let i = 0; i < 10; i++) {
+    const seed1 = Math.sin(i * 127.1) * 0.5 + 0.5;
+    const seed2 = Math.sin(i * 311.7 + 1.9) * 0.5 + 0.5;
+    const px    = seed1 * CW;
+    const py    = seed2 * CH * 0.55 + CH * 0.18;
+    const twink = Math.sin(phase + i * 0.88) * 0.5 + 0.5;
+    if (twink < 0.25) continue;
+    const r     = (1.5 + seed1 * 2.5) * twink;
+    const a     = twink * 0.65;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 230, 120, ${a})`; ctx.fill();
+    // 십자 반짝임
+    ctx.strokeStyle = `rgba(255, 255, 200, ${a * 0.6})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(px - r * 3, py); ctx.lineTo(px + r * 3, py);
+    ctx.moveTo(px, py - r * 3); ctx.lineTo(px, py + r * 3);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 /* ════════════════════════════════════════════════════════════

@@ -1,24 +1,18 @@
 /* =============================================
    Service Worker — 무브먼트 Shorts Creator
-   오프라인 캐싱 (App Shell)
+   Network-first: 배포 즉시 반영
    ============================================= */
 
 const CACHE = 'moovlog-shorts-v1';
-const ASSETS = [
-  './',
-  './index.html',
-  './style.css',
-  './script.js',
-  './manifest.json',
-  './icon-192.svg',
-  './icon-512.svg',
-  'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&family=Inter:wght@300;400;500;600;700;900&display=swap',
-  'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css',
-];
+
+// App shell: network-first (배포 즉시 반영)
+const APP_SHELL = ['.html', '.js', '.css'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE).then(c => c.addAll([
+      './manifest.json', './icon-192.svg', './icon-512.svg',
+    ])).then(() => self.skipWaiting())
   );
 });
 
@@ -31,18 +25,37 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // API 요청은 캐싱하지 않음
   if (e.request.url.includes('generativelanguage.googleapis.com')) return;
+  if (e.request.url.includes('cdn.jsdelivr.net')) return;
 
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(res => {
-        if (!res || res.status !== 200 || res.type === 'opaque') return res;
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      }).catch(() => caches.match('./index.html'));
-    })
-  );
+  const url = new URL(e.request.url);
+  const isLocal = url.origin === location.origin;
+  const isAppShell = isLocal && APP_SHELL.some(ext => url.pathname.endsWith(ext));
+
+  if (isAppShell) {
+    // Network-first: 항상 최신 버전 제공, 네트워크 실패 시 캐시 폴백
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return res;
+        })
+        .catch(() => caches.match(e.request).then(c => c || caches.match('./index.html')))
+    );
+  } else {
+    // Cache-first: 폰트/아이콘 등 외부 리소스
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        if (cached) return cached;
+        return fetch(e.request).then(res => {
+          if (!res || res.status !== 200 || res.type === 'opaque') return res;
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return res;
+        }).catch(() => caches.match('./index.html'));
+      })
+    );
+  }
 });
+
