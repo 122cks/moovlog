@@ -34,13 +34,18 @@ const D  = {
   dropArea: g('dropArea'), fileInput: g('fileInput'), thumbGrid: g('thumbGrid'),
   restName: g('restName'), makeBtn: g('makeBtn'),
   loadWrap: g('loadingWrap'), loadTitle: g('loadTitle'), loadSub: g('loadSub'),
-  ls1: g('ls1'), ls2: g('ls2'), ls3: g('ls3'),
+  ls1: g('ls1'), ls2: g('ls2'), ls3: g('ls3'), ls4: g('ls4'),
+  ls1s: g('ls1s'), ls2s: g('ls2s'), ls3s: g('ls3s'), ls4s: g('ls4s'),
+  ls1c: g('ls1c'), ls2c: g('ls2c'), ls3c: g('ls3c'), ls4c: g('ls4c'),
   resultWrap: g('resultWrap'), canvas: g('vc'),
   vProg: g('vProg'), playBtn: g('playBtn'), playIco: g('playIco'),
   replayBtn: g('replayBtn'), muteBtn: g('muteBtn'), muteIco: g('muteIco'),
   sceneList: g('sceneList'), dlBtn: g('dlBtn'),
   recStatus: g('recStatus'), recTimer: g('recTimer'),
-  reBtn: g('reBtn'), toasts: g('toasts'), audioStatus: g('audioStatus'),
+  reBtn: g('reBtn'), reBtnBottom: g('reBtnBottom'),
+  toasts: g('toasts'), audioStatus: g('audioStatus'),
+  resultSub: g('resultSub'), audioBadge: g('audioBadge'), audioBadgeText: g('audioBadgeText'),
+  sceneDots: g('sceneDots'),
   snsWrap: g('snsWrap'), tagNaver: g('tagNaver'), tagYoutube: g('tagYoutube'),
   tagInsta: g('tagInsta'), tagTiktok: g('tagTiktok'),
 };
@@ -54,6 +59,28 @@ function ensureAudio() {
   audioCtx     = new (window.AudioContext || window.webkitAudioContext)();
   audioMixDest = audioCtx.createMediaStreamDestination();
 }
+
+/* ── Template / Hook 전역 상태 ──────────────────────────── */
+let selectedTemplate = 'story';
+let selectedHook     = 'question';
+const HOOK_PREVIEWS = {
+  question:  '"이거 진짜 먹어본 사람 없음? 🤯"',
+  reveal:    '"여기서 이걸 판다고? 충격 실화 🔥"',
+  challenge: '"나는 여기 매주 오는 중 💥"',
+  secret:    '"현지인들만 아는 숨은 맛집 🤫"',
+};
+const TEMPLATE_HINTS = {
+  story:      '감성적 여정 스타일: 공간 → 음식 → 감정 → 여운',
+  facts:      '정보 전달 스타일: 위치·가격·메뉴·특징 핵심 전달',
+  motivation: 'FOMO 자극 스타일: 못 가면 후회, 지금 당장 가야 함을 강조',
+  history:    '스토리텔링 스타일: 탄생 스토리·전통·진정성 강조',
+};
+const HOOK_HINTS = {
+  question:  '첫 씬: 질문형 훅 - "이거 진짜야?", "이걸 모르면 손해?"',
+  reveal:    '첫 씬: 반전형 훅 - "여기서 이걸?", "이게 진짜 있다고?"',
+  challenge: '첫 씬: 챌린지형 훅 - "나 여기 10번째 옴", "이거 안 먹으면 후회"',
+  secret:    '첫 씬: 비밀형 훅 - "아는 사람만 아는", "현지인 픽"',
+};
 
 /* ── State ───────────────────────────────────────────────── */
 const S = {
@@ -77,6 +104,26 @@ document.addEventListener('DOMContentLoaded', () => {
   D.muteBtn.addEventListener('click',   toggleMute);
   D.dlBtn.addEventListener('click',     doExport);
   D.reBtn.addEventListener('click',     goBack);
+  if (D.reBtnBottom) D.reBtnBottom.addEventListener('click', goBack);
+  // 템플릿 선택
+  document.querySelectorAll('.tpl-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tpl-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedTemplate = btn.dataset.tpl;
+    });
+  });
+  // 훅 스타일 선택
+  document.querySelectorAll('.hchip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.hchip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      selectedHook = chip.dataset.hook;
+      const prev = document.getElementById('hookPreview');
+      if (prev) prev.textContent = HOOK_PREVIEWS[selectedHook] || '';
+    });
+  });
+  updateStepUI(1);
   document.querySelectorAll('.sns-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const el = document.getElementById(btn.dataset.target);
@@ -126,7 +173,7 @@ async function startMake() {
   if (!name) { toast('음식점 이름을 입력해주세요', 'err'); D.restName.focus(); return; }
   D.makeBtn.disabled = true;
   if (D.snsWrap) D.snsWrap.hidden = true;
-  showLoad(); ensureAudio();
+  updateStepUI(3); showLoad(); ensureAudio();
   try {
     setStep(1, '이미지 정밀 분석 중...', 'Gemini 2.5 Pro가 각 컷을 분석합니다');
     const analysis = await visionAnalysis(name);
@@ -137,14 +184,22 @@ async function startMake() {
     S.script = script;
     doneStep(2);
 
-    setStep(3, 'AI 남성 보이스 합성 중...', `Gemini TTS Charon — ${script.scenes.length}컷`);
+    setStep(3, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
     S.audioBuffers = await generateAllTTS(script.scenes);
     doneStep(3);
 
-    setStep(3, '렌더링 준비 중...', '컷 배치 · 애니메이션 · 효과 적용');
-    await preload(); buildSceneCards(); await sleep(300);
+    setStep(4, '렌더링 준비 중...', '컷 배치 · 애니메이션 · 효과 적용');
+    await preload(); buildSceneCards(); await sleep(200);
+    doneStep(4);
+    // 결과 헤더 업데이트
+    if (D.resultSub) {
+      const totalSec = script.scenes.reduce((a, s) => a + (s.duration || 0), 0);
+      D.resultSub.textContent = `${script.scenes.length}개 씬 · ${totalSec}초`;
+    }
+    buildSceneDots();
     buildSNSTags(script);
-    hideLoad(); D.resultWrap.hidden = false;
+    await sleep(300);
+    updateStepUI(4); hideLoad(); D.resultWrap.hidden = false;
     setupPlayer(); setTimeout(startPlay, 300);
   } catch (err) {
     hideLoad(); D.makeBtn.disabled = false;
@@ -215,6 +270,10 @@ async function generateScript(restaurantName, analysis) {
 메뉴: ${(analysis.menu || []).join(', ') || restaurantName}
 비주얼 훅: ${analysis.visual_hook || ''}
 키워드: ${(analysis.keywords || []).join(', ')}
+
+[선택된 스타일]
+콘텐츠 템플릿: ${TEMPLATE_HINTS[selectedTemplate] || TEMPLATE_HINTS.story}
+오프닝 훅: ${HOOK_HINTS[selectedHook] || HOOK_HINTS.question}
 
 [컷 분석]
 ${imgSummary || '분석 없음'}
@@ -768,6 +827,7 @@ function buildSceneCards() {
 function highlightScene(i) {
   document.querySelectorAll('.scard').forEach(c => c.classList.remove('active'));
   const c = g(`sc${i}`); if (c) { c.classList.add('active'); c.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  activateDot(i);
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -972,15 +1032,52 @@ function showLoad() { D.loadWrap.hidden = false; }
 function hideLoad() { D.loadWrap.hidden = true; }
 function setStep(n, title, sub) {
   D.loadTitle.textContent = title || ''; D.loadSub.textContent = sub || '';
-  [D.ls1, D.ls2, D.ls3].forEach((el, i) => { el.classList.toggle('active', i === n - 1); if (i < n - 1) el.classList.add('done'); });
+  const items   = [D.ls1, D.ls2, D.ls3, D.ls4];
+  const statuses = [D.ls1s, D.ls2s, D.ls3s, D.ls4s];
+  items.forEach((el, i) => {
+    if (!el) return;
+    el.classList.toggle('active', i === n - 1);
+    if (i < n - 1) el.classList.add('done');
+    if (statuses[i]) statuses[i].textContent = i === n - 1 ? '진행중...' : i < n - 1 ? '완료' : '대기중';
+  });
 }
-function doneStep(n) { const el = [D.ls1, D.ls2, D.ls3][n - 1]; if (el) { el.classList.remove('active'); el.classList.add('done'); } }
+function doneStep(n) {
+  const el = [D.ls1, D.ls2, D.ls3, D.ls4][n - 1];
+  const st = [D.ls1s, D.ls2s, D.ls3s, D.ls4s][n - 1];
+  const ch = [D.ls1c, D.ls2c, D.ls3c, D.ls4c][n - 1];
+  if (el) { el.classList.remove('active'); el.classList.add('done'); }
+  if (st) st.textContent = '완료';
+  if (ch) ch.style.opacity = '1';
+}
+function updateStepUI(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = g('si' + i);
+    if (!el) continue;
+    el.classList.toggle('active', i === n);
+    el.classList.toggle('done', i < n);
+  }
+}
+function buildSceneDots() {
+  if (!D.sceneDots || !S.script?.scenes) return;
+  D.sceneDots.innerHTML = '';
+  S.script.scenes.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'sd' + (i === 0 ? ' active' : '');
+    d.id = 'sd' + i;
+    D.sceneDots.appendChild(d);
+  });
+}
+function activateDot(si) {
+  document.querySelectorAll('.sd').forEach((d, i) => d.classList.toggle('active', i === si));
+}
 function updateAudioStatus(mode) {
   if (!D.audioStatus) return;
   D.audioStatus.innerHTML = mode === 'google-tts'
-    ? '<i class="fas fa-microphone-alt"></i> AI 남성 보이스 포함 (Gemini TTS)'
+    ? '<i class="fas fa-microphone-alt"></i> AI 남성 보이스 포함 (Gemini TTS Fenrir)'
     : '<i class="fas fa-microphone"></i> 웹 음성 합성 (폴백)';
   D.audioStatus.style.color = mode === 'google-tts' ? '#4ade80' : '#888';
+  if (D.audioBadgeText) D.audioBadgeText.textContent = mode === 'google-tts' ? 'AI 보이스' : '웹 음성';
+  if (D.audioBadge) D.audioBadge.style.background = mode === 'google-tts' ? 'rgba(74,222,128,0.15)' : 'rgba(100,100,100,0.2)';
 }
 function toast(msg, type = 'inf') {
   const icons = { ok: 'fa-check-circle', err: 'fa-exclamation-circle', inf: 'fa-info-circle' };
