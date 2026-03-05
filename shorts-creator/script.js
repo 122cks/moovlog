@@ -37,6 +37,7 @@ async function geminiWithFallback(body) {
 
 /* ── Canvas ──────────────────────────────────────────────── */
 const CW = 720, CH = 1280;
+const AUTO_EXPORT_ON_CREATE = true;
 const g  = id => document.getElementById(id);
 const D  = {
   dropArea: g('dropArea'), fileInput: g('fileInput'), thumbGrid: g('thumbGrid'),
@@ -95,6 +96,7 @@ const S = {
   files: [], loaded: [], script: null, audioBuffers: [],
   currentAudio: null, playing: false, muted: false,
   scene: 0, startTs: null, raf: null,
+  exporting: false,
   subAnimProg: 0,  // 0..1, subtitle animation progress per scene
 };
 
@@ -223,7 +225,13 @@ async function startMake() {
     buildSNSTags(script);
     await sleep(300);
     updateStepUI(4); hideLoad(); D.resultWrap.hidden = false;
-    setupPlayer(); setTimeout(startPlay, 300);
+    setupPlayer();
+    if (AUTO_EXPORT_ON_CREATE) {
+      toast('영상 생성 완료: 자동 저장을 시작합니다', 'inf');
+      setTimeout(() => { doExport(); }, 350);
+    } else {
+      setTimeout(startPlay, 300);
+    }
   } catch (err) {
     hideLoad(); D.makeBtn.disabled = false;
     console.error(err); toast('오류: ' + (err.message || '알 수 없는 오류'), 'err');
@@ -858,7 +866,9 @@ function highlightScene(i) {
    폴백         : MediaRecorder (구형 브라우저)
    ════════════════════════════════════════════════════════════ */
 async function doExport() {
+  if (S.exporting) return;
   if (!S.script || !S.loaded.length) { toast('먼저 영상을 생성해주세요', 'err'); return; }
+  S.exporting = true;
   pausePlay();
   if (!audioCtx) ensureAudio();
   if (audioCtx.state === 'suspended') await audioCtx.resume();
@@ -888,6 +898,8 @@ async function doExport() {
     toast('저장 오류: ' + err.message, 'err');
     D.dlBtn.disabled = false;
     D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 영상 저장하기';
+  } finally {
+    S.exporting = false;
   }
 }
 
