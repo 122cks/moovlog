@@ -55,12 +55,6 @@ jobs:
         run: |
           keytool -genkey -v -keystore moovlog.keystore -alias moovlog -keyalg RSA -keysize 2048 -validity 36500 -storepass moovlog2024 -keypass moovlog2024 -dname "CN=Moovlog,OU=App,O=Moovlog,L=Seoul,S=Seoul,C=KR"
 
-      - name: Generate gradlew
-        working-directory: android-app
-        run: |
-          gradle wrapper --gradle-version 8.4
-          chmod +x gradlew
-
       - name: Check wrapper files
         working-directory: android-app
         run: |

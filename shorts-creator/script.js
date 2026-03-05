@@ -842,9 +842,12 @@ async function doExport() {
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !('MSStream' in window);
-  const hasWebCodecs = typeof VideoEncoder !== 'undefined'
-    && typeof AudioEncoder !== 'undefined'
-    && typeof window.WebmMuxer !== 'undefined';
+  const hasWebCodecs = (
+    typeof VideoEncoder !== 'undefined' &&
+    typeof AudioEncoder !== 'undefined' &&
+    typeof VideoEncoder.isConfigSupported === 'function' &&
+    typeof window.WebmMuxer !== 'undefined'
+  );
 
   // iOS Safari: canvas.captureStream() 미지원, WebCodecs 미지원
   if (isIOS && !hasWebCodecs) {
@@ -886,7 +889,7 @@ async function doExportWebCodecs() {
   const muxTarget = new ArrayBufferTarget();
   const muxer     = new Muxer({
     target:   muxTarget,
-    video:    { codec: 'V_VP9', width: CW, height: CH, frameRate: FPS },
+    video:    { codec: chosenCodec.mux, width: CW, height: CH, frameRate: FPS },
     ...(pcm ? { audio: { codec: 'A_OPUS', numberOfChannels: 1, sampleRate: 48000 } } : {}),
     firstTimestampBehavior: 'offset',
   });
@@ -896,7 +899,25 @@ async function doExportWebCodecs() {
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
     error:  err => { throw err; },
   });
-  videoEnc.configure({ codec: 'vp09.00.10.08', width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
+  // 0. 코덱 자동 감지 (VP9 level 4.1 → 3.1 → VP8 순서)
+  D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 코덱 확인 중...';
+  const VIDEO_CODECS = [
+    { enc: 'vp09.00.41.08', mux: 'V_VP9' },
+    { enc: 'vp09.00.31.08', mux: 'V_VP9' },
+    { enc: 'vp08.00.41.08', mux: 'V_VP8' },
+  ];
+  let chosenCodec = null;
+  for (const c of VIDEO_CODECS) {
+    try {
+      const sup = await VideoEncoder.isConfigSupported({
+        codec: c.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS,
+      });
+      if (sup.supported) { chosenCodec = c; break; }
+    } catch {}
+  }
+  if (!chosenCodec) throw new Error('이 브라우저는 VP9/VP8 코덱을 지원하지 않습니다. Chrome을 이용해주세요.');
+
+  videoEnc.configure({ codec: chosenCodec.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
 
   // 4. 프레임별 렌더 + 인코딩
   for (let f = 0; f < nFrames; f++) {
