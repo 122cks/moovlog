@@ -56,7 +56,7 @@ html, body {
   font-weight: 900; font-size: 13px;
   letter-spacing: 3px;
   background: var(--grd);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   line-height: 1.1;
 }
 .logo-sub { font-size: 10px; color: var(--t3); font-family: 'Inter', sans-serif; letter-spacing: 1px; }
@@ -169,6 +169,7 @@ html, body {
   padding: 20px 24px; border-radius: 50px; cursor: pointer;
   box-shadow: 0 6px 36px rgba(255,77,109,.45);
   transition: transform .2s, box-shadow .2s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .make-btn:hover  { transform: translateY(-2px); box-shadow: 0 10px 48px rgba(255,77,109,.6); }
 .make-btn:active { transform: translateY(0); }
@@ -227,7 +228,7 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   font-size: 22px;
   background: var(--grd);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
 
 .load-title { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
@@ -249,17 +250,19 @@ html, body {
   position: fixed; inset: 0; z-index: 150;
   background: var(--bg);
   overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 .result-wrap[hidden] { display: none; }
 .result-inner {
   max-width: 520px; margin: 0 auto;
-  padding: 24px 16px 60px;
+  padding: 24px 16px calc(60px + env(safe-area-inset-bottom));
   display: flex; flex-direction: column; gap: 20px;
 }
 
 /* ── 폰 목업 ── */
 .phone-wrap {
   display: flex; align-items: center; justify-content: center; gap: 14px;
+  touch-action: manipulation;
 }
 .phone {
   width: 230px; flex-shrink: 0;
@@ -319,6 +322,7 @@ html, body {
   font-size: 16px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   transition: all .2s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .vcb:hover { border-color: var(--acc1); color: var(--acc1); }
 .vcb-play {
@@ -374,6 +378,7 @@ html, body {
   font-size: 15px; font-weight: 700; font-family: 'Noto Sans KR', sans-serif;
   padding: 16px 20px; border-radius: 50px; cursor: pointer;
   transition: opacity .2s, transform .2s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .dl-btn:hover { opacity: .85; transform: translateY(-1px); }
 .dl-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
@@ -427,6 +432,16 @@ html, body {
 @media (min-width: 600px) {
   .app-main, .result-inner { padding-left: 24px; padding-right: 24px; }
   .phone { width: 270px; }
+}
+
+/* 소형 기기 (iPhone SE 등) */
+@media (max-width: 380px) {
+  .phone { width: 195px; border-radius: 28px; }
+  .phone-wrap { gap: 8px; }
+  .reel-side { gap: 10px; }
+  .rsb { font-size: 18px; }
+  .vcb { width: 40px; height: 40px; font-size: 14px; }
+  .vcb-play { width: 52px; height: 52px; font-size: 18px; }
 }
 
 /* ── SNS 태그 섹션 ──────────────────────────────────────── */

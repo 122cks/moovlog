@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
   D.fileInput.addEventListener('change',   e => { addFiles([...e.target.files]); D.fileInput.value = ''; });
   D.makeBtn.addEventListener('click',   startMake);
   D.playBtn.addEventListener('click',   togglePlay);
+  D.canvas.addEventListener('click',    togglePlay);  // 모바일: 캔버스 탭으로 재생/일시정지
   D.replayBtn.addEventListener('click', doReplay);
   D.muteBtn.addEventListener('click',   toggleMute);
   D.dlBtn.addEventListener('click',     doExport);
@@ -380,7 +381,10 @@ async function preload() {
       S.loaded.push({ type: 'image', src: img });
     } else {
       const vid = Object.assign(document.createElement('video'), { src: m.url, muted: true, loop: true, playsInline: true });
+      vid.setAttribute('playsinline', '');
+      vid.setAttribute('webkit-playsinline', '');
       await new Promise(r => { vid.onloadeddata = r; vid.onerror = r; setTimeout(r, 5000); });
+      vid.play().catch(() => {}); // canvas drawImage는 playing 상태 필요 (모바일)
       S.loaded.push({ type: 'video', src: vid });
     }
   }
@@ -472,6 +476,10 @@ function getMedia(sc) { return S.loaded.length ? S.loaded[(sc.idx ?? 0) % S.load
 /* ── Ken Burns (6종) ─────────────────────────────────────── */
 function drawMedia(media, effect, prog) {
   if (!media) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, CW, CH); return; }
+  // 모바일에서 video가 일시정지 상태면 재생
+  if (media.type === 'video' && media.src.paused) {
+    media.src.play().catch(() => {});
+  }
   const e = ease(prog); let sc = 1, ox = 0, oy = 0;
   switch (effect) {
     case 'zoom-in':      sc = 1.0 + e * 0.10; break;
@@ -647,9 +655,16 @@ async function doExport() {
   if (!audioCtx) ensureAudio();
   if (audioCtx.state === 'suspended') await audioCtx.resume();
 
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !('MSStream' in window);
   const hasWebCodecs = typeof VideoEncoder !== 'undefined'
     && typeof AudioEncoder !== 'undefined'
     && typeof window.WebmMuxer !== 'undefined';
+
+  // iOS Safari: canvas.captureStream() 미지원, WebCodecs 미지원
+  if (isIOS && !hasWebCodecs) {
+    toast('iOS Safari에서는 Chrome 앱을 이용해 저장해주세요', 'err');
+    return;
+  }
 
   D.dlBtn.disabled = true;
   D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 준비 중...';
@@ -753,6 +768,14 @@ async function doExportWebCodecs() {
 async function doExportMediaRecorder() {
   toast('WebCodecs 미지원 → 녹화 방식으로 저장합니다', 'inf');
   const totalDur = S.script.scenes.reduce((a, s) => a + s.duration, 0);
+
+  // captureStream 지원 체크
+  if (typeof D.canvas.captureStream !== 'function') {
+    toast('이 브라우저는 영상 저장을 지원하지 않습니다. Chrome을 이용해주세요', 'err');
+    D.dlBtn.disabled = false;
+    D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 영상 저장하기';
+    return;
+  }
   const mime     = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
   const hasAudio = S.audioBuffers.some(b => b !== null);
   const cs       = D.canvas.captureStream(30);
