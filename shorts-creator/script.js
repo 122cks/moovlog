@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v16';
+const APP_VERSION  = 'v17';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -54,6 +54,7 @@ const D  = {
   tagInsta: g('tagInsta'), tagTiktok: g('tagTiktok'),
   vProgText: g('vProgText'), bgmBadge: g('bgmBadge'), bgmBadgeText: g('bgmBadgeText'),
   selectedTplInput: g('selectedTplInput'),
+  ttsPlayer: g('ttsPlayer'), captionLayer: g('captionLayer'),
 };
 const ctx = D.canvas.getContext('2d');
 D.canvas.width = CW; D.canvas.height = CH;
@@ -661,15 +662,18 @@ function buildSNSTags(script) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   STEP 3 — TTS 시스템 v2
+   STEP 3 — TTS 시스템 v3 (Typecast 우선 + Gemini 폴백)
    ────────────────────────────────────────────────────────────
-   수정된 버그:
-   1. system_instruction → TTS 모드에서 400 오류 유발, 제거
-   2. 모든 보이스 순차 시도 → 429 Rate Limit 폭발, 성공 보이스 고정
-   3. 씬 순차 처리 → concurrency 제한 병렬 처리로 속도 3배 향상
-   4. buf.length 체크 → buf.duration으로 수정 (AudioBuffer API 정상 사용)
-   5. decodeAudioData ArrayBuffer 공유 참조 오류 → .slice(0) 복사본 전달
+   우선순위: Typecast ssfm-v30 ko → Gemini TTS → 무음
+   버그 수정 유지: system_instruction 제거, buf.duration 체크,
+                   .slice(0) 복사, concurrency 병렬, 429 보호
    ════════════════════════════════════════════════════════════ */
+
+// Typecast API 설정 (https://typecast.ai → 계정 설정 → API 키 발급)
+// voice_id: Typecast 콘솔 → 목소리 목록에서 원하는 캐릭터 ID 복사
+// 한국어 목소리 목록: https://api.typecast.ai/v1/voices?model=ssfm-v30
+const TYPECAST_API_KEY  = localStorage.getItem('moovlog_typecast_key') || '';
+const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_672c5f5ce59fac2a48faeaee';
 
 const TTS_CONFIG = {
   models:      ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
@@ -701,19 +705,29 @@ function preprocessNarration(text) {
 
 /* ── 전체 씬 TTS 병렬 생성 ───────────────────────────────── */
 async function generateAllTTS(scenes) {
-  const buffers = new Array(scenes.length).fill(null);
-  let successCount = 0, failCount = 0, fatalStop = false;
+  const buffers     = new Array(scenes.length).fill(null);
+  let successCount  = 0, failCount = 0, fatalStop = false;
+  const useTypecast = !!TYPECAST_API_KEY;
 
   const tasks = scenes.map((sc, i) => async () => {
     if (fatalStop || !sc.narration) return;
     const text = preprocessNarration(sc.narration);
     if (!text) return;
     try {
-      buffers[i] = await fetchTTSWithRetry(text, i);
+      buffers[i] = useTypecast
+        ? await fetchTypeCastTTS(text)
+        : await fetchTTSWithRetry(text, i);
       successCount++;
     } catch (e) {
       const msg = e.message || '';
-      if (msg.includes('TTS_403')) {
+      if (msg.startsWith('TYPECAST_401') || msg.startsWith('TYPECAST_403')) {
+        // Typecast 인증 실패 → 해당 씬만 Gemini로 재시도
+        toast('Typecast 인증 오류 — Gemini AI로 전환합니다', 'inf');
+        try {
+          buffers[i] = await fetchTTSWithRetry(text, i);
+          successCount++;
+        } catch { failCount++; }
+      } else if (msg.includes('TTS_403')) {
         fatalStop = true;
         toast('AI 보이스: API 키에 TTS 권한 없음 — 무음으로 진행합니다', 'inf');
       } else {
@@ -735,14 +749,60 @@ async function generateAllTTS(scenes) {
     } else if (failCount > 0) {
       toast(`AI 보이스 ${successCount}/${scenes.length}씬 완료 (${failCount}씬 무음)`, 'inf');
     } else {
-      toast(`AI 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
+      const engine = useTypecast ? 'Typecast' : 'Gemini';
+      toast(`${engine} AI 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
     }
   }
   if (successCount > 0) updateAudioStatus('google-tts');
   return buffers;
 }
 
-/* ── 씬 단위 TTS + 재시도 ────────────────────────────────── */
+/* ── Typecast TTS API 호출 ───────────────────────────────── */
+async function fetchTypeCastTTS(text) {
+  if (!text?.trim()) throw new Error('빈 텍스트');
+  if (!audioCtx) ensureAudio();
+
+  const res = await fetch('https://api.typecast.ai/v1/text-to-speech', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-KEY': TYPECAST_API_KEY,
+    },
+    body: JSON.stringify({
+      voice_id:  TYPECAST_VOICE_ID,
+      text:      text.trim(),
+      model:     'ssfm-v30',
+      language:  'kor',
+      prompt:    { emotion_type: 'smart' },
+      output: {
+        volume:       100,
+        audio_pitch:  0,
+        audio_tempo:  1.05,  // 릴스 텐션: 5% 빠르게
+        audio_format: 'wav',
+      },
+    }),
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(`TYPECAST_${res.status}: 인증 오류 — API 키를 확인하세요`);
+  }
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(`Typecast HTTP ${res.status}: ${d?.message || ''}`);
+  }
+
+  const ab = await res.arrayBuffer();
+  if (ab.byteLength < 100) throw new Error('Typecast 오디오 데이터 없음');
+
+  // ※ WAV 바이너리 직접 decodeAudioData (.slice(0) — 공유 참조 방지)
+  const buf = await audioCtx.decodeAudioData(ab.slice(0));
+  if (!buf || buf.duration < 0.05) throw new Error('Typecast 빈 오디오');
+
+  console.log(`[Typecast ✓] ${buf.duration.toFixed(2)}s — ${text.substring(0, 15)}...`);
+  return buf;
+}
+
+/* ── Gemini TTS 재시도 래퍼 ──────────────────────────────── */
 async function fetchTTSWithRetry(text, sceneIdx) {
   let lastErr;
   for (let attempt = 0; attempt <= TTS_CONFIG.maxRetry; attempt++) {
@@ -762,7 +822,7 @@ async function fetchTTSWithRetry(text, sceneIdx) {
   throw lastErr || new Error('TTS 재시도 초과');
 }
 
-/* ── Gemini TTS API 호출 ─────────────────────────────────── */
+/* ── Gemini TTS API 호출 (폴백) ──────────────────────────── */
 async function fetchGeminiTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
   let lastErr;
@@ -804,7 +864,6 @@ async function fetchGeminiTTS(text) {
         }
 
         const data = await res.json();
-        // parts 배열에서 inlineData 가진 항목 탐색 (첫 번째 part만 보면 누락될 수 있음)
         const part = data?.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.data);
         if (!part?.inlineData?.data) { lastErr = new Error('오디오 데이터 없음'); continue; }
 
@@ -812,10 +871,9 @@ async function fetchGeminiTTS(text) {
           part.inlineData.data,
           part.inlineData.mimeType || 'audio/L16;rate=24000'
         );
-        // ※ buf.length → buf.duration (AudioBuffer는 duration이 정확한 체크)
         if (!buf || buf.duration < 0.05) { lastErr = new Error('빈 오디오'); continue; }
 
-        console.log(`[TTS ✓] ${model}/${voiceName} — ${buf.duration.toFixed(2)}s`);
+        console.log(`[Gemini TTS ✓] ${model}/${voiceName} — ${buf.duration.toFixed(2)}s`);
         return buf;
 
       } catch (e) {
@@ -828,7 +886,7 @@ async function fetchGeminiTTS(text) {
   throw lastErr || new Error('TTS 전체 실패');
 }
 
-/* ── PCM 오디오 디코딩 ───────────────────────────────────── */
+/* ── PCM 오디오 디코딩 (Gemini PCM 포맷용) ──────────────── */
 async function decodePCMAudio(b64, mimeType) {
   if (!audioCtx) ensureAudio();
   if (!b64) throw new Error('빈 base64');
