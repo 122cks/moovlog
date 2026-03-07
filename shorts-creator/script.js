@@ -5,8 +5,8 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v8';
-const APP_BUILD_TS = '2026-06-14 KST';
+const APP_VERSION  = 'v9';
+const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
 const _INJECTED_KEY = '__GEMINI_KEY__';
@@ -251,13 +251,25 @@ async function startMake() {
    ════════════════════════════════════════════════════════════ */
 async function visionAnalysis(restaurantName) {
   const imgs = S.files.filter(f => f.type === 'image').slice(0, 8);
-  if (!imgs.length) return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
-
   const parts = [];
-  for (const img of imgs) { const b64 = await toB64(img.file); parts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
+  if (imgs.length) {
+    for (const img of imgs) { const b64 = await toB64(img.file); parts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
+  } else {
+    // 비디오만 있을 경우: 프레임 추출해서 이미지처럼 분석
+    const videos = S.files.filter(f => f.type === 'video');
+    if (!videos.length) return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
+    for (const vf of videos.slice(0, 2)) {
+      try {
+        const frames = await extractVideoFramesB64(vf.file, 4);
+        for (const fr of frames) parts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
+      } catch (e) { console.warn('[Vision] 비디오 프레임 추출 실패:', e.message); }
+    }
+    if (!parts.length) return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
+  }
+  const mediaCount = parts.length;
 
   const prompt = `당신은 인스타그램 Reels 전문 비주얼 디렉터입니다.
-음식점: "${restaurantName}" / 이미지 ${imgs.length}장 (순서대로 이미지0, 이미지1...)
+음식점: "${restaurantName}" / 미디어 ${mediaCount}개 (순서대로 미디어0, 미디어1...)
 
 각 이미지를 순서대로 정밀 분석하세요.
 
@@ -301,6 +313,16 @@ async function generateScript(restaurantName, analysis) {
   const sampleImgs = S.files.filter(f => f.type === 'image').slice(0, 4);
   const imgParts = [];
   for (const img of sampleImgs) { const b64 = await toB64(img.file); imgParts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
+  if (!imgParts.length) {
+    // 비디오만 있을 경우 대표 프레임 추출
+    const vidFiles = S.files.filter(f => f.type === 'video').slice(0, 2);
+    for (const vf of vidFiles) {
+      try {
+        const frames = await extractVideoFramesB64(vf.file, 2);
+        for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
+      } catch (e) { console.warn('[generateScript] 비디오 프레임 추출 실패:', e.message); }
+    }
+  }
 
   const prompt = `당신은 팔로워 50만+ 한국 맛집 인스타그램·유튜브 Shorts 전문 감독 "무브먼트(MOOVLOG)"입니다.
 인천·서울·부천·경기 맛집 채널 / 매 영상 조회수 10만+ 달성하는 최상위 크리에이터.
@@ -334,8 +356,8 @@ ${imgSummary || '분석 없음'}
   → "저장 안 하면 나중에 못 옴 💾" / "팔로우하면 맛집 다 알려드림 🙏" / "여기 꼭 가봐 진심"
 
 [★ SEO 최적화 자막·나레이션 규칙]
-- subtitle: 음식점명 또는 지역명 포함, 10~16자, 이모지 1~2개, 구어체, 검색 키워드 포함
-  예: "🔥 ${restaurantName} 찐맛집" / "✨ 인생 ${(analysis.menu || ['메뉴'])[0]}"
+- subtitle: narration의 핵심 키워드 1~3단어 + 이모지 1~2개 (10~16자). 반드시 narration과 같은 주제·내용으로 작성.
+  예: "🔥 ${restaurantName} 찐맛집" / "✨ 육즙 터지는 한우"
 - subtitle_style: "hook"(훅)|"detail"(디테일)|"hero"(대표메뉴)|"cta"(콜투액션)
 - subtitle_position: "center"|"lower"|"upper"
 - narration: 구어체 남성 성우 스타일, 입맛 당기는 감각 묘사, 글자 수 ≤ duration×8
@@ -370,6 +392,37 @@ JSON만 반환 (백틱·설명 없이 순수 JSON):
 
 function toB64(file) {
   return new Promise((ok, fail) => { const r = new FileReader(); r.onload = e => ok(e.target.result.split(',')[1]); r.onerror = fail; r.readAsDataURL(file); });
+}
+
+/* ── 비디오에서 프레임 추출 (Base64 JPEG) ─────────────────── */
+async function extractVideoFramesB64(file, count = 4) {
+  return new Promise(resolve => {
+    const vid = Object.assign(document.createElement('video'), { muted: true, playsInline: true, preload: 'metadata' });
+    const url = URL.createObjectURL(file);
+    vid.src = url;
+    vid.onerror = () => { URL.revokeObjectURL(url); resolve([]); };
+    vid.onloadedmetadata = async () => {
+      const dur = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : 0;
+      if (!dur) { URL.revokeObjectURL(url); resolve([]); return; }
+      const c = document.createElement('canvas'); c.width = 360; c.height = 640;
+      const cx = c.getContext('2d');
+      const frames = [], times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * dur);
+      for (const t of times) {
+        await new Promise(r => {
+          const done = () => {
+            vid.removeEventListener('seeked', done);
+            cx.drawImage(vid, 0, 0, 360, 640);
+            frames.push({ base64: c.toDataURL('image/jpeg', 0.75).split(',')[1], mimeType: 'image/jpeg' });
+            r();
+          };
+          vid.addEventListener('seeked', done);
+          vid.currentTime = t;
+          setTimeout(r, 1500);
+        });
+      }
+      URL.revokeObjectURL(url); resolve(frames);
+    };
+  });
 }
 function buildSNSTags(script) {
   if (!D.snsWrap) return;
@@ -426,20 +479,17 @@ async function generateAllTTS(scenes) {
 // Gemini TTS: 모델 2개 × 비이스 4개 단계적 시도
 async function fetchGeminiTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
-  const maleVoices = ['Charon', 'Fenrir', 'Orus', 'Puck'];
-  // 2026 시점 모델 우선순위: GA 명칭 먼저 시도, preview 폴백
-  const ttsModels = [
-    'gemini-2.5-flash-preview-tts',
-    'gemini-2.5-flash',
-  ];
+  const voices = ['Kore', 'Aoede', 'Charon', 'Fenrir', 'Orus'];
+  const ttsModels = ['gemini-2.5-flash-preview-tts', 'gemini-2.5-flash'];
   let lastErr;
   for (const model of ttsModels) {
     const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
-    for (const voiceName of maleVoices) {
+    for (const voiceName of voices) {
       try {
         const res = await fetch(ttsUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            system_instruction: { parts: [{ text: '한국어 남성 모델. 생동감 있고 자연스러운 한국어로 나레이션해주세요. 맛집 콘텐츠 전문 성우.' }] },
             contents: [{ parts: [{ text: text.trim() }] }],
             generationConfig: {
               responseModalities: ['AUDIO'],
@@ -451,7 +501,6 @@ async function fetchGeminiTTS(text) {
         if (!res.ok) {
           const msg = data?.error?.message || `HTTP ${res.status}`;
           console.warn(`[TTS] ${model}/${voiceName} ${res.status}:`, msg);
-          // 403(권한없음) / 404(모델없음) → 이 모델의 다른 voice도 같으므로 다음 모델로
           if (res.status === 403) throw new Error(`TTS_403: ${msg}`);
           if (res.status === 404 || res.status === 400) { lastErr = new Error(msg); break; }
           throw new Error(msg);
@@ -465,7 +514,7 @@ async function fetchGeminiTTS(text) {
       } catch (e) {
         console.warn(`[TTS] ${model}/${voiceName} 실패:`, e.message);
         lastErr = e;
-        if (e.message?.startsWith('TTS_403')) throw e;  // 권한 없음: 전체 중단
+        if (e.message?.startsWith('TTS_403')) throw e;
       }
     }
   }
@@ -629,9 +678,10 @@ function tick() {
 /* ════════════════════════════════════════════════════════════
    CANVAS RENDER
    ════════════════════════════════════════════════════════════ */
-function renderFrame(si, prog) {
+function renderFrame(si, prog, subAnimOverride, skipClear) {
   const sc = S.script.scenes[si], media = getMedia(sc);
-  ctx.clearRect(0, 0, CW, CH);
+  const sap = subAnimOverride !== undefined ? subAnimOverride : S.subAnimProg;
+  if (!skipClear) ctx.clearRect(0, 0, CW, CH);
   drawMedia(media, sc.effect, prog);
   drawVignetteGrad();
   // [강화1] 씬 분위기 색상 오버레이
@@ -641,42 +691,37 @@ function renderFrame(si, prog) {
     drawLetterbox(Math.min(prog * 4, 1));
     drawSparkles(prog);
   }
-  drawSubtitle(sc, S.subAnimProg);
+  drawSubtitle(sc, sap);
   if (si === 0) drawTopBadge();
 }
 function drawTransition(fi, t) {
   const e = ease(t);
-  // [강화3] 씬 스타일별 전환 효과 4종
   const nextStyle = S.script.scenes[fi + 1]?.subtitle_style || 'detail';
   if (nextStyle === 'hero') {
-    // Zoom-in 전환: hero 씬 등장 임팩트
     renderFrame(fi, 1);
     ctx.save();
     ctx.globalAlpha = e;
     ctx.translate(CW / 2, CH / 2);
     ctx.scale(0.88 + e * 0.12, 0.88 + e * 0.12);
     ctx.translate(-CW / 2, -CH / 2);
-    renderFrame(fi + 1, 0);
+    renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
   } else if (nextStyle === 'hook') {
-    // Slide-up 전환: 시선 강탈 훅 등장
     renderFrame(fi, 1);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, CH * (1 - e), CW, CH * e); ctx.clip();
-    renderFrame(fi + 1, 0);
+    renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
   } else if (nextStyle === 'cta') {
-    // Fade + scale-down: CTA 여운
-    ctx.save(); renderFrame(fi, 1);
-    const outScale = 1 - e * 0.05;
-    ctx.save(); ctx.translate(CW/2, CH/2); ctx.scale(outScale, outScale); ctx.translate(-CW/2, -CH/2);
-    ctx.globalAlpha = 1 - e; renderFrame(fi, 1); ctx.restore();
-    ctx.globalAlpha = e; renderFrame(fi + 1, 0);
+    renderFrame(fi, 1);
+    ctx.save();
+    ctx.globalAlpha = e;
+    renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
   } else {
-    // 기본 crossfade
+    // 기본 crossfade — fi 위에 fi+1을 점점 그림 (skipClear=true)
     renderFrame(fi, 1);
-    ctx.save(); ctx.globalAlpha = e; renderFrame(fi + 1, 0); ctx.restore();
+    ctx.save(); ctx.globalAlpha = e; renderFrame(fi + 1, 0, 0, true); ctx.restore();
   }
 }
 // 특정 시간 t(초)에 해당하는 프레임 렌더링 (export용, 실시간 불필요)
@@ -864,16 +909,16 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   ctx.restore();
 }
 
-/* 자막 영역 그라데이션 배경 (가독성·조회수 향상) */
+/* 자막 영역 그라데이션 배경 (0.70 → 0.22로 대폭 감소) */
 function drawSubtitleBg(cy, lineH, alpha) {
-  const h = lineH * 2.6;
-  const g = ctx.createLinearGradient(0, cy - h * 0.6, 0, cy + h * 0.6);
+  const h = lineH * 1.8;
+  const g = ctx.createLinearGradient(0, cy - h * 0.55, 0, cy + h * 0.55);
   g.addColorStop(0,    `rgba(0,0,0,0)`);
-  g.addColorStop(0.22, `rgba(0,0,0,${0.70 * alpha})`);
-  g.addColorStop(0.78, `rgba(0,0,0,${0.70 * alpha})`);
+  g.addColorStop(0.28, `rgba(0,0,0,${0.22 * alpha})`);
+  g.addColorStop(0.72, `rgba(0,0,0,${0.22 * alpha})`);
   g.addColorStop(1,    `rgba(0,0,0,0)`);
   ctx.fillStyle = g;
-  ctx.fillRect(0, cy - h * 0.6, CW, h * 1.2);
+  ctx.fillRect(0, cy - h * 0.55, CW, h * 1.1);
 }
 
 /* ① Hook — CapCut 최대 임팩트: 첫 단어 노란 강조 + 배경 */
