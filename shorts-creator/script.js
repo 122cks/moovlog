@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v13';
+const APP_VERSION  = 'v14';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -288,6 +288,21 @@ function renderTemplatePicker() {
   const container = document.getElementById('tplPicker');
   if (!container) return;
   container.innerHTML = '';
+
+  // 첫 번째: AI 자동 칩
+  const autoChip = document.createElement('button');
+  autoChip.className = 'tpl-chip tpl-chip-auto' + (selectedTemplate === 'auto' ? ' active' : '');
+  autoChip.textContent = '🤖 AI 자동';
+  autoChip.addEventListener('click', () => {
+    selectedTemplate = 'auto';
+    if (D.selectedTplInput) D.selectedTplInput.value = 'auto';
+    container.querySelectorAll('.tpl-chip').forEach(c => c.classList.remove('active'));
+    autoChip.classList.add('active');
+    toast('AI가 영상에 맞게 자동 선택합니다', 'inf');
+    if (S.script && S.script.scenes.length) renderFrame(S.scene, S.subAnimProg > 0 ? 1 : 0);
+  });
+  container.appendChild(autoChip);
+
   Object.entries(TEMPLATE_NAMES).forEach(([key, label]) => {
     const btn = document.createElement('button');
     btn.className = 'tpl-chip' + (key === selectedTemplate ? ' active' : '');
@@ -297,10 +312,8 @@ function renderTemplatePicker() {
       if (D.selectedTplInput) D.selectedTplInput.value = key;
       container.querySelectorAll('.tpl-chip').forEach(c => c.classList.remove('active'));
       btn.classList.add('active');
-      // 미리보기 중이면 현재 씬 다시 렌더
-      if (S.script && S.script.scenes.length) {
-        renderFrame(S.scene, S.subAnimProg > 0 ? 1 : 0);
-      }
+      toast(`${label} 템플릿 선택됨`, 'inf');
+      if (S.script && S.script.scenes.length) renderFrame(S.scene, S.subAnimProg > 0 ? 1 : 0);
     });
     container.appendChild(btn);
   });
@@ -897,12 +910,13 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
   drawColorGrade(prog);
   // [강화1] 씬 분위기 색상 오버레이
   drawMoodOverlay(sc.subtitle_style, Math.min(prog * 3, 1));
-  // [강화2] Hero 씬: 시네마틱 레터박스 + 스파클
-  if (sc.subtitle_style === 'hero') {
+  // 시네마틱 레터박스: cinematic 템플릿 또는 hero 씬
+  const _tplStyle = getTplStyle();
+  if (_tplStyle.letterbox || sc.subtitle_style === 'hero') {
     drawLetterbox(Math.min(prog * 4, 1));
-    drawSparkles(prog);
+    if (sc.subtitle_style === 'hero') drawSparkles(prog);
   }
-  drawSubtitle(sc, sap, prog);
+  drawSubtitle(sc, sap);
   if (si === 0) drawTopBadge();
 }
 function drawTransition(fi, t) {
@@ -964,7 +978,7 @@ function renderFrameAtTime(t) {
         drawLetterbox(Math.min(prog * 4, 1));
         drawSparkles(prog);
       }
-      drawSubtitle(sc[i], subAnimProg, prog);
+      drawSubtitle(sc[i], subAnimProg);
       if (i === 0) drawTopBadge();
       S.subAnimProg = prevSubAnim;
       return;
@@ -1069,30 +1083,80 @@ function drawSparkles(prog) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   SUBTITLE SYSTEM — 4 Instagram Reels 스타일 + 애니메이션
-   animProg: 0=시작, 1=완전 표시
+   SUBTITLE SYSTEM v2 — 20종 릴스/틱톡 스타일
+   subtitle_style 값 → 렌더러 매핑
+   기존 4종(hook/detail/hero/cta) 완전 호환 유지 +
+   템플릿별 고유 스타일 자동 선택
    ════════════════════════════════════════════════════════════ */
-function drawSubtitle(sc, animProg, sceneProg) {
-  // 씬 진행도 50% 기준으로 caption1 → caption2 전환 (없으면 subtitle fallback)
-  let text, localAnim;
-  const c2 = sc.caption2;
-  if (c2 && sceneProg !== undefined && sceneProg >= 0.5) {
-    text      = c2;
-    localAnim = Math.min((sceneProg - 0.5) * 5.6, 1); // 후반부 애니메이션 리셋
-  } else {
-    text      = sc.caption1 || sc.subtitle;
-    localAnim = animProg;
-  }
-  if (!text) return;
+
+const SUBTITLE_RENDERERS = {
+  // 기존 스타일 (하위 호환)
+  hook:          (sc, ap) => subStyle_Impact    (sc.subtitle, sc.subtitle_position || 'center', ap),
+  detail:        (sc, ap) => subStyle_SlideUp   (sc.subtitle, sc.subtitle_position || 'lower',  ap),
+  hero:          (sc, ap) => subStyle_HeroWord  (sc.subtitle, ap),
+  cta:           (sc, ap) => subStyle_CTABounce (sc.subtitle, ap),
+  // 릴스 트렌드 스타일
+  neon:          (sc, ap) => subStyle_Neon        (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  split:         (sc, ap) => subStyle_Split       (sc.subtitle, ap),
+  typewriter:    (sc, ap) => subStyle_Typewriter  (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  glitch:        (sc, ap) => subStyle_Glitch      (sc.subtitle, ap),
+  bold_drop:     (sc, ap) => subStyle_BoldDrop    (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  pill:          (sc, ap) => subStyle_Pill        (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  outline:       (sc, ap) => subStyle_Outline     (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  gradient_text: (sc, ap) => subStyle_GradientText(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  shake:         (sc, ap) => subStyle_Shake       (sc.subtitle, ap),
+  word_by_word:  (sc, ap) => subStyle_WordByWord  (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  underline:     (sc, ap) => subStyle_Underline   (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  kinetic:       (sc, ap) => subStyle_Kinetic     (sc.subtitle, ap),
+  stamp:         (sc, ap) => subStyle_Stamp       (sc.subtitle, ap),
+  shadow_pop:    (sc, ap) => subStyle_ShadowPop   (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  minimal:       (sc, ap) => subStyle_Minimal     (sc.subtitle, sc.subtitle_position || 'lower', ap),
+  retro:         (sc, ap) => subStyle_Retro       (sc.subtitle, ap),
+};
+
+/* 템플릿별 기본 스타일 오버라이드 (detail/hook 씬만 적용, hero/cta는 고정) */
+const TEMPLATE_SUB_STYLE = {
+  cinematic: { detail: 'minimal',      hook: 'outline'       },
+  viral:     { detail: 'bold_drop',    hook: 'impact'        },
+  aesthetic: { detail: 'pill',         hook: 'gradient_text' },
+  mukbang:   { detail: 'word_by_word', hook: 'stamp'         },
+  vlog:      { detail: 'typewriter',   hook: 'underline'     },
+  review:    { detail: 'split',        hook: 'retro'         },
+  story:     { detail: 'kinetic',      hook: 'shadow_pop'    },
+  info:      { detail: 'outline',      hook: 'pill'          },
+};
+
+function drawSubtitle(sc, animProg) {
+  if (!sc.subtitle) return;
   ctx.save();
-  switch (sc.subtitle_style || 'detail') {
-    case 'hook':   drawSubHook  (text, sc.subtitle_position || 'center', localAnim); break;
-    case 'hero':   drawSubHero  (text, localAnim); break;
-    case 'cta':    drawSubCTA   (text, localAnim); break;
-    default:       drawSubDetail(text, sc.subtitle_position || 'lower', localAnim);
+  let style = sc.subtitle_style || 'detail';
+  const tplOverride = TEMPLATE_SUB_STYLE[selectedTemplate];
+  if (tplOverride && style !== 'hero' && style !== 'cta') {
+    style = tplOverride[style] || tplOverride['detail'] || style;
   }
+  const renderer = SUBTITLE_RENDERERS[style] || SUBTITLE_RENDERERS.detail;
+  renderer(sc, animProg);
   ctx.restore();
 }
+
+/* ──────────────────────────────────────────────────────────
+   공통 헬퍼
+   ────────────────────────────────────────────────────────── */
+function subY(pos) {
+  return pos === 'upper' ? CH * 0.20 : pos === 'center' ? CH * 0.50 : CH - 195 * SCALE;
+}
+function subBg(cy, h, alpha) {
+  const grad = ctx.createLinearGradient(0, cy - h, 0, cy + h);
+  grad.addColorStop(0,   `rgba(0,0,0,0)`);
+  grad.addColorStop(0.3, `rgba(0,0,0,${0.22 * alpha})`);
+  grad.addColorStop(0.7, `rgba(0,0,0,${0.22 * alpha})`);
+  grad.addColorStop(1,   `rgba(0,0,0,0)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, cy - h, CW, h * 2);
+}
+function getTplHL()        { return getTplStyle().subtitle?.hlColor || '#FFE033'; }
+function getTplColor()     { return getTplStyle().subtitle?.color   || '#FFFFFF'; }
+function getTplFontSz(base){ return base * SCALE * (getTplStyle().subtitle?.fontSize || 1.0); }
 
 /* ── CapCut 스타일 공통 렌더러 ────────────────────────────────
    hlIdx: 강조할 단어 인덱스 (null = 없음)
@@ -1102,10 +1166,8 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   const words = text.split(/\s+/).filter(Boolean);
   if (!words.length) return;
   ctx.save();
-  const tplSub  = getTplStyle().subtitle;
-  const fScale  = tplSub?.fontSize || 1.0;
-  const hlColor = tplSub?.hlColor  || '#FFE033';
-  let sz = maxSz * fScale;
+  const hlColor = getTplHL();
+  let sz = maxSz;  // 호출측에서 getTplFontSz() 적용 완료
   ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   let wM = words.map(w => ctx.measureText(w).width);
@@ -1117,7 +1179,7 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
     wM = words.map(w => ctx.measureText(w).width);
   }
-  const N  = words.length;
+  const N    = words.length;
   const step = 0.55 / N;
   const sw   = Math.max(sz * 0.11, SCALE * 6);
   let x = cx - tot() / 2;
@@ -1126,16 +1188,14 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     const drawX = x;
     x += wM[i] + sp();
     if (wProg <= 0) return;
-    // Overshoot bounce: 0 → 1.18 → 1.0
-    const scl = wProg < 0.6 ? (wProg / 0.6) * 1.18 : 1.18 - ((wProg - 0.6) / 0.4) * 0.18;
+    const scl   = wProg < 0.6 ? (wProg / 0.6) * 1.18 : 1.18 - ((wProg - 0.6) / 0.4) * 0.18;
     const alpha = Math.min(wProg * 4, 1);
-    const wx = drawX + wM[i] / 2;
-    const isHL = (i === hlIdx);
+    const wx    = drawX + wM[i] / 2;
+    const isHL  = (i === hlIdx);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(wx, cy); ctx.scale(scl, scl);
     if (isHL) {
-      // 하이라이트 박스 (템플릿 hlColor) + 검정 텍스트
       const pad = 9;
       ctx.fillStyle = hlColor;
       roundRect(ctx, -wM[i] / 2 - pad, -sz * 0.58, wM[i] + pad * 2, sz * 1.16, 7); ctx.fill();
@@ -1144,7 +1204,6 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
       ctx.strokeText(word, -wM[i] / 2, 0);
       ctx.fillStyle = '#111'; ctx.fillText(word, -wM[i] / 2, 0);
     } else {
-      // 흰색(또는 color) + 두꺼운 검정 스트로크
       ctx.lineWidth = sw; ctx.lineJoin = 'round';
       ctx.strokeStyle = 'rgba(0,0,0,0.97)';
       ctx.strokeText(word, -wM[i] / 2, 0);
@@ -1155,50 +1214,473 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   ctx.restore();
 }
 
-/* 자막 영역 그라데이션 배경 (0.70 → 0.22로 대폭 감소) */
-function drawSubtitleBg(cy, lineH, alpha) {
-  const h = lineH * 1.8;
-  const g = ctx.createLinearGradient(0, cy - h * 0.55, 0, cy + h * 0.55);
-  g.addColorStop(0,    `rgba(0,0,0,0)`);
-  g.addColorStop(0.28, `rgba(0,0,0,${0.22 * alpha})`);
-  g.addColorStop(0.72, `rgba(0,0,0,${0.22 * alpha})`);
-  g.addColorStop(1,    `rgba(0,0,0,0)`);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, cy - h * 0.55, CW, h * 1.1);
+/* ──────────────────────────────────────────────────────────
+   ① Impact — 첫 단어 강조 (기존 hook)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Impact(text, pos, ap) {
+  const sz = getTplFontSz(96);
+  const y  = subY(pos);
+  subBg(y, sz, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, sz, getTplColor(), 0, ap);
 }
 
-/* ① Hook — CapCut 최대 임팩트: 첫 단어 노란 강조 + 배경 */
-function drawSubHook(text, pos, ap) {
-  const y = pos === 'upper' ? CH * 0.22 : pos === 'center' ? CH * 0.50 : CH * 0.72;
-  drawSubtitleBg(y, SCALE * 82, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 82, '#FFFFFF', 0, ap);
-}
-
-/* ② Detail — CapCut 기본: 슬라이드업 + 흰 텍스트 + 배경 */
-function drawSubDetail(text, pos, ap) {
+/* ──────────────────────────────────────────────────────────
+   ② SlideUp — 아래서 위로 슬라이드 (기존 detail)
+   ────────────────────────────────────────────────────────── */
+function subStyle_SlideUp(text, pos, ap) {
   const eased = ease(Math.min(ap * 2.5, 1));
-  const baseY = pos === 'upper' ? CH * 0.18 : pos === 'center' ? CH * 0.50 : CH - SCALE * 200;
-  const y     = baseY + (1 - eased) * SCALE * 30;
-  drawSubtitleBg(y, SCALE * 64, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 64, '#FFFFFF', null, ap);
+  const sz    = getTplFontSz(74);
+  const baseY = subY(pos);
+  const y     = baseY + (1 - eased) * 32 * SCALE;
+  subBg(y, sz, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, sz, getTplColor(), null, ap);
 }
 
-/* ③ Hero — CapCut 대형: 마지막 단어 클라이맥스 강조 + 배경 */
-function drawSubHero(text, ap) {
+/* ──────────────────────────────────────────────────────────
+   ③ HeroWord — 마지막 단어 클라이맥스 (기존 hero)
+   ────────────────────────────────────────────────────────── */
+function subStyle_HeroWord(text, ap) {
   const eased = ease(Math.min(ap * 2.5, 1));
-  const y     = CH - SCALE * 188 + (1 - eased) * SCALE * 24;
+  const sz    = getTplFontSz(88);
+  const y     = CH - 188 * SCALE + (1 - eased) * 24 * SCALE;
   const words = text.split(/\s+/).filter(Boolean);
-  drawSubtitleBg(y, SCALE * 76, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 76, '#FFFFFF', words.length - 1, ap);
+  subBg(y, sz, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, sz, getTplColor(), words.length - 1, ap);
 }
 
-/* ④ CTA — CapCut 콜투액션 + 파워풀 바운스 + 배경 */
-function drawSubCTA(text, ap) {
+/* ──────────────────────────────────────────────────────────
+   ④ CTABounce — 바운스 콜투액션 (기존 cta)
+   ────────────────────────────────────────────────────────── */
+function subStyle_CTABounce(text, ap) {
   const eased  = ease(Math.min(ap * 2.5, 1));
-  const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * SCALE * 12 : 0;
-  const y      = CH - SCALE * 128 + (1 - eased) * SCALE * 28 - bounce;
-  drawSubtitleBg(y, SCALE * 68, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 68, getTplStyle().subtitle?.hlColor || '#FFE033', 0, ap);
+  const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * 14 * SCALE : 0;
+  const sz     = getTplFontSz(80);
+  const y      = CH - 128 * SCALE + (1 - eased) * 28 * SCALE - bounce;
+  subBg(y, sz, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, sz, getTplHL(), 0, ap);
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑤ Neon — 네온 글로우 효과
+   ────────────────────────────────────────────────────────── */
+function subStyle_Neon(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = subY(pos) + (1 - eased) * 20 * SCALE;
+  const sz    = getTplFontSz(72);
+  const alpha = Math.min(ap * 3, 1);
+  const hl    = getTplHL();
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  [18 * SCALE, 10 * SCALE, 4 * SCALE].forEach((blur, i) => {
+    ctx.shadowColor = hl; ctx.shadowBlur = blur;
+    ctx.fillStyle = i < 2 ? 'transparent' : hl;
+    if (i === 2) ctx.fillText(text, CW / 2, y);
+  });
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑥ Split — 두 줄 좌우 슬라이드인
+   ────────────────────────────────────────────────────────── */
+function subStyle_Split(text, ap) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const half  = Math.ceil(words.length / 2);
+  const line1 = words.slice(0, half).join(' ');
+  const line2 = words.slice(half).join(' ');
+  const sz    = getTplFontSz(68);
+  const baseY = CH - 230 * SCALE;
+  const eased = ease(Math.min(ap * 2.2, 1));
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = Math.min(ap * 4, 1);
+  ctx.save();
+  ctx.translate((1 - eased) * -80 * SCALE, 0);
+  ctx.lineWidth = 8 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(line1, CW / 2, baseY);
+  ctx.fillStyle = getTplColor(); ctx.fillText(line1, CW / 2, baseY);
+  ctx.restore();
+  if (line2) {
+    ctx.save();
+    ctx.translate((1 - eased) * 80 * SCALE, 0);
+    ctx.lineWidth = 8 * SCALE; ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(line2, CW / 2, baseY + sz * 1.3);
+    ctx.fillStyle = getTplHL(); ctx.fillText(line2, CW / 2, baseY + sz * 1.3);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑦ Typewriter — 한 글자씩 타이핑
+   ────────────────────────────────────────────────────────── */
+function subStyle_Typewriter(text, pos, ap) {
+  const visLen = Math.floor(ap * text.length * 1.4);
+  const shown  = text.slice(0, Math.min(visLen, text.length));
+  const y      = subY(pos);
+  const sz     = getTplFontSz(68);
+  subBg(y, sz * 0.9, Math.min(ap * 4, 1));
+  ctx.save();
+  ctx.font = `700 ${sz}px "Noto Sans KR", monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 7 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(shown, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(shown, CW / 2, y);
+  if (visLen < text.length) {
+    const tm = ctx.measureText(shown);
+    const cx = CW / 2 + tm.width / 2 + 4 * SCALE;
+    ctx.fillStyle = getTplHL();
+    ctx.fillRect(cx, y - sz * 0.5, 3 * SCALE, sz);
+  }
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑧ Glitch — RGB 글리치
+   ────────────────────────────────────────────────────────── */
+function subStyle_Glitch(text, ap) {
+  const y         = CH - 200 * SCALE;
+  const sz        = getTplFontSz(78);
+  const glitchAmt = ap < 0.3 ? (0.3 - ap) * 18 * SCALE : 0;
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = Math.min(ap * 3, 1);
+  if (glitchAmt > 0) {
+    ctx.fillStyle = 'rgba(255,0,80,0.7)';
+    ctx.fillText(text, CW / 2 - glitchAmt, y - 2 * SCALE);
+    ctx.fillStyle = 'rgba(0,200,255,0.7)';
+    ctx.fillText(text, CW / 2 + glitchAmt, y + 2 * SCALE);
+  }
+  ctx.lineWidth = 8 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑨ BoldDrop — 위에서 떨어지며 임팩트
+   ────────────────────────────────────────────────────────── */
+function subStyle_BoldDrop(text, pos, ap) {
+  const target       = subY(pos);
+  const eased        = ease(Math.min(ap * 3, 1));
+  const dropProgress = ap < 0.5 ? (ap / 0.5) : 1;
+  const overshoot    = ap < 0.5 ? Math.sin(ap * Math.PI) * 20 * SCALE : 0;
+  const y  = (CH * 0.05) + (target - CH * 0.05) * ease(dropProgress) + overshoot;
+  const sz = getTplFontSz(82);
+  subBg(y, sz * 0.9, eased);
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = Math.min(ap * 5, 1);
+  ctx.lineWidth = 10 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#000'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑩ Pill — 배경 알약 박스
+   ────────────────────────────────────────────────────────── */
+function subStyle_Pill(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const sz    = getTplFontSz(64);
+  const y     = subY(pos) + (1 - eased) * 24 * SCALE;
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.font = `800 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const tw  = ctx.measureText(text).width;
+  const pad = { x: 28 * SCALE, y: 16 * SCALE };
+  const bx  = CW / 2 - tw / 2 - pad.x;
+  const by  = y - sz * 0.58 - pad.y;
+  const bw  = tw + pad.x * 2;
+  const bh  = sz * 1.16 + pad.y * 2;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  roundRect(ctx, bx, by, bw, bh, bh / 2); ctx.fill();
+  ctx.strokeStyle = getTplHL();
+  ctx.lineWidth = 2.5 * SCALE;
+  roundRect(ctx, bx, by, bw, bh, bh / 2); ctx.stroke();
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑪ Outline — 텍스트 테두리만
+   ────────────────────────────────────────────────────────── */
+function subStyle_Outline(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const sz    = getTplFontSz(70);
+  const y     = subY(pos) + (1 - eased) * 20 * SCALE;
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 10 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = getTplHL(); ctx.strokeText(text, CW / 2, y);
+  ctx.lineWidth = 2 * SCALE;
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑫ GradientText — 그라데이션 컬러 텍스트
+   ────────────────────────────────────────────────────────── */
+function subStyle_GradientText(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const sz    = getTplFontSz(72);
+  const y     = subY(pos) + (1 - eased) * 24 * SCALE;
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = alpha;
+  const tw   = ctx.measureText(text).width;
+  const grad = ctx.createLinearGradient(CW / 2 - tw / 2, 0, CW / 2 + tw / 2, 0);
+  const hl   = getTplHL();
+  grad.addColorStop(0, getTplColor());
+  grad.addColorStop(0.5, hl);
+  grad.addColorStop(1, getTplColor());
+  ctx.lineWidth = 9 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.92)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = grad; ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑬ Shake — 진동 효과
+   ────────────────────────────────────────────────────────── */
+function subStyle_Shake(text, ap) {
+  const y        = CH - 200 * SCALE;
+  const sz       = getTplFontSz(80);
+  const alpha    = Math.min(ap * 3, 1);
+  const shakeAmt = ap < 0.25 ? (0.25 - ap) / 0.25 * 6 : 0;
+  const dx       = shakeAmt * Math.sin(ap * 120);
+  const dy       = shakeAmt * Math.cos(ap * 90);
+  subBg(y, sz, alpha);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(dx, dy);
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 9 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.97)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑭ WordByWord — 단어별 팝인 하이라이트
+   ────────────────────────────────────────────────────────── */
+function subStyle_WordByWord(text, pos, ap) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const y     = subY(pos);
+  const sz    = getTplFontSz(74);
+  const step  = 1.0 / words.length;
+  subBg(y, sz, Math.min(ap * 3, 1));
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const widths = words.map(w => ctx.measureText(w).width);
+  const sp     = sz * 0.26;
+  const total  = widths.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let x        = CW / 2 - total / 2;
+  words.forEach((word, i) => {
+    const wProgress = Math.max(0, Math.min(1, (ap - i * step) / step));
+    const isActive  = Math.floor(ap / step) === i;
+    const scl       = wProgress < 0.5 ? wProgress / 0.5 * 1.2 : 1.2 - (wProgress - 0.5) / 0.5 * 0.2;
+    const wx        = x + widths[i] / 2;
+    if (wProgress > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(wProgress * 5, 1);
+      ctx.translate(wx, y);
+      ctx.scale(scl, scl);
+      if (isActive) {
+        const pad = 8 * SCALE;
+        ctx.fillStyle = getTplHL();
+        roundRect(ctx, -widths[i] / 2 - pad, -sz * 0.56, widths[i] + pad * 2, sz * 1.12, 6 * SCALE);
+        ctx.fill();
+        ctx.fillStyle = '#111'; ctx.fillText(word, -widths[i] / 2, 0);
+      } else {
+        ctx.lineWidth = 7 * SCALE; ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(word, -widths[i] / 2, 0);
+        ctx.fillStyle = getTplColor(); ctx.fillText(word, -widths[i] / 2, 0);
+      }
+      ctx.restore();
+    }
+    x += widths[i] + sp;
+  });
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑮ Underline — 하단 밑줄 강조
+   ────────────────────────────────────────────────────────── */
+function subStyle_Underline(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const sz    = getTplFontSz(68);
+  const y     = subY(pos) + (1 - eased) * 20 * SCALE;
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `800 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 7 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  const tw  = ctx.measureText(text).width;
+  const ulW = tw * Math.min(ap * 2.2, 1);
+  const ulY = y + sz * 0.62;
+  ctx.strokeStyle = getTplHL();
+  ctx.lineWidth   = 4 * SCALE;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(CW / 2 - tw / 2, ulY);
+  ctx.lineTo(CW / 2 - tw / 2 + ulW, ulY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑯ Kinetic — 각 단어가 다른 방향에서 날아옴
+   ────────────────────────────────────────────────────────── */
+function subStyle_Kinetic(text, ap) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const baseY = CH - 210 * SCALE;
+  const sz    = getTplFontSz(70);
+  const step  = 0.5 / words.length;
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const widths = words.map(w => ctx.measureText(w).width);
+  const sp     = sz * 0.26;
+  const total  = widths.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let x        = CW / 2 - total / 2;
+  const dirs   = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  words.forEach((word, i) => {
+    const wProg    = Math.max(0, Math.min(1, (ap - i * step) / (step * 1.8)));
+    const eW       = ease(wProg);
+    const [dx, dy] = dirs[i % 4];
+    const ox       = dx * (1 - eW) * 60 * SCALE;
+    const oy       = dy * (1 - eW) * 40 * SCALE;
+    const wx       = x + widths[i] / 2;
+    if (wProg > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(wProg * 4, 1);
+      ctx.lineWidth = 8 * SCALE; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+      ctx.strokeText(word, wx + ox, baseY + oy);
+      ctx.fillStyle = i % 2 === 0 ? getTplColor() : getTplHL();
+      ctx.fillText(word, wx + ox, baseY + oy);
+      ctx.restore();
+    }
+    x += widths[i] + sp;
+  });
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑰ Stamp — 도장 찍히는 효과
+   ────────────────────────────────────────────────────────── */
+function subStyle_Stamp(text, ap) {
+  const y    = CH / 2;
+  const sz   = getTplFontSz(92);
+  const scl  = ap < 0.4 ? 2.0 - (ap / 0.4) * 1.0 : 1.0;
+  const alpha = Math.min(ap * 8, 1);
+  const rot  = ap < 0.4 ? (0.4 - ap) / 0.4 * 0.08 : 0;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(CW / 2, y);
+  ctx.scale(scl, scl);
+  ctx.rotate(rot);
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const tw  = ctx.measureText(text).width;
+  const pad = 20 * SCALE;
+  ctx.strokeStyle = getTplHL(); ctx.lineWidth = 6 * SCALE;
+  roundRect(ctx, -tw / 2 - pad, -sz * 0.62 - pad * 0.5, tw + pad * 2, sz * 1.24 + pad, 8 * SCALE);
+  ctx.stroke();
+  ctx.lineWidth = 10 * SCALE; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑱ ShadowPop — 긴 그림자 레이어드
+   ────────────────────────────────────────────────────────── */
+function subStyle_ShadowPop(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const sz    = getTplFontSz(72);
+  const y     = subY(pos) + (1 - eased) * 28 * SCALE;
+  const alpha = Math.min(ap * 3, 1);
+  const hl    = getTplHL();
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  [6 * SCALE, 4 * SCALE, 2 * SCALE, 0].forEach(offset => {
+    ctx.fillStyle = offset > 0 ? `rgba(0,0,0,${0.4 - offset * 0.008})` : getTplColor();
+    ctx.fillText(text, CW / 2 + offset, y + offset);
+  });
+  ctx.strokeStyle = hl; ctx.lineWidth = 2 * SCALE;
+  ctx.strokeText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑲ Minimal — 얇고 깔끔
+   ────────────────────────────────────────────────────────── */
+function subStyle_Minimal(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.0, 1));
+  const sz    = getTplFontSz(58);
+  const y     = subY(pos) + (1 - eased) * 16 * SCALE;
+  const alpha = eased;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `600 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.38)';
+  ctx.fillRect(0, y - sz * 0.72, CW, sz * 1.44);
+  ctx.fillStyle = getTplHL();
+  ctx.fillRect(20 * SCALE, y - sz * 0.52, 4 * SCALE, sz * 1.04);
+  ctx.fillStyle = getTplColor();
+  ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑳ Retro — 레트로 TV 스타일
+   ────────────────────────────────────────────────────────── */
+function subStyle_Retro(text, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const sz    = getTplFontSz(66);
+  const y     = CH - 200 * SCALE + (1 - eased) * 20 * SCALE;
+  const alpha = Math.min(ap * 4, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const tw  = ctx.measureText(text).width;
+  const pad = { x: 22 * SCALE, y: 12 * SCALE };
+  ctx.fillStyle = getTplHL();
+  ctx.fillRect(CW / 2 - tw / 2 - pad.x, y - sz * 0.6 - pad.y, tw + pad.x * 2, sz * 1.2 + pad.y * 2);
+  ctx.fillStyle = '#111';
+  ctx.fillText(text, CW / 2, y);
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let scanY = y - sz; scanY < y + sz; scanY += 4 * SCALE) {
+    ctx.fillRect(CW / 2 - tw / 2 - pad.x, scanY, tw + pad.x * 2, 2 * SCALE);
+  }
+  ctx.restore();
 }
 
 /* ── CapCut / TikTok 스타일 텍스트 렌더러 ───────────────── */
