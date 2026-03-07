@@ -5,12 +5,17 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v17';
+const APP_VERSION  = 'v18';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
-const _INJECTED_KEY = '__GEMINI_KEY__';
+const _INJECTED_KEY          = '__GEMINI_KEY__';
 let geminiKey = _INJECTED_KEY.includes('__') ? (localStorage.getItem('moovlog_gemini_key') || '') : _INJECTED_KEY;
+
+const _INJECTED_TYPECAST_KEY = '__TYPECAST_API_KEY__';
+const _TYPECAST_KEY_RUNTIME  = _INJECTED_TYPECAST_KEY.includes('__')
+  ? (localStorage.getItem('moovlog_typecast_key') || '')
+  : _INJECTED_TYPECAST_KEY;
 function getApiUrl(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 }
@@ -367,6 +372,8 @@ async function startMake() {
   D.makeBtn.disabled = true;
   if (D.snsWrap) D.snsWrap.hidden = true;
   updateStepUI(2); showLoad(); ensureAudio();
+  // 원본 파일을 Firebase Storage에 백그라운드 업로드 (블로킹 없음)
+  uploadOriginalsInBackground();
   try {
     setStep(1, '이미지 분석 + 스타일 자동 선택 중...', 'AI가 최적의 템플릿과 훅을 찾고 있습니다');
     const analysis = await visionAnalysis(name);
@@ -653,6 +660,9 @@ async function extractVideoFramesB64(file, count = 4) {
     };
   });
 }
+/* ════════════════════════════════════════════════════════════
+   SNS 태그 채우기
+   ════════════════════════════════════════════════════════════ */
 function buildSNSTags(script) {
   if (!D.snsWrap) return;
   const fill = (id, t) => { const el = document.getElementById(id); if (el) el.textContent = t || ''; };
@@ -1139,8 +1149,8 @@ function renderFrameAtTime(t) {
     if (t < elapsed + dur || i === sc.length - 1) {
       const prog        = Math.max(0, Math.min((t - elapsed) / dur, 1));
       const _ab = S.audioBuffers?.[i]; const _ad = _ab?.duration ?? null;
-      const _st = _ad ? Math.min(_ad / dur, 0.95) : 0.70;
-      const subAnimProg = Math.min(prog / _st, 1);
+      const _stTarget = _ad ? Math.min(_ad / dur, 0.95) : 0.70;
+      const subAnimProg = Math.min(prog / _stTarget, 1);
       const prevSubAnim = S.subAnimProg;
       S.subAnimProg = subAnimProg;
       const media       = getMedia(sc[i]);
@@ -1988,7 +1998,7 @@ async function doExportWebCodecs() {
   const nFrames  = Math.ceil(totalDur * FPS);
   const hasAudio = S.audioBuffers.some(b => b !== null);
 
-  // 0. 코덱 자동 감지: MP4(H264 High) 우선 → WebM(VP9/VP8) 폴백
+  // 0. 코덱 자동 감지: MP4(H.264 High) 우선 → WebM(VP9/VP8) 폴백
   const VIDEO_BITRATE = 16_000_000; // 16Mbps — 인스타 Reels 권장값
   const AUDIO_BITRATE = 192_000;    // 192kbps
   D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 코덱 확인 중...';
@@ -2093,10 +2103,13 @@ async function doExportWebCodecs() {
   const { buffer } = muxTarget;
   if (!buffer || buffer.byteLength < 1000) throw new Error('영상 데이터 생성 실패');
 
-  downloadBlob(new Blob([buffer], { type: fmt.mime }), `moovlog_${sanitizeName()}.${fmt.ext}`);
+  const _expBlob = new Blob([buffer], { type: fmt.mime });
+  const _expExt  = fmt.ext;
+  downloadBlob(_expBlob, `moovlog_${sanitizeName()}.${_expExt}`);
   D.dlBtn.disabled  = false;
   D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 다시 저장하기';
-  toast(pcm ? `✓ AI 음성 포함 ${fmt.ext.toUpperCase()} 영상 저장 완료!` : `✓ ${fmt.ext.toUpperCase()} 영상 저장 완료!`, 'ok');
+  toast(pcm ? `✓ AI 음성 포함 ${_expExt.toUpperCase()} 영상 저장 완료!` : `✓ ${_expExt.toUpperCase()} 영상 저장 완료!`, 'ok');
+  uploadGeneratedVideo(_expBlob, _expExt).catch(() => {});
 }
 
 /* ── MediaRecorder 폴백 ──────────────────────────────────── */
@@ -2130,6 +2143,7 @@ async function doExportMediaRecorder() {
     D.dlBtn.disabled  = false;
     D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 다시 저장하기';
     toast(hasAudio ? '✓ 음성 포함 영상 저장 완료!' : '✓ 영상 저장 완료!', 'ok');
+    uploadGeneratedVideo(blob, recExt).catch(() => {});
   };
 
   if (D.recStatus) { D.recStatus.hidden = false; }
@@ -2205,6 +2219,60 @@ function encodeWav(f32, sr) {
     v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
   }
   return buf;
+}
+
+/* ════════════════════════════════════════════════════════════
+   Firebase Storage / Firestore 업로드 유틸
+   window.FB_* 는 index.html <script type="module">에서 주입
+   ════════════════════════════════════════════════════════════ */
+async function _fbUpload(blob, storagePath) {
+  if (!window.FB_storage || !window.FB_ref || !window.FB_upload || !window.FB_dlUrl) return null;
+  try {
+    const storRef = window.FB_ref(window.FB_storage, storagePath);
+    const snap    = await window.FB_upload(storRef, blob);
+    const url     = await window.FB_dlUrl(snap.ref);
+    console.log('[Firebase ✓]', storagePath);
+    return url;
+  } catch (e) {
+    console.warn('[Firebase] 업로드 실패:', storagePath, e.message);
+    return null;
+  }
+}
+
+async function _fbLog(videoUrl, ext) {
+  if (!window.FB_db || !window.FB_col || !window.FB_addDoc || !window.FB_ts) return;
+  try {
+    await window.FB_addDoc(window.FB_col(window.FB_db, 'generations'), {
+      restaurant:  D.restName?.value || '',
+      template:    selectedTemplate || 'auto',
+      videoUrl,
+      ext,
+      fileCount:   S.files?.length || 0,
+      sceneCount:  S.script?.scenes?.length || 0,
+      version:     APP_VERSION,
+      createdAt:   window.FB_ts(),
+    });
+  } catch (e) {
+    console.warn('[Firebase] Firestore 기록 실패:', e.message);
+  }
+}
+
+// 생성된 영상 Blob → Storage 업로드 + Firestore 로그
+async function uploadGeneratedVideo(blob, ext) {
+  const session = `${Date.now()}_${(D.restName?.value || 'noname').replace(/\s+/g, '_')}`;
+  const url = await _fbUpload(blob, `generated/${session}/video.${ext}`);
+  if (url) await _fbLog(url, ext);
+  return url;
+}
+
+// 원본 파일(이미지/영상) → Storage 업로드 (백그라운드)
+function uploadOriginalsInBackground() {
+  if (!window.FB_storage) return;
+  const session = `${Date.now()}_${(D.restName?.value || 'noname').replace(/\s+/g, '_')}`;
+  S.files.forEach((m, i) => {
+    const ext  = (m.file.name.split('.').pop() || 'bin').toLowerCase();
+    _fbUpload(m.file, `originals/${session}/${i}_${m.file.name}`);
+  });
 }
 
 /* ── helpers ─────────────────────────────────────────────── */
