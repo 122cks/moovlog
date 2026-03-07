@@ -60,6 +60,7 @@ html, body {
   line-height: 1.1;
 }
 .logo-sub { font-size: 10px; color: var(--t3); font-family: 'Inter', sans-serif; letter-spacing: 1px; }
+.header-version { margin-left: auto; font-size: 10px; color: var(--t3); font-family: 'Inter', sans-serif; letter-spacing: 0.5px; opacity: 0.6; }
 
 /* ── Main ── */
 .app-main {

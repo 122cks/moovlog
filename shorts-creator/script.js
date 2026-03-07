@@ -1,15 +1,12 @@
 'use strict';
 /* ============================================================
-   무브먼트 Shorts Creator v6 — script.js
-   [Export]  WebCodecs 비실시간 인코딩 (녹화 없이 즉시 저장)
-             OfflineAudioContext → 음성 100% 포함 보장
-             MediaRecorder 자동 폴백 (WebCodecs 미지원 브라우저)
-   [Voice]   Gemini TTS Charon → Fenrir → Orus 남성 폴백
-             Web Speech 폴백: pitch=0.1 (최저음)
-   [Subtitle] 4종 Instagram 애니메이션 (slide-up / scale-pop / bounce)
-   [AI]      Gemini 2.5 Pro → Flash 폴백
-             Hook→Context→Hero→Detail→CTA 내러티브 구조
+   무브먼트 Shorts Creator v7 — script.js
+   Build: 2026-03-07T00:00:00+09:00
    ============================================================ */
+
+/* ── 버전 정보 ───────────────────────────────── */
+const APP_VERSION  = 'v8';
+const APP_BUILD_TS = '2026-06-14 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
 const _INJECTED_KEY = '__GEMINI_KEY__';
@@ -123,6 +120,8 @@ document.addEventListener('DOMContentLoaded', () => {
   D.reBtn.addEventListener('click',     goBack);
   if (D.reBtnBottom) D.reBtnBottom.addEventListener('click', goBack);
   updateStepUI(1);
+  const verEl = document.getElementById('appVersion');
+  if (verEl) verEl.textContent = `${APP_VERSION} · ${APP_BUILD_TS}`;
   document.querySelectorAll('.sns-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const el = document.getElementById(btn.dataset.target);
@@ -347,12 +346,12 @@ ${imgSummary || '분석 없음'}
 
 [★ 플랫폼별 최적화 SNS 태그]
 - naver_clip_tags: 300자 이내 #태그 (지역명맛집 + 음식종류 + 가격대 + 감성키워드 + 채널명)
-  형식: #${restaurantName} #인천맛집 #맛집추천 #음식스타그램 #MOOVLOG ...
+  형식: #협찬 #${restaurantName} #인천맛집 #맛집추천 #음식스타그램 #MOOVLOG ...
 - youtube_shorts_tags: 유튜브 쇼츠 SEO 최적화 태그 100자 이내
   형식: #맛집 #Shorts #먹방 #한국맛집 #${restaurantName}
 - instagram_caption: 인스타 릴스 최적화
-  형식: 감성 2줄(반말·이모지) + 개행 + #태그 30개(지역맛집계 + 음식계 + 라이프스타일 + 영어태그)
-  영어 태그 필수 포함: #foodporn #koreanfood #instafood #reels #foodie
+  형식: 감성 본문 4~6줄(반말·이모지·개행 활용, 음식 맛·분위기·추천포인트 풍부하게) + 개행 + #태그 정확히 5개
+  태그 5개 예시: #${restaurantName}맛집 #지역맛집 #음식스타그램 #reels #koreanfood
 - tiktok_tags: 틱톡 바이럴 5개 태그 (#먹방 형태)
 
 JSON만 반환 (백틱·설명 없이 순수 JSON):
@@ -743,24 +742,16 @@ function drawMedia(media, effect, prog) {
 /* ── 비네트 ──────────────────────────────────────────────── */
 function drawVignetteGrad() {
   const top = ctx.createLinearGradient(0, 0, 0, CH * 0.30);
-  top.addColorStop(0, 'rgba(0,0,0,0.62)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  top.addColorStop(0, 'rgba(0,0,0,0.10)'); top.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = top; ctx.fillRect(0, 0, CW, CH * 0.30);
   const bot = ctx.createLinearGradient(0, CH * 0.36, 0, CH);
-  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, 'rgba(0,0,0,0.72)'); bot.addColorStop(1, 'rgba(0,0,0,0.94)');
+  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, 'rgba(0,0,0,0.20)'); bot.addColorStop(1, 'rgba(0,0,0,0.35)');
   ctx.fillStyle = bot; ctx.fillRect(0, CH * 0.36, CW, CH * 0.64);
 }
 
 /* ── [강화1] 씬 무드 컬러 오버레이 ──────────────────────── */
 function drawMoodOverlay(style, alpha) {
-  if (!alpha) return;
-  const colors = {
-    hook:   `rgba(255, 30, 80, ${0.07 * alpha})`,
-    hero:   `rgba(255, 120, 0, ${0.06 * alpha})`,
-    detail: `rgba(60, 160, 255, ${0.045 * alpha})`,
-    cta:    `rgba(160, 50, 255, ${0.07 * alpha})`,
-  };
-  ctx.fillStyle = colors[style] || 'transparent';
-  ctx.fillRect(0, 0, CW, CH);
+  return; // 명암 정도 유지를 위해 무효화
 }
 
 /* ── [강화2] 시네마틱 레터박스 ───────────────────────────── */
@@ -1010,27 +1001,32 @@ async function doExportWebCodecs() {
   const nFrames  = Math.ceil(totalDur * FPS);
   const hasAudio = S.audioBuffers.some(b => b !== null);
 
-  // 0. 코덱 자동 감지: MP4(H264) 우선 → WebM(VP9/VP8) 폴백
+  // 0. 코덱 자동 감지: MP4(H264 High) 우선 → WebM(VP9/VP8) 폴백
+  const VIDEO_BITRATE = 16_000_000; // 16Mbps — 인스타 Reels 권장값
+  const AUDIO_BITRATE = 192_000;    // 192kbps
   D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 코덱 확인 중...';
   let fmt = null;
-  // MP4 (H.264) — 모든 기기·SNS 호환
+  // MP4 (H.264 High) — 모든 기기·SNS 호환
   if (typeof window.Mp4Muxer !== 'undefined') {
-    for (const vc of [{ enc: 'avc1.42001f', mux: 'avc' }, { enc: 'avc1.4d001f', mux: 'avc' }]) {
+    for (const vc of [
+      { enc: 'avc1.640033', mux: 'avc' },  // H.264 High L5.1 (1080p60)
+      { enc: 'avc1.4d0033', mux: 'avc' },  // H.264 Main L5.1
+      { enc: 'avc1.42001f', mux: 'avc' },  // H.264 Baseline (fallback)
+    ]) {
       try {
-        const s = await VideoEncoder.isConfigSupported({ codec: vc.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
+        const s = await VideoEncoder.isConfigSupported({ codec: vc.enc, width: CW, height: CH, bitrate: VIDEO_BITRATE, framerate: FPS });
         if (s.supported) { fmt = { vc, MuxLib: window.Mp4Muxer, ext: 'mp4', mime: 'video/mp4', ac: { enc: 'mp4a.40.2', mux: 'aac' } }; break; }
       } catch {}
     }
     if (fmt) {
-      // AAC 미지원 시 MP4+Opus 불일치 방지 → WebM 폴백으로 전환
-      try { const as = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 1, bitrate: 128000 }); if (!as.supported) fmt = null; } catch { fmt = null; }
+      try { const as = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 1, bitrate: AUDIO_BITRATE }); if (!as.supported) fmt = null; } catch { fmt = null; }
     }
   }
-  // WebM (VP9/VP8) 폴백
+  // WebM (VP9) 폴백
   if (!fmt && typeof window.WebmMuxer !== 'undefined') {
     for (const vc of [{ enc: 'vp09.00.41.08', mux: 'V_VP9' }, { enc: 'vp09.00.31.08', mux: 'V_VP9' }, { enc: 'vp08.00.41.08', mux: 'V_VP8' }]) {
       try {
-        const s = await VideoEncoder.isConfigSupported({ codec: vc.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
+        const s = await VideoEncoder.isConfigSupported({ codec: vc.enc, width: CW, height: CH, bitrate: VIDEO_BITRATE, framerate: FPS });
         if (s.supported) { fmt = { vc, MuxLib: window.WebmMuxer, ext: 'webm', mime: 'video/webm', ac: { enc: 'opus', mux: 'A_OPUS' } }; break; }
       } catch {}
     }
@@ -1061,7 +1057,8 @@ async function doExportWebCodecs() {
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
     error:  err => { throw err; },
   });
-  videoEnc.configure({ codec: fmt.vc.enc, width: CW, height: CH, bitrate: 8_000_000, framerate: FPS });
+  videoEnc.configure({ codec: fmt.vc.enc, width: CW, height: CH, bitrate: VIDEO_BITRATE, framerate: FPS,
+    latencyMode: 'quality', bitrateMode: 'constant' });
 
   // 4. 프레임별 렌더 + 인코딩
   for (let f = 0; f < nFrames; f++) {
@@ -1087,7 +1084,7 @@ async function doExportWebCodecs() {
       output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
       error:  err => { throw err; },
     });
-    audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 1, bitrate: 128_000 });
+    audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 1, bitrate: 192_000 });
     const CHUNK = 1920; // 40ms @48kHz
     for (let i = 0; i < pcm.length; i += CHUNK) {
       const slice = new Float32Array(pcm.subarray(i, Math.min(i + CHUNK, pcm.length)));
@@ -1135,7 +1132,7 @@ async function doExportMediaRecorder() {
     ? new MediaStream([...cs.getVideoTracks(), ...audioMixDest.stream.getAudioTracks()])
     : cs;
 
-  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 16_000_000 });
   const chunks   = [];
   recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
   recorder.onstop = () => {
