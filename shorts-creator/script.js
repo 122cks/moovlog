@@ -5,17 +5,31 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v20';
+const APP_VERSION  = 'v21';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
 const _INJECTED_KEY          = '__GEMINI_KEY__';
 let geminiKey = _INJECTED_KEY.includes('__') ? (localStorage.getItem('moovlog_gemini_key') || '') : _INJECTED_KEY;
 
-const _INJECTED_TYPECAST_KEY = '__TYPECAST_API_KEY__';
-const _TYPECAST_KEY_RUNTIME  = _INJECTED_TYPECAST_KEY.includes('__')
-  ? (localStorage.getItem('moovlog_typecast_key') || '')
-  : _INJECTED_TYPECAST_KEY;
+// Typecast API 키 3개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / TYPECAST_API_KEY_2 / TYPECAST_API_KEY_3
+const _TC_K1 = '__TYPECAST_API_KEY__';
+const _TC_K2 = '__TYPECAST_API_KEY_2__';
+const _TC_K3 = '__TYPECAST_API_KEY_3__';
+const _TYPECAST_KEYS = [
+  _TC_K1.includes('__') ? (localStorage.getItem('moovlog_typecast_key')   || '') : _TC_K1,
+  _TC_K2.includes('__') ? (localStorage.getItem('moovlog_typecast_key2')  || '') : _TC_K2,
+  _TC_K3.includes('__') ? (localStorage.getItem('moovlog_typecast_key3')  || '') : _TC_K3,
+].filter(Boolean);  // 빈 키 제외
+let _tcKeyIdx = 0;  // 라운드로빈 인덱스
+function getTypeCastKey() {
+  if (!_TYPECAST_KEYS.length) return '';
+  return _TYPECAST_KEYS[_tcKeyIdx % _TYPECAST_KEYS.length];
+}
+function rotateTypeCastKey() {
+  _tcKeyIdx = (_tcKeyIdx + 1) % Math.max(_TYPECAST_KEYS.length, 1);
+  console.log(`[Typecast] 키 로테이션 → #${_tcKeyIdx + 1} (${_TYPECAST_KEYS.length}개 중)`);
+}
 function getApiUrl(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 }
@@ -691,10 +705,7 @@ function buildSNSTags(script) {
                    .slice(0) 복사, concurrency 병렬, 429 보호
    ════════════════════════════════════════════════════════════ */
 
-// Typecast API 설정 (https://typecast.ai → 계정 설정 → API 키 발급)
-// voice_id: Typecast 콘솔 → 목소리 목록에서 원하는 캐릭터 ID 복사
-// 한국어 목소리 목록: https://api.typecast.ai/v1/voices?model=ssfm-v30
-const TYPECAST_API_KEY  = localStorage.getItem('moovlog_typecast_key') || '';
+// Typecast API 설정
 const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_672c5f5ce59fac2a48faeaee';
 
 const TTS_CONFIG = {
@@ -729,7 +740,7 @@ function preprocessNarration(text) {
 async function generateAllTTS(scenes) {
   const buffers     = new Array(scenes.length).fill(null);
   let successCount  = 0, failCount = 0, fatalStop = false;
-  const useTypecast = !!TYPECAST_API_KEY;
+  const useTypecast = _TYPECAST_KEYS.length > 0;
 
   const tasks = scenes.map((sc, i) => async () => {
     if (fatalStop || !sc.narration) return;
@@ -742,9 +753,18 @@ async function generateAllTTS(scenes) {
       successCount++;
     } catch (e) {
       const msg = e.message || '';
-      if (msg.startsWith('TYPECAST_401') || msg.startsWith('TYPECAST_403')) {
-        // Typecast 인증 실패 → 해당 씬만 Gemini로 재시도
-        toast('Typecast 인증 오류 — Gemini AI로 전환합니다', 'inf');
+      if (msg.startsWith('TYPECAST_401') || msg.startsWith('TYPECAST_403') || msg.startsWith('TYPECAST_429')) {
+        // 키 로테이션 후 재시도 (남은 키 있을 때)
+        rotateTypeCastKey();
+        if (_TYPECAST_KEYS.length > 1) {
+          try {
+            buffers[i] = await fetchTypeCastTTS(text);
+            successCount++;
+            return;
+          } catch {}
+        }
+        // 모든 Typecast 키 소진 → Gemini 폴백
+        toast(`Typecast 키 ${_TYPECAST_KEYS.length}개 모두 오류 — Gemini로 전환합니다`, 'inf');
         try {
           buffers[i] = await fetchTTSWithRetry(text, i);
           successCount++;
@@ -779,16 +799,21 @@ async function generateAllTTS(scenes) {
   return buffers;
 }
 
-/* ── Typecast TTS API 호출 ───────────────────────────────── */
+/* ── Typecast TTS API 호출 (키 로테이션 지원) ───────────── */
 async function fetchTypeCastTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
   if (!audioCtx) ensureAudio();
+  const apiKey = getTypeCastKey();
+  if (!apiKey) throw new Error('TYPECAST_401: 사용 가능한 API 키 없음');
+
+  // 씬마다 다음 키로 라운드로빈 (키 3개 골고루 소비)
+  rotateTypeCastKey();
 
   const res = await fetch('https://api.typecast.ai/v1/text-to-speech', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-KEY': TYPECAST_API_KEY,
+      'X-API-KEY': apiKey,
     },
     body: JSON.stringify({
       voice_id:  TYPECAST_VOICE_ID,
@@ -799,14 +824,17 @@ async function fetchTypeCastTTS(text) {
       output: {
         volume:       100,
         audio_pitch:  0,
-        audio_tempo:  1.05,  // 릴스 텐션: 5% 빠르게
+        audio_tempo:  1.05,
         audio_format: 'wav',
       },
     }),
   });
 
   if (res.status === 401 || res.status === 403) {
-    throw new Error(`TYPECAST_${res.status}: 인증 오류 — API 키를 확인하세요`);
+    throw new Error(`TYPECAST_${res.status}: 인증 오류 — API 키 #${_tcKeyIdx}`);
+  }
+  if (res.status === 429) {
+    throw new Error(`TYPECAST_429: Rate Limit 초과 — 키 #${_tcKeyIdx}`);
   }
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
@@ -816,7 +844,6 @@ async function fetchTypeCastTTS(text) {
   const ab = await res.arrayBuffer();
   if (ab.byteLength < 100) throw new Error('Typecast 오디오 데이터 없음');
 
-  // ※ WAV 바이너리 직접 decodeAudioData (.slice(0) — 공유 참조 방지)
   const buf = await audioCtx.decodeAudioData(ab.slice(0));
   if (!buf || buf.duration < 0.05) throw new Error('Typecast 빈 오디오');
 
