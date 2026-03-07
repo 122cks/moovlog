@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v19';
+const APP_VERSION  = 'v20';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -260,6 +260,11 @@ document.addEventListener('DOMContentLoaded', () => {
   if (D.dlAudioBtn) D.dlAudioBtn.addEventListener('click', doExportAudio);
   D.reBtn.addEventListener('click',     goBack);
   if (D.reBtnBottom) D.reBtnBottom.addEventListener('click', goBack);
+  // 반복 재생 오버레이 버튼
+  const _repeatYes = document.getElementById('repeatYesBtn');
+  const _repeatNo  = document.getElementById('repeatNoBtn');
+  if (_repeatYes) _repeatYes.addEventListener('click', () => { hideRepeatPrompt(); doReplay(); });
+  if (_repeatNo)  _repeatNo.addEventListener('click',  () => { hideRepeatPrompt(); });
   // 좋아요 버튼 애니메이션
   const likeBtn = document.querySelector('.rsb-like');
   if (likeBtn) likeBtn.addEventListener('click', function() {
@@ -1042,7 +1047,7 @@ async function preload() {
 }
 
 /* ── Player ──────────────────────────────────────────────── */
-function setupPlayer() { S.playing = false; S.scene = 0; S.startTs = null; S.subAnimProg = 0; D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); }
+function setupPlayer() { S.playing = false; S.scene = 0; S.startTs = null; S.subAnimProg = 0; D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); hideRepeatPrompt(); }
 function togglePlay()  { S.playing ? pausePlay() : startPlay(); }
 async function startPlay() {
   // [Bug Fix] AudioContext suspended 상태에서 resume을 await해야 모바일/iOS에서 오디오 재생 보장
@@ -1060,6 +1065,17 @@ function toggleMute() {
   if (S.muted) stopAudio(); else if (S.playing) playSceneAudio(S.scene);
 }
 function setPlayIcon(pl) { D.playIco.className = pl ? 'fas fa-pause' : 'fas fa-play'; }
+
+/* 재생 종료 → "계속 반복하시겠습니까?" 오버레이 표시 */
+function showRepeatPrompt() {
+  const overlay = document.getElementById('repeatOverlay');
+  if (!overlay) { doReplay(); return; }
+  overlay.hidden = false;
+}
+function hideRepeatPrompt() {
+  const overlay = document.getElementById('repeatOverlay');
+  if (overlay) overlay.hidden = true;
+}
 
 /* ── Tick loop ───────────────────────────────────────────── */
 function tick() {
@@ -1086,7 +1102,9 @@ function tick() {
         S.scene++; S.startTs = now; S.subAnimProg = 0; highlightScene(S.scene);
         if (!S.muted) playSceneAudio(S.scene);
       } else {
-        D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false); return;
+        D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
+        showRepeatPrompt();
+        return;
       }
     }
     S.raf = requestAnimationFrame(run);

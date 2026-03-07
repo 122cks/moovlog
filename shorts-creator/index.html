@@ -209,6 +209,20 @@
             <audio id="ttsPlayer" preload="auto" hidden></audio>
             <div id="captionLayer" class="caption-layer"></div>
             <div class="scene-dots" id="sceneDots"></div>
+            <!-- 재생 종료 한번 더 하시겠습니까? 오버레이 -->
+            <div id="repeatOverlay" class="repeat-overlay" hidden>
+              <div class="repeat-box">
+                <p class="repeat-question">계속 반복하시겠습니까?</p>
+                <div class="repeat-btns">
+                  <button class="repeat-btn repeat-yes" id="repeatYesBtn">
+                    <i class="fas fa-redo"></i> 네, 다시 보기
+                  </button>
+                  <button class="repeat-btn repeat-no" id="repeatNoBtn">
+                    <i class="fas fa-times"></i> 아니요
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="phone-bar"></div>
         </div>
