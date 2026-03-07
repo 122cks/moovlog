@@ -854,3 +854,39 @@ html, body {
   .vcb-play { width: 52px; height: 52px; font-size: 18px; }
   .dl-btn { font-size: 14px; padding: 14px 16px; }
 }
+
+/* ── Template Picker ─────────────────────────────────── */
+.tpl-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0 10px;
+  justify-content: center;
+}
+.tpl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1.5px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.65);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.tpl-chip:hover {
+  background: rgba(255,255,255,0.14);
+  color: #fff;
+  border-color: rgba(255,255,255,0.30);
+}
+.tpl-chip.active {
+  background: linear-gradient(135deg, #ff6b9d 0%, #ff8c42 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(255,107,157,0.40);
+}

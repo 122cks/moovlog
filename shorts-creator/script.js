@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v10';
+const APP_VERSION  = 'v11';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -90,6 +90,69 @@ const HOOK_HINTS = {
   pov:       'POV형 훅: "너가 여기 왔을 때", "맛집 찾았을 때 기분", "혼밥 성공 POV"',
 };
 
+/* ── Template Visual Styles (렌더러 주입용) ─────────────── */
+const TEMPLATE_STYLES = {
+  cinematic: {
+    overlay:    { top: 'rgba(0,0,0,0.15)',       bottom: 'rgba(0,0,0,0.55)' },
+    subtitle:   { color: '#E8E0D0', hlColor: '#C8A96E', fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  true,
+    badge:      { bg: 'rgba(0,0,0,0.6)',          dot: '#C8A96E' },
+  },
+  viral: {
+    overlay:    { top: 'rgba(0,0,0,0.05)',        bottom: 'rgba(0,0,0,0.45)' },
+    subtitle:   { color: '#FFFFFF',   hlColor: '#FF2D55',  fontSize: 1.08 },
+    transition: 'wipe',
+    letterbox:  false,
+    badge:      { bg: 'rgba(255,45,85,0.75)',     dot: '#FFFFFF' },
+  },
+  aesthetic: {
+    overlay:    { top: 'rgba(255,220,180,0.08)',  bottom: 'rgba(0,0,0,0.40)' },
+    subtitle:   { color: '#FFF5E4', hlColor: '#FFB347',  fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.45)',         dot: '#ff6b9d' },
+  },
+  mukbang: {
+    overlay:    { top: 'rgba(0,0,0,0.10)',        bottom: 'rgba(0,0,0,0.50)' },
+    subtitle:   { color: '#FFFFFF',   hlColor: '#FFE033',  fontSize: 1.05 },
+    transition: 'zoom',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.5)',          dot: '#FF6B35' },
+  },
+  vlog: {
+    overlay:    { top: 'rgba(0,0,0,0.08)',        bottom: 'rgba(0,0,0,0.38)' },
+    subtitle:   { color: '#FFFFFF',   hlColor: '#7FDBFF',  fontSize: 0.96 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.45)',         dot: '#7FDBFF' },
+  },
+  review: {
+    overlay:    { top: 'rgba(0,0,0,0.12)',        bottom: 'rgba(0,0,0,0.50)' },
+    subtitle:   { color: '#FFFFFF',   hlColor: '#FFD700',  fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.5)',          dot: '#FFD700' },
+  },
+  story: {
+    overlay:    { top: 'rgba(0,0,0,0.10)',        bottom: 'rgba(0,0,0,0.45)' },
+    subtitle:   { color: '#FFF9F0', hlColor: '#FF9F7F',  fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.45)',         dot: '#FF9F7F' },
+  },
+  info: {
+    overlay:    { top: 'rgba(0,0,0,0.20)',        bottom: 'rgba(0,0,0,0.55)' },
+    subtitle:   { color: '#FFFFFF',   hlColor: '#00E5FF',  fontSize: 0.95 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,50,0.6)',         dot: '#00E5FF' },
+  },
+};
+function getTplStyle() {
+  return TEMPLATE_STYLES[selectedTemplate] || TEMPLATE_STYLES.aesthetic;
+}
+
 /* ── 숏폼 훅 풀 (틱톡 스타일 첫 씬 참고) ───────────────── */
 const HOOK_POOL = [
   '이거 왜 유명한지 알았다', '여기 모르면 손해', '이거 진짜 미쳤다',
@@ -164,7 +227,30 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     setTimeout(() => speechSynthesis.getVoices(), 500);
   }
+  renderTemplatePicker();
 });
+
+/* ── Template Picker UI ─────────────────────────────────── */
+function renderTemplatePicker() {
+  const container = document.getElementById('tplPicker');
+  if (!container) return;
+  container.innerHTML = '';
+  Object.entries(TEMPLATE_NAMES).forEach(([key, label]) => {
+    const btn = document.createElement('button');
+    btn.className = 'tpl-chip' + (key === selectedTemplate ? ' active' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+      selectedTemplate = key;
+      container.querySelectorAll('.tpl-chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      // 미리보기 중이면 현재 씬 다시 렌더
+      if (S.script && S.script.scenes.length) {
+        renderFrame(S.scene, S.subAnimProg > 0 ? 1 : 0);
+      }
+    });
+    container.appendChild(btn);
+  });
+}
 
 /* ── File Upload ─────────────────────────────────────────── */
 function addFiles(files) {
@@ -731,6 +817,7 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
 function drawTransition(fi, t) {
   const e = ease(t);
   const nextStyle = S.script.scenes[fi + 1]?.subtitle_style || 'detail';
+  const tplMode   = getTplStyle().transition || 'fade';
   if (nextStyle === 'hero') {
     renderFrame(fi, 1);
     ctx.save();
@@ -740,20 +827,25 @@ function drawTransition(fi, t) {
     ctx.translate(-CW / 2, -CH / 2);
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
-  } else if (nextStyle === 'hook') {
+  } else if (nextStyle === 'hook' || tplMode === 'wipe') {
+    // wipe (세로 슬라이드)
     renderFrame(fi, 1);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, CH * (1 - e), CW, CH * e); ctx.clip();
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
-  } else if (nextStyle === 'cta') {
+  } else if (nextStyle === 'cta' || tplMode === 'zoom') {
+    // zoom crossfade
     renderFrame(fi, 1);
     ctx.save();
     ctx.globalAlpha = e;
+    ctx.translate(CW / 2, CH / 2);
+    ctx.scale(1.0 + e * 0.05, 1.0 + e * 0.05);
+    ctx.translate(-CW / 2, -CH / 2);
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
   } else {
-    // 기본 crossfade — fi 위에 fi+1을 점점 그림 (skipClear=true)
+    // 기본 crossfade (fade)
     renderFrame(fi, 1);
     ctx.save(); ctx.globalAlpha = e; renderFrame(fi + 1, 0, 0, true); ctx.restore();
   }
@@ -820,11 +912,14 @@ function drawMedia(media, effect, prog) {
 
 /* ── 비네트 ──────────────────────────────────────────────── */
 function drawVignetteGrad() {
+  const tpl = getTplStyle();
+  const topColor = tpl.overlay?.top    || 'rgba(0,0,0,0.10)';
+  const botColor = tpl.overlay?.bottom || 'rgba(0,0,0,0.35)';
   const top = ctx.createLinearGradient(0, 0, 0, CH * 0.30);
-  top.addColorStop(0, 'rgba(0,0,0,0.10)'); top.addColorStop(1, 'rgba(0,0,0,0)');
+  top.addColorStop(0, topColor); top.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = top; ctx.fillRect(0, 0, CW, CH * 0.30);
   const bot = ctx.createLinearGradient(0, CH * 0.36, 0, CH);
-  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, 'rgba(0,0,0,0.20)'); bot.addColorStop(1, 'rgba(0,0,0,0.35)');
+  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, 'rgba(0,0,0,0.20)'); bot.addColorStop(1, botColor);
   ctx.fillStyle = bot; ctx.fillRect(0, CH * 0.36, CW, CH * 0.64);
 }
 
@@ -903,7 +998,10 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   const words = text.split(/\s+/).filter(Boolean);
   if (!words.length) return;
   ctx.save();
-  let sz = maxSz;
+  const tplSub  = getTplStyle().subtitle;
+  const fScale  = tplSub?.fontSize || 1.0;
+  const hlColor = tplSub?.hlColor  || '#FFE033';
+  let sz = maxSz * fScale;
   ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   let wM = words.map(w => ctx.measureText(w).width);
@@ -933,9 +1031,9 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     ctx.globalAlpha = alpha;
     ctx.translate(wx, cy); ctx.scale(scl, scl);
     if (isHL) {
-      // 노란 하이라이트 박스 + 검정 텍스트
+      // 하이라이트 박스 (템플릿 hlColor) + 검정 텍스트
       const pad = 9;
-      ctx.fillStyle = '#FFE033';
+      ctx.fillStyle = hlColor;
       roundRect(ctx, -wM[i] / 2 - pad, -sz * 0.58, wM[i] + pad * 2, sz * 1.16, 7); ctx.fill();
       ctx.lineWidth = sw * 0.35; ctx.lineJoin = 'round';
       ctx.strokeStyle = 'rgba(0,0,0,0.35)';
@@ -996,14 +1094,17 @@ function drawSubCTA(text, ap) {
   const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * 14 : 0;
   const y      = CH - 128 + (1 - eased) * 28 - bounce;
   drawSubtitleBg(y, 80, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, 80, '#FFE033', 0, ap);
+  capWords(text, CW / 2, y, 80, getTplStyle().subtitle?.hlColor || '#FFE033', 0, ap);
 }
 
 /* ── MOOVLOG 배지 ────────────────────────────────────────── */
 function drawTopBadge() {
+  const badge = getTplStyle().badge;
+  const bgColor  = badge?.bg  || 'rgba(0,0,0,0.50)';
+  const dotColor = badge?.dot || '#ff6b9d';
   ctx.save();
-  ctx.fillStyle = 'rgba(0,0,0,0.50)'; roundRect(ctx, 20, 42, 225, 54, 27); ctx.fill();
-  ctx.fillStyle = '#ff6b9d'; ctx.shadowColor = '#ff6b9d'; ctx.shadowBlur = 10;
+  ctx.fillStyle = bgColor; roundRect(ctx, 20, 42, 225, 54, 27); ctx.fill();
+  ctx.fillStyle = dotColor; ctx.shadowColor = dotColor; ctx.shadowBlur = 10;
   ctx.beginPath(); ctx.arc(50, 69, 7, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
   ctx.font = 'bold 27px "Inter", sans-serif';
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
