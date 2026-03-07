@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v13';
+const APP_VERSION  = 'v9';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -30,9 +30,8 @@ async function geminiWithFallback(body) {
 }
 
 /* ── Canvas ──────────────────────────────────────────────── */
-const CW = 1080, CH = 1920;       // 유튜브 쇼츠·틱톡·릴스 권장 해상도
-const SCALE = CW / 720;            // 1.5 — 모든 px 좌표 기준 스케일
-const AUTO_EXPORT_ON_CREATE = false;
+const CW = 720, CH = 1280;
+const AUTO_EXPORT_ON_CREATE = true;
 const g  = id => document.getElementById(id);
 const D  = {
   dropArea: g('dropArea'), fileInput: g('fileInput'), thumbGrid: g('thumbGrid'),
@@ -52,8 +51,6 @@ const D  = {
   sceneDots: g('sceneDots'),
   snsWrap: g('snsWrap'), tagNaver: g('tagNaver'), tagYoutube: g('tagYoutube'),
   tagInsta: g('tagInsta'), tagTiktok: g('tagTiktok'),
-  vProgText: g('vProgText'), bgmBadge: g('bgmBadge'), bgmBadgeText: g('bgmBadgeText'),
-  selectedTplInput: g('selectedTplInput'),
 };
 const ctx = D.canvas.getContext('2d');
 D.canvas.width = CW; D.canvas.height = CH;
@@ -84,6 +81,82 @@ const TEMPLATE_NAMES = {
   mukbang: '🍜 먹방', vlog: '📹 브이로그', review: '⭐ 리뷰',
   story: '📖 스토리', info: '📊 정보',
 };
+
+/* ══════════════════════════════════════════════════════════
+   TEMPLATE_STYLES — 템플릿별 Canvas 시각 스타일 정의
+   각 키는 renderFrame / drawSubtitle / drawTransition에서 참조
+   ══════════════════════════════════════════════════════════ */
+const TEMPLATE_STYLES = {
+  cinematic: {
+    overlay:    { top: 'rgba(0,0,0,0.18)',        bottom: 'rgba(0,0,0,0.65)' },
+    subtitle:   { color: '#E8E0D0', hlColor: '#C8A96E', fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  true,
+    badge:      { bg: 'rgba(0,0,0,0.65)',  dot: '#C8A96E' },
+    colorGrade: { r: 0.96, g: 0.93, b: 1.05 },   // 약간 쿨한 시네마틱 톤
+  },
+  viral: {
+    overlay:    { top: 'rgba(0,0,0,0.04)',        bottom: 'rgba(0,0,0,0.40)' },
+    subtitle:   { color: '#FFFFFF',  hlColor: '#FF2D55', fontSize: 1.10 },
+    transition: 'wipe',
+    letterbox:  false,
+    badge:      { bg: 'rgba(255,45,85,0.80)', dot: '#FFFFFF' },
+    colorGrade: { r: 1.05, g: 0.98, b: 0.96 },   // 살짝 따뜻하고 선명
+  },
+  aesthetic: {
+    overlay:    { top: 'rgba(255,210,160,0.08)',  bottom: 'rgba(0,0,0,0.40)' },
+    subtitle:   { color: '#FFF5E4', hlColor: '#FFB347', fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.45)',  dot: '#ff6b9d' },
+    colorGrade: { r: 1.04, g: 1.01, b: 0.93 },   // 웜톤 감성
+  },
+  mukbang: {
+    overlay:    { top: 'rgba(0,0,0,0.06)',        bottom: 'rgba(0,0,0,0.52)' },
+    subtitle:   { color: '#FFFFFF',  hlColor: '#FFE033', fontSize: 1.06 },
+    transition: 'zoom',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.50)',  dot: '#FF6B35' },
+    colorGrade: { r: 1.06, g: 1.02, b: 0.90 },   // 음식 색감 강조 (노랑/주황)
+  },
+  vlog: {
+    overlay:    { top: 'rgba(0,0,0,0.08)',        bottom: 'rgba(0,0,0,0.35)' },
+    subtitle:   { color: '#FFFFFF',  hlColor: '#6EE7B7', fontSize: 0.97 },
+    transition: 'slide',
+    letterbox:  false,
+    badge:      { bg: 'rgba(0,0,0,0.40)',  dot: '#6EE7B7' },
+    colorGrade: { r: 1.0,  g: 1.03, b: 1.0 },    // 자연스러운 일상 톤
+  },
+  review: {
+    overlay:    { top: 'rgba(0,0,0,0.12)',        bottom: 'rgba(0,0,0,0.50)' },
+    subtitle:   { color: '#FFFFFF',  hlColor: '#FBBF24', fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(251,191,36,0.22)', dot: '#FBBF24' },
+    colorGrade: { r: 1.0,  g: 0.99, b: 0.97 },
+  },
+  story: {
+    overlay:    { top: 'rgba(20,0,50,0.14)',      bottom: 'rgba(10,0,30,0.58)' },
+    subtitle:   { color: '#F0E6FF', hlColor: '#C084FC', fontSize: 1.0 },
+    transition: 'fade',
+    letterbox:  true,
+    badge:      { bg: 'rgba(30,0,60,0.62)', dot: '#C084FC' },
+    colorGrade: { r: 0.97, g: 0.94, b: 1.06 },   // 보라 계열 무드
+  },
+  info: {
+    overlay:    { top: 'rgba(0,20,50,0.14)',      bottom: 'rgba(0,10,35,0.55)' },
+    subtitle:   { color: '#E0F0FF', hlColor: '#38BDF8', fontSize: 0.97 },
+    transition: 'fade',
+    letterbox:  false,
+    badge:      { bg: 'rgba(56,189,248,0.22)', dot: '#38BDF8' },
+    colorGrade: { r: 0.95, g: 0.99, b: 1.07 },   // 쿨 블루 정보 톤
+  },
+};
+
+/** 현재 선택된 템플릿 시각 스타일 반환 */
+function getTplStyle() {
+  return TEMPLATE_STYLES[selectedTemplate] || TEMPLATE_STYLES.aesthetic;
+}
 const HOOK_HINTS = {
   question:  '질문형 훅: "이거 진짜야?", "이 가격 실화?", "여기 가봤어?"',
   shock:     '충격형 훅: "이게 가능해?", "미쳤다 진짜", "실화냐 이거"',
@@ -92,137 +165,6 @@ const HOOK_HINTS = {
   ranking:   '랭킹형 훅: "TOP 1 맛집", "내 인생 최고", "1등 메뉴는?"',
   pov:       'POV형 훅: "너가 여기 왔을 때", "맛집 찾았을 때 기분", "혼밥 성공 POV"',
 };
-
-/* ── Template Visual Styles (렌더러 주입용) ─────────────── */
-const TEMPLATE_STYLES = {
-  cinematic: {
-    overlay:    { top: 'rgba(0,0,0,0.15)',       bottom: 'rgba(0,0,0,0.55)' },
-    subtitle:   { color: '#E8E0D0', hlColor: '#C8A96E', fontSize: 1.0 },
-    transition: 'fade',
-    letterbox:  true,
-    badge:      { bg: 'rgba(0,0,0,0.6)',          dot: '#C8A96E' },
-    colorGrade: { r: 0.96, g: 0.93, b: 1.05 },   // 쿨한 시네마틱 톤
-  },
-  viral: {
-    overlay:    { top: 'rgba(0,0,0,0.05)',        bottom: 'rgba(0,0,0,0.45)' },
-    subtitle:   { color: '#FFFFFF',   hlColor: '#FF2D55',  fontSize: 1.08 },
-    transition: 'wipe',
-    letterbox:  false,
-    badge:      { bg: 'rgba(255,45,85,0.75)',     dot: '#FFFFFF' },
-    colorGrade: { r: 1.05, g: 0.98, b: 0.96 },   // 선명하고 따뜻
-  },
-  aesthetic: {
-    overlay:    { top: 'rgba(255,220,180,0.08)',  bottom: 'rgba(0,0,0,0.40)' },
-    subtitle:   { color: '#FFF5E4', hlColor: '#FFB347',  fontSize: 1.0 },
-    transition: 'fade',
-    letterbox:  false,
-    badge:      { bg: 'rgba(0,0,0,0.45)',         dot: '#ff6b9d' },
-    colorGrade: { r: 1.04, g: 1.01, b: 0.93 },   // 웜톤 감성
-  },
-  mukbang: {
-    overlay:    { top: 'rgba(0,0,0,0.10)',        bottom: 'rgba(0,0,0,0.50)' },
-    subtitle:   { color: '#FFFFFF',   hlColor: '#FFE033',  fontSize: 1.05 },
-    transition: 'zoom',
-    letterbox:  false,
-    badge:      { bg: 'rgba(0,0,0,0.5)',          dot: '#FF6B35' },
-    colorGrade: { r: 1.06, g: 1.02, b: 0.90 },   // 음식 색감 강조
-  },
-  vlog: {
-    overlay:    { top: 'rgba(0,0,0,0.08)',        bottom: 'rgba(0,0,0,0.38)' },
-    subtitle:   { color: '#FFFFFF',   hlColor: '#7FDBFF',  fontSize: 0.96 },
-    transition: 'fade',
-    letterbox:  false,
-    badge:      { bg: 'rgba(0,0,0,0.45)',         dot: '#7FDBFF' },
-    colorGrade: { r: 1.0,  g: 1.03, b: 1.0 },    // 자연스러운 일상
-  },
-  review: {
-    overlay:    { top: 'rgba(0,0,0,0.12)',        bottom: 'rgba(0,0,0,0.50)' },
-    subtitle:   { color: '#FFFFFF',   hlColor: '#FFD700',  fontSize: 1.0 },
-    transition: 'fade',
-    letterbox:  false,
-    badge:      { bg: 'rgba(0,0,0,0.5)',          dot: '#FFD700' },
-    colorGrade: { r: 1.02, g: 1.01, b: 0.96 },   // 리뷰 톤
-  },
-  story: {
-    overlay:    { top: 'rgba(0,0,0,0.10)',        bottom: 'rgba(0,0,0,0.45)' },
-    subtitle:   { color: '#FFF9F0', hlColor: '#FF9F7F',  fontSize: 1.0 },
-    transition: 'fade',
-    letterbox:  false,
-    badge:      { bg: 'rgba(0,0,0,0.45)',         dot: '#FF9F7F' },
-    colorGrade: { r: 0.97, g: 0.94, b: 1.06 },   // 보라 계열 무드
-  },
-  info: {
-    overlay:    { top: 'rgba(0,0,0,0.20)',        bottom: 'rgba(0,0,0,0.55)' },
-    subtitle:   { color: '#FFFFFF',   hlColor: '#00E5FF',  fontSize: 0.95 },
-    transition: 'fade',
-    letterbox:  false,
-    badge:      { bg: 'rgba(0,0,50,0.6)',         dot: '#00E5FF' },
-    colorGrade: { r: 0.95, g: 0.99, b: 1.07 },   // 쿨 블루 정보 톤
-  },
-};
-function getTplStyle() {
-  return TEMPLATE_STYLES[selectedTemplate] || TEMPLATE_STYLES.aesthetic;
-}
-
-/* ════════════════════════════════════════════════════════════
-   VIDEO TEMPLATES — CapCut 스타일 캡션 렌더링 설정
-   JSON 템플릿과 연동, drawTrendyText()에서 참조
-   ════════════════════════════════════════════════════════════ */
-const videoTemplates = {
-  cinematic:  { font: `900 ${Math.round(68*SCALE)}px 'Noto Sans KR'`,  color: '#E8E0D0', stroke: '#C8A96E', strokeWidth: 6,  shadow: 'rgba(0,0,0,0.6)', highlightColor: '#C8A96E' },
-  viral:      { font: `900 ${Math.round(84*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 10, shadow: 'rgba(0,0,0,0.9)', highlightColor: '#FF2D55' },
-  aesthetic:  { font: `800 ${Math.round(72*SCALE)}px 'Noto Sans KR'`,  color: '#FFF5E4', stroke: 'transparent', strokeWidth: 0, shadow: 'rgba(0,0,0,0.5)', highlightColor: '#FFB347', bgColor: 'rgba(0,0,0,0.42)' },
-  mukbang:    { font: `900 ${Math.round(82*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 9,  shadow: 'rgba(0,0,0,0.85)', highlightColor: '#FFE033' },
-  vlog:       { font: `700 ${Math.round(68*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 7,  shadow: 'rgba(0,0,0,0.6)', highlightColor: '#7FDBFF', bgColor: 'rgba(0,0,0,0.32)' },
-  review:     { font: `900 ${Math.round(76*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 8,  shadow: 'rgba(0,0,0,0.8)', highlightColor: '#FFD700' },
-  story:      { font: `800 ${Math.round(72*SCALE)}px 'Noto Sans KR'`,  color: '#FFF9F0', stroke: '#000000', strokeWidth: 7,  shadow: 'rgba(0,0,0,0.7)', highlightColor: '#FF9F7F' },
-  info:       { font: `900 ${Math.round(68*SCALE)}px 'Noto Sans KR'`,  color: '#E0F0FF', stroke: '#000000', strokeWidth: 8,  shadow: 'rgba(0,0,0,0.8)', highlightColor: '#00E5FF', bgColor: 'rgba(0,10,30,0.50)' },
-};
-
-/** 현재 selectedTemplate에 대한 videoTemplates 스타일 반환 */
-function getTrendyStyle() {
-  return videoTemplates[selectedTemplate] || videoTemplates.aesthetic;
-}
-
-/* ── 템플릿 JSON 로더 (./templates/{name}.json) ─────────── */
-async function loadTemplate(name) {
-  try {
-    const r = await fetch(`./templates/${name}.json`);
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  } catch (e) {
-    console.warn('[loadTemplate] 실패:', name, e.message);
-    return null;
-  }
-}
-
-/* ── 훅 생성 (HOOK_POOL 기반) ─────────────────────────────── */
-function generateHook(place) {
-  const pool = HOOK_POOL;
-  const hook = pool[Math.floor(Math.random() * pool.length)];
-  return place ? `${place} ${hook}` : hook;
-}
-
-/* ── 숏폼 훅 풀 (틱톡 스타일 첫 씬 참고) ───────────────── */
-const HOOK_POOL = [
-  '이거 왜 유명한지 알았다', '여기 모르면 손해', '이거 진짜 미쳤다',
-  '줄 서는 이유 있음', '아는 사람만 안다', '진짜 실화임?',
-  '여기 왜 이제 왔지', '내 최애 맛집 생김',
-];
-
-/* ── 자막 분할 (5~12자 틱톡 스타일) ──────────────────────── */
-function splitCaptions(text) {
-  if (!text) return [text || '', ''];
-  const stripped = text.replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
-  if (stripped.length <= 10) return [text, ''];
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length <= 1) {
-    const mid = Math.ceil(text.length / 2);
-    return [text.slice(0, mid), text.slice(mid)];
-  }
-  const mid = Math.ceil(words.length / 2);
-  return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
-}
 
 /* ── State ───────────────────────────────────────────────── */
 const S = {
@@ -244,6 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
   D.restName.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); D.makeBtn.click(); }
   });
+  renderTemplatePicker();
   D.makeBtn.addEventListener('click',   startMake);
   D.playBtn.addEventListener('click',   togglePlay);
   D.canvas.addEventListener('click',    togglePlay);  // 모바일: 캔버스 탭으로 재생/일시정지
@@ -256,15 +199,12 @@ document.addEventListener('DOMContentLoaded', () => {
   updateStepUI(1);
   const verEl = document.getElementById('appVersion');
   if (verEl) verEl.textContent = `${APP_VERSION} · ${APP_BUILD_TS}`;
-  const apkSub = g('apkBannerSub');
-  if (apkSub) apkSub.textContent = `moovlog-shorts-creator-${APP_VERSION}.apk →`;
   document.querySelectorAll('.sns-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const el = document.getElementById(btn.dataset.target);
       if (!el?.textContent) return;
       navigator.clipboard.writeText(el.textContent).then(() => {
         btn.innerHTML = '<i class="fas fa-check"></i> 복사됨'; btn.classList.add('copied');
-        toast('클립보드에 복사되었습니다 ✓', 'ok');
         setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i> 복사'; btn.classList.remove('copied'); }, 2000);
       }).catch(() => {
         const r = document.createRange(); r.selectNodeContents(el);
@@ -280,29 +220,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     setTimeout(() => speechSynthesis.getVoices(), 500);
   }
-  renderTemplatePicker();
 });
 
-/* ── Template Picker UI ─────────────────────────────────── */
+/* ── 템플릿 선택 칩 UI ───────────────────────────────────── */
 function renderTemplatePicker() {
-  const container = document.getElementById('tplPicker');
-  if (!container) return;
-  container.innerHTML = '';
-  Object.entries(TEMPLATE_NAMES).forEach(([key, label]) => {
-    const btn = document.createElement('button');
-    btn.className = 'tpl-chip' + (key === selectedTemplate ? ' active' : '');
-    btn.textContent = label;
+  const picker = document.getElementById('tplPicker');
+  if (!picker) return;
+  picker.innerHTML = Object.entries(TEMPLATE_NAMES).map(([id, name]) =>
+    `<button class="tpl-chip${id === selectedTemplate ? ' active' : ''}" data-tpl="${id}">${name}</button>`
+  ).join('');
+  picker.querySelectorAll('.tpl-chip').forEach(btn => {
     btn.addEventListener('click', () => {
-      selectedTemplate = key;
-      if (D.selectedTplInput) D.selectedTplInput.value = key;
-      container.querySelectorAll('.tpl-chip').forEach(c => c.classList.remove('active'));
+      selectedTemplate = btn.dataset.tpl;
+      picker.querySelectorAll('.tpl-chip').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      // 미리보기 중이면 현재 씬 다시 렌더
-      if (S.script && S.script.scenes.length) {
-        renderFrame(S.scene, S.subAnimProg > 0 ? 1 : 0);
-      }
+      // 영상 생성 완료 상태면 즉시 재렌더 (프리뷰)
+      if (S.script && S.loaded.length) renderFrame(S.scene, S.subAnimProg);
+      toast(`스타일: ${TEMPLATE_NAMES[selectedTemplate]}`, 'inf');
     });
-    container.appendChild(btn);
   });
 }
 
@@ -311,12 +246,7 @@ function addFiles(files) {
   const valid = files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
   if (!valid.length) return;
   if (S.files.length + valid.length > 10) { toast('최대 10개까지 가능합니다', 'err'); return; }
-  // 영상 우선 정렬 (video > image)
-  const sorted = [
-    ...valid.filter(f => f.type.startsWith('video/')),
-    ...valid.filter(f => f.type.startsWith('image/')),
-  ];
-  sorted.forEach(f => S.files.push({ file: f, url: URL.createObjectURL(f), type: f.type.startsWith('video/') ? 'video' : 'image' }));
+  valid.forEach(f => S.files.push({ file: f, url: URL.createObjectURL(f), type: f.type.startsWith('video/') ? 'video' : 'image' }));
   renderThumbs();
 }
 function renderThumbs() {
@@ -377,23 +307,12 @@ async function startMake() {
       S.audioBuffers = script.scenes.map(() => null);
       toast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
     }
-    // 오디오 실제 길이로 씬 duration 완전 동기화 (항상 적용)
+    // duration을 TTS 오디오 실제 길이에 맞춤 (자막·내레이션 싱크 보정)
     for (let i = 0; i < script.scenes.length; i++) {
-      const sc  = script.scenes[i];
       const buf = S.audioBuffers[i];
-      if (buf && buf.duration > 0) {
-        sc.duration = Math.round((buf.duration + 0.3) * 10) / 10;
+      if (buf && buf.duration > script.scenes[i].duration) {
+        script.scenes[i].duration = Math.ceil(buf.duration * 10) / 10 + 0.3;
       }
-      // caption1 / caption2 초기화 (AI가 제공 또는 splitCaptions 분할)
-      if (!sc.caption1) {
-        const sub = sc.subtitle || '';
-        const [c1, c2] = splitCaptions(sub);
-        sc.caption1 = c1; sc.caption2 = c2;
-      } else if (!sc.caption2) {
-        sc.caption2 = '';
-      }
-      // subtitle fallback (씬 카드·레거시 표시용)
-      if (!sc.subtitle) sc.subtitle = sc.caption1 || '';
     }
     doneStep(3);
 
@@ -409,22 +328,16 @@ async function startMake() {
     buildSNSTags(script);
     await sleep(300);
     updateStepUI(3); hideLoad(); D.resultWrap.hidden = false;
-    // BGM 배지: 현재 선택 템플릿 표시
-    const bgmBadgeEl = document.getElementById('bgmBadge');
-    const bgmTextEl  = document.getElementById('bgmBadgeText');
-    if (bgmTextEl) bgmTextEl.textContent = TEMPLATE_NAMES[selectedTemplate] || selectedTemplate;
-    if (bgmBadgeEl) bgmBadgeEl.hidden = false;
     setupPlayer();
-    setTimeout(startPlay, 300);  // 결과 표시 시 자동 재생
     if (AUTO_EXPORT_ON_CREATE) {
-      toast('영상 생성 완료! 자동 저장을 시작합니다', 'inf');
-      setTimeout(() => { doExport(); }, 2500);
+      toast('영상 생성 완료: 자동 저장을 시작합니다', 'inf');
+      setTimeout(() => { doExport(); }, 350);
+    } else {
+      setTimeout(startPlay, 300);
     }
   } catch (err) {
     hideLoad(); D.makeBtn.disabled = false;
-    console.error('[startMake]', err);
-    const msg = err?.message || String(err) || '알 수 없는 오류';
-    toast('오류: ' + msg, 'err');
+    console.error(err); toast('오류: ' + (err.message || '알 수 없는 오류'), 'err');
   }
 }
 
@@ -538,11 +451,9 @@ ${imgSummary || '분석 없음'}
 ■ 씬N CTA (2~3s): 저장·팔로우 유도. 구체적 행동 지시.
   → "저장 안 하면 나중에 못 옴 💾" / "팔로우하면 맛집 다 알려드림 🙏" / "여기 꼭 가봐 진심"
 
-[★ 틱톡 스타일 자막 규칙 — 핵심]
-- caption1: 씬 전반부 자막. 5~10자, 실제 사람 말투, 광고 금지, 감탄/의문형 허용. 이모지 선택적.
-  예: "이거 뭐냐", "비주얼 미쳤다", "진짜임?", "여기 실화", "🔥 대박이다"
-- caption2: 씬 후반부 자막. 5~10자, caption1 반응/이어지는 포인트. 없으면 빈문자열 허용.
-  예: "진짜 맛있다", "여기 또 온다", "저장각이다", "이건 찐이야"
+[★ SEO 최적화 자막·나레이션 규칙]
+- subtitle: narration의 핵심 키워드 1~3단어 + 이모지 1~2개 (10~16자). 반드시 narration과 같은 주제·내용으로 작성.
+  예: "🔥 ${restaurantName} 찐맛집" / "✨ 육즙 터지는 한우"
 - subtitle_style: "hook"(훅)|"detail"(디테일)|"hero"(대표메뉴)|"cta"(콜투액션)
 - subtitle_position: "center"|"lower"|"upper"
 - narration: 구어체 남성 성우 스타일, 입맛 당기는 감각 묘사, 글자 수 ≤ duration×8
@@ -562,7 +473,7 @@ ${imgSummary || '분석 없음'}
 - tiktok_tags: 틱톡 바이럴 5개 태그 (#먹방 형태)
 
 JSON만 반환 (백틱·설명 없이 순수 JSON):
-{"title":"제목","hashtags":"#태그들","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[{"idx":0,"duration":3,"caption1":"이거 실화임?","caption2":"진짜 미쳤다","subtitle_style":"hook","subtitle_position":"center","narration":"진짜 이 가격에 이게 나온다고?","effect":"zoom-out"}]}`;
+{"title":"제목","hashtags":"#태그들","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[{"idx":0,"duration":3,"subtitle":"🔥 이거 실화임?","subtitle_style":"hook","subtitle_position":"center","narration":"진짜 이 가격에 이게 나온다고?","effect":"zoom-out"}]}`;
 
   const makeReq = async url => {
     const data = await apiPost(url, { contents: [{ parts: [...imgParts, { text: prompt }] }], generationConfig: { temperature: 0.92, responseMimeType: 'application/json' } });
@@ -594,22 +505,15 @@ async function extractVideoFramesB64(file, count = 4) {
       const frames = [], times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * dur);
       for (const t of times) {
         await new Promise(r => {
-          let settled = false;
-          const onSeeked = () => {
-            if (settled) return;
-            settled = true;
-            vid.removeEventListener('seeked', onSeeked);
-            try {
-              cx.drawImage(vid, 0, 0, 360, 640);
-              frames.push({ base64: c.toDataURL('image/jpeg', 0.75).split(',')[1], mimeType: 'image/jpeg' });
-            } catch (_) { /* 프레임 추출 실패 무시 */ }
+          const done = () => {
+            vid.removeEventListener('seeked', done);
+            cx.drawImage(vid, 0, 0, 360, 640);
+            frames.push({ base64: c.toDataURL('image/jpeg', 0.75).split(',')[1], mimeType: 'image/jpeg' });
             r();
           };
-          vid.addEventListener('seeked', onSeeked);
+          vid.addEventListener('seeked', done);
           vid.currentTime = t;
-          setTimeout(() => {
-            if (!settled) { settled = true; vid.removeEventListener('seeked', onSeeked); r(); }
-          }, 1500);
+          setTimeout(r, 1500);
         });
       }
       URL.revokeObjectURL(url); resolve(frames);
@@ -671,8 +575,8 @@ async function generateAllTTS(scenes) {
 // Gemini TTS: 모델 2개 × 비이스 4개 단계적 시도
 async function fetchGeminiTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
-  const voices = ['Charon', 'Fenrir', 'Kore', 'Orus'];
-  const ttsModels = ['gemini-2.5-flash-preview-tts'];
+  const voices = ['Kore', 'Aoede', 'Charon', 'Fenrir', 'Orus'];
+  const ttsModels = ['gemini-2.5-flash-preview-tts', 'gemini-2.5-flash'];
   let lastErr;
   for (const model of ttsModels) {
     const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
@@ -681,7 +585,7 @@ async function fetchGeminiTTS(text) {
         const res = await fetch(ttsUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: '당신은 한국어 전문 남성 성우입니다. 타입캐스트 프리미엄 스타일 — 중저음의 자연스러운 발음, 맛집 콘텐츠에 적합한 감각적 표현. 반말 허용, 감탄사와 의성어를 생동감 있게 진달하세요.' }] },
+            system_instruction: { parts: [{ text: '한국어 남성 모델. 생동감 있고 자연스러운 한국어로 나레이션해주세요. 맛집 콘텐츠 전문 성우.' }] },
             contents: [{ parts: [{ text: text.trim() }] }],
             generationConfig: {
               responseModalities: ['AUDIO'],
@@ -816,22 +720,9 @@ async function preload() {
       const vid = Object.assign(document.createElement('video'), { src: m.url, muted: true, loop: true, playsInline: true });
       vid.setAttribute('playsinline', '');
       vid.setAttribute('webkit-playsinline', '');
-      const loaded = await new Promise(r => {
-        vid.onloadeddata = () => r(true);
-        vid.onerror      = () => r(false);
-        setTimeout(() => r(vid.readyState >= 2), 5000);
-      });
-      if (!loaded) {
-        // 비디오 로드 실패 — 코덱 미지원 가능성
-        console.warn('[Preload] 비디오 로드 실패:', m.file?.name || m.url);
-        vid.src = '';
-        vid._loadFailed = true;
-        S.loaded.push({ type: 'video', src: vid });
-        toast(`비디오 로드 실패: ${m.file?.name || ''}. MP4(H.264) 형식을 권장합니다`, 'inf');
-      } else {
-        vid.play().catch(() => {}); // canvas drawImage는 playing 상태 필요 (모바일)
-        S.loaded.push({ type: 'video', src: vid });
-      }
+      await new Promise(r => { vid.onloadeddata = r; vid.onerror = r; setTimeout(r, 5000); });
+      vid.play().catch(() => {}); // canvas drawImage는 playing 상태 필요 (모바일)
+      S.loaded.push({ type: 'video', src: vid });
     }
   }
 }
@@ -857,17 +748,21 @@ function setPlayIcon(pl) { D.playIco.className = pl ? 'fas fa-pause' : 'fas fa-p
 function tick() {
   const run = now => {
     if (!S.playing) return;
-    const sc = S.script.scenes[S.scene];
+    const sc  = S.script.scenes[S.scene];
     const dur = sc.duration, el = (now - S.startTs) / 1000, prog = Math.min(el / dur, 1);
     const total = S.script.scenes.reduce((a, s) => a + s.duration, 0);
     const done  = S.script.scenes.slice(0, S.scene).reduce((a, s) => a + s.duration, 0);
-    const pct   = (done + el) / total * 100;
-    D.vProg.style.width = pct + '%';
-    if (D.vProgText) D.vProgText.textContent = Math.floor(pct) + '%';
-    const _audioBuf  = S.audioBuffers?.[S.scene];
-    const _audioDur  = _audioBuf?.duration ?? null;
-    const _subTarget = _audioDur ? Math.min(_audioDur / dur, 0.95) : 0.70;
-    S.subAnimProg    = Math.min(prog / _subTarget, 1);
+    D.vProg.style.width = ((done + el) / total * 100) + '%';
+
+    // ── 자막 싱크 보정 ──────────────────────────────────────
+    // 음성 버퍼가 있으면 그 길이 기준으로 자막 진행속도 맞춤
+    // 없으면 씬 duration의 70%까지 자막 완성 (기존 2.8 대신 1.43)
+    const audioBuf  = S.audioBuffers?.[S.scene];
+    const audioDur  = audioBuf ? audioBuf.duration : null;
+    const subTarget = audioDur ? Math.min(audioDur / dur, 0.95) : 0.70;
+    S.subAnimProg   = Math.min(prog / subTarget, 1);
+    // ────────────────────────────────────────────────────────
+
     const TD = 0.28;
     if (el >= dur - TD && S.scene < S.script.scenes.length - 1)
       drawTransition(S.scene, (el - (dur - TD)) / TD);
@@ -893,52 +788,73 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
   const sap = subAnimOverride !== undefined ? subAnimOverride : S.subAnimProg;
   if (!skipClear) ctx.clearRect(0, 0, CW, CH);
   drawMedia(media, sc.effect, prog);
-  drawVignetteGrad();
+  // 템플릿 컬러 그레이딩
   drawColorGrade(prog);
-  // [강화1] 씬 분위기 색상 오버레이
+  drawVignetteGrad();
   drawMoodOverlay(sc.subtitle_style, Math.min(prog * 3, 1));
-  // [강화2] Hero 씬: 시네마틱 레터박스 + 스파클
-  if (sc.subtitle_style === 'hero') {
+  // cinematic·story 템플릿 또는 hero 씬: 레터박스
+  const tplStyle = getTplStyle();
+  if (tplStyle.letterbox || sc.subtitle_style === 'hero') {
     drawLetterbox(Math.min(prog * 4, 1));
-    drawSparkles(prog);
+    if (sc.subtitle_style === 'hero') drawSparkles(prog);
   }
-  drawSubtitle(sc, sap, prog);
+  drawSubtitle(sc, sap);
   if (si === 0) drawTopBadge();
 }
 function drawTransition(fi, t) {
-  const e = ease(t);
-  const nextStyle = S.script.scenes[fi + 1]?.subtitle_style || 'detail';
-  const tplMode   = getTplStyle().transition || 'fade';
-  if (nextStyle === 'hero') {
-    renderFrame(fi, 1);
-    ctx.save();
-    ctx.globalAlpha = e;
-    ctx.translate(CW / 2, CH / 2);
-    ctx.scale(0.88 + e * 0.12, 0.88 + e * 0.12);
-    ctx.translate(-CW / 2, -CH / 2);
-    renderFrame(fi + 1, 0, 0, true);
-    ctx.restore();
-  } else if (nextStyle === 'hook' || tplMode === 'wipe') {
-    // wipe (세로 슬라이드)
+  const e    = ease(t);
+  const tpl  = getTplStyle();
+  const mode = tpl.transition || 'fade';
+
+  if (mode === 'wipe') {
+    // viral: 아래→위 와이프
     renderFrame(fi, 1);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, CH * (1 - e), CW, CH * e); ctx.clip();
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
-  } else if (nextStyle === 'cta' || tplMode === 'zoom') {
-    // zoom crossfade
+  } else if (mode === 'zoom') {
+    // mukbang: 줌인 진입
     renderFrame(fi, 1);
     ctx.save();
     ctx.globalAlpha = e;
     ctx.translate(CW / 2, CH / 2);
-    ctx.scale(1.0 + e * 0.05, 1.0 + e * 0.05);
+    ctx.scale(1.08 - e * 0.08, 1.08 - e * 0.08);
     ctx.translate(-CW / 2, -CH / 2);
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
-  } else {
-    // 기본 crossfade (fade)
+  } else if (mode === 'slide') {
+    // vlog: 오른쪽→왼쪽 슬라이드
     renderFrame(fi, 1);
-    ctx.save(); ctx.globalAlpha = e; renderFrame(fi + 1, 0, 0, true); ctx.restore();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(CW * (1 - e), 0, CW * e, CH); ctx.clip();
+    renderFrame(fi + 1, 0, 0, true);
+    ctx.restore();
+  } else {
+    // fade (cinematic·aesthetic·review·story·info)
+    // 씬 스타일별 특수 전환 유지
+    const nextStyle = S.script.scenes[fi + 1]?.subtitle_style || 'detail';
+    if (nextStyle === 'hero') {
+      renderFrame(fi, 1);
+      ctx.save();
+      ctx.globalAlpha = e;
+      ctx.translate(CW / 2, CH / 2);
+      ctx.scale(0.88 + e * 0.12, 0.88 + e * 0.12);
+      ctx.translate(-CW / 2, -CH / 2);
+      renderFrame(fi + 1, 0, 0, true);
+      ctx.restore();
+    } else if (nextStyle === 'hook') {
+      renderFrame(fi, 1);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, CH * (1 - e), CW, CH * e); ctx.clip();
+      renderFrame(fi + 1, 0, 0, true);
+      ctx.restore();
+    } else {
+      renderFrame(fi, 1);
+      ctx.save(); ctx.globalAlpha = e;
+      renderFrame(fi + 1, 0, 0, true);
+      ctx.restore();
+    }
   }
 }
 // 특정 시간 t(초)에 해당하는 프레임 렌더링 (export용, 실시간 불필요)
@@ -949,22 +865,19 @@ function renderFrameAtTime(t) {
     const dur = sc[i].duration;
     if (t < elapsed + dur || i === sc.length - 1) {
       const prog        = Math.max(0, Math.min((t - elapsed) / dur, 1));
-      const _ab = S.audioBuffers?.[i]; const _ad = _ab?.duration ?? null;
-      const _st = _ad ? Math.min(_ad / dur, 0.95) : 0.70;
-      const subAnimProg = Math.min(prog / _st, 1);
+      const subAnimProg = Math.min(prog * 2.8, 1);
       const prevSubAnim = S.subAnimProg;
       S.subAnimProg = subAnimProg;
       const media       = getMedia(sc[i]);
       ctx.clearRect(0, 0, CW, CH);
       drawMedia(media, sc[i].effect, prog);
       drawVignetteGrad();
-      drawColorGrade(prog);
       drawMoodOverlay(sc[i].subtitle_style, Math.min(prog * 3, 1));
       if (sc[i].subtitle_style === 'hero') {
         drawLetterbox(Math.min(prog * 4, 1));
         drawSparkles(prog);
       }
-      drawSubtitle(sc[i], subAnimProg, prog);
+      drawSubtitle(sc[i], subAnimProg);
       if (i === 0) drawTopBadge();
       S.subAnimProg = prevSubAnim;
       return;
@@ -977,13 +890,9 @@ function getMedia(sc) { return S.loaded.length ? S.loaded[(sc.idx ?? 0) % S.load
 /* ── Ken Burns (6종) ─────────────────────────────────────── */
 function drawMedia(media, effect, prog) {
   if (!media) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, CW, CH); return; }
-  if (media.type === 'video') {
-    const vid = media.src;
-    // 비디오가 재생 가능 상태가 아니면 블랙 프레임으로 대체
-    if (vid._loadFailed || vid.readyState < 2) {
-      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, CW, CH); return;
-    }
-    if (vid.paused) vid.play().catch(() => {});
+  // 모바일에서 video가 일시정지 상태면 재생
+  if (media.type === 'video' && media.src.paused) {
+    media.src.play().catch(() => {});
   }
   const e = ease(prog); let sc = 1, ox = 0, oy = 0;
   // [강화4] Ken Burns 8종으로 확장
@@ -1004,26 +913,45 @@ function drawMedia(media, effect, prog) {
   const r  = Math.max(CW / sw, CH / sh), dw = sw * r, dh = sh * r;
   ctx.save();
   ctx.translate(CW / 2 + ox, CH / 2 + oy); ctx.scale(sc, sc);
-  try {
-    ctx.drawImage(el, -dw / 2, -dh / 2, dw, dh);
-  } catch (e) {
-    console.warn('[drawMedia] drawImage 실패:', e.message);
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
-  }
+  ctx.drawImage(el, -dw / 2, -dh / 2, dw, dh);
   ctx.restore();
+}
+
+/* ── 템플릿 컬러 그레이딩 ────────────────────────────────── */
+function drawColorGrade(prog) {
+  const tpl = getTplStyle();
+  if (!tpl.colorGrade) return;
+  const { r, g, b } = tpl.colorGrade;
+  // r·g·b 값이 1.0 기준으로 벗어난 만큼 색조 오버레이 적용
+  // r>1: 빨강 추가, b>1: 파랑 추가, 각 채널 독립 mix-blend
+  const alpha = 0.10 * Math.min(prog * 3, 1);
+  if (r > 1) {
+    ctx.fillStyle = `rgba(255,0,0,${alpha * (r - 1) * 3})`;
+    ctx.fillRect(0, 0, CW, CH);
+  } else if (r < 1) {
+    ctx.fillStyle = `rgba(0,80,180,${alpha * (1 - r) * 2})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+  if (b > 1) {
+    ctx.fillStyle = `rgba(0,30,255,${alpha * (b - 1) * 3})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+  if (g > 1) {
+    ctx.fillStyle = `rgba(0,160,0,${alpha * (g - 1) * 2})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
 }
 
 /* ── 비네트 ──────────────────────────────────────────────── */
 function drawVignetteGrad() {
-  const tpl = getTplStyle();
-  const topColor = tpl.overlay?.top    || 'rgba(0,0,0,0.10)';
-  const botColor = tpl.overlay?.bottom || 'rgba(0,0,0,0.35)';
-  const top = ctx.createLinearGradient(0, 0, 0, CH * 0.30);
-  top.addColorStop(0, topColor); top.addColorStop(1, 'rgba(0,0,0,0)');
+  const tpl  = getTplStyle();
+  const topC = tpl.overlay?.top    || 'rgba(0,0,0,0.10)';
+  const botC = tpl.overlay?.bottom || 'rgba(0,0,0,0.35)';
+  const top  = ctx.createLinearGradient(0, 0, 0, CH * 0.30);
+  top.addColorStop(0, topC); top.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = top; ctx.fillRect(0, 0, CW, CH * 0.30);
   const bot = ctx.createLinearGradient(0, CH * 0.36, 0, CH);
-  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, 'rgba(0,0,0,0.20)'); bot.addColorStop(1, botColor);
+  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, botC); bot.addColorStop(1, botC);
   ctx.fillStyle = bot; ctx.fillRect(0, CH * 0.36, CW, CH * 0.64);
 }
 
@@ -1053,13 +981,13 @@ function drawSparkles(prog) {
     const py    = seed2 * CH * 0.55 + CH * 0.18;
     const twink = Math.sin(phase + i * 0.88) * 0.5 + 0.5;
     if (twink < 0.25) continue;
-    const r     = (1.5 + seed1 * 2.5) * twink * SCALE;
+    const r     = (1.5 + seed1 * 2.5) * twink;
     const a     = twink * 0.65;
     ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255, 230, 120, ${a})`; ctx.fill();
     // 십자 반짝임
     ctx.strokeStyle = `rgba(255, 255, 200, ${a * 0.6})`;
-    ctx.lineWidth = 0.8 * SCALE;
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
     ctx.moveTo(px - r * 3, py); ctx.lineTo(px + r * 3, py);
     ctx.moveTo(px, py - r * 3); ctx.lineTo(px, py + r * 3);
@@ -1069,57 +997,594 @@ function drawSparkles(prog) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   SUBTITLE SYSTEM — 4 Instagram Reels 스타일 + 애니메이션
-   animProg: 0=시작, 1=완전 표시
+   SUBTITLE SYSTEM v2 — 20종 릴스/틱톡 스타일
+   ────────────────────────────────────────────────────────────
+   subtitle_style 값 → 렌더러 매핑
+   기존 4종(hook/detail/hero/cta) 완전 호환 유지 +
+   템플릿별 고유 스타일 자동 선택
    ════════════════════════════════════════════════════════════ */
-function drawSubtitle(sc, animProg, sceneProg) {
-  // 씬 진행도 50% 기준으로 caption1 → caption2 전환 (없으면 subtitle fallback)
-  let text, localAnim;
-  const c2 = sc.caption2;
-  if (c2 && sceneProg !== undefined && sceneProg >= 0.5) {
-    text      = c2;
-    localAnim = Math.min((sceneProg - 0.5) * 5.6, 1); // 후반부 애니메이션 리셋
-  } else {
-    text      = sc.caption1 || sc.subtitle;
-    localAnim = animProg;
-  }
-  if (!text) return;
+
+/* ── 자막 스타일 → 렌더러 매핑 테이블 ────────────────────── */
+const SUBTITLE_RENDERERS = {
+  // ① 기존 스타일 (하위 호환)
+  hook:   (sc, ap) => subStyle_Impact(sc.subtitle, sc.subtitle_position || 'center', ap),
+  detail: (sc, ap) => subStyle_SlideUp(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  hero:   (sc, ap) => subStyle_HeroWord(sc.subtitle, ap),
+  cta:    (sc, ap) => subStyle_CTABounce(sc.subtitle, ap),
+
+  // ② 릴스 트렌드 스타일
+  neon:      (sc, ap) => subStyle_Neon(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  split:     (sc, ap) => subStyle_Split(sc.subtitle, ap),
+  typewriter:(sc, ap) => subStyle_Typewriter(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  glitch:    (sc, ap) => subStyle_Glitch(sc.subtitle, ap),
+  bold_drop: (sc, ap) => subStyle_BoldDrop(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  pill:      (sc, ap) => subStyle_Pill(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  outline:   (sc, ap) => subStyle_Outline(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  gradient_text: (sc, ap) => subStyle_GradientText(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  shake:     (sc, ap) => subStyle_Shake(sc.subtitle, ap),
+  word_by_word: (sc, ap) => subStyle_WordByWord(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  underline: (sc, ap) => subStyle_Underline(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  kinetic:   (sc, ap) => subStyle_Kinetic(sc.subtitle, ap),
+  stamp:     (sc, ap) => subStyle_Stamp(sc.subtitle, ap),
+  shadow_pop:(sc, ap) => subStyle_ShadowPop(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  minimal:   (sc, ap) => subStyle_Minimal(sc.subtitle, sc.subtitle_position || 'lower', ap),
+  retro:     (sc, ap) => subStyle_Retro(sc.subtitle, ap),
+};
+
+/* 템플릿별 기본 스타일 (subtitle_style이 hook/detail/hero/cta일 때 오버라이드) */
+const TEMPLATE_SUB_STYLE = {
+  cinematic:  { detail: 'minimal',   hook: 'outline'    },
+  viral:      { detail: 'bold_drop', hook: 'impact'     },
+  aesthetic:  { detail: 'pill',      hook: 'gradient_text' },
+  mukbang:    { detail: 'word_by_word', hook: 'stamp'   },
+  vlog:       { detail: 'typewriter',hook: 'underline'  },
+  review:     { detail: 'split',     hook: 'retro'      },
+  story:      { detail: 'kinetic',   hook: 'shadow_pop' },
+  info:       { detail: 'outline',   hook: 'pill'       },
+};
+
+function drawSubtitle(sc, animProg) {
+  if (!sc.subtitle) return;
   ctx.save();
-  switch (sc.subtitle_style || 'detail') {
-    case 'hook':   drawSubHook  (text, sc.subtitle_position || 'center', localAnim); break;
-    case 'hero':   drawSubHero  (text, localAnim); break;
-    case 'cta':    drawSubCTA   (text, localAnim); break;
-    default:       drawSubDetail(text, sc.subtitle_position || 'lower', localAnim);
+  // 템플릿 스타일 오버라이드: detail/hook만 템플릿 커스텀, hero/cta는 고정
+  let style = sc.subtitle_style || 'detail';
+  const tplOverride = TEMPLATE_SUB_STYLE[selectedTemplate];
+  if (tplOverride && style !== 'hero' && style !== 'cta') {
+    style = tplOverride[style] || tplOverride['detail'] || style;
+  }
+  const renderer = SUBTITLE_RENDERERS[style] || SUBTITLE_RENDERERS.detail;
+  renderer(sc, animProg);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   공통 헬퍼
+   ────────────────────────────────────────────────────────── */
+function subY(pos) {
+  return pos === 'upper' ? CH * 0.20 : pos === 'center' ? CH * 0.50 : CH - 195;
+}
+function subBg(cy, h, alpha) {
+  const grad = ctx.createLinearGradient(0, cy - h, 0, cy + h);
+  grad.addColorStop(0, `rgba(0,0,0,0)`);
+  grad.addColorStop(0.3, `rgba(0,0,0,${0.22 * alpha})`);
+  grad.addColorStop(0.7, `rgba(0,0,0,${0.22 * alpha})`);
+  grad.addColorStop(1, `rgba(0,0,0,0)`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, cy - h, CW, h * 2);
+}
+function getTplHL() { return getTplStyle().subtitle?.hlColor || '#FFE033'; }
+function getTplColor() { return getTplStyle().subtitle?.color || '#FFFFFF'; }
+function getTplFontSz(base) { return base * (getTplStyle().subtitle?.fontSize || 1.0); }
+
+/* ──────────────────────────────────────────────────────────
+   ① Impact — 첫 단어 강조 (기존 hook)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Impact(text, pos, ap) {
+  const y = subY(pos);
+  subBg(y, 96, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, getTplFontSz(96), getTplColor(), 0, ap);
+}
+
+/* ──────────────────────────────────────────────────────────
+   ② SlideUp — 아래서 위로 슬라이드 (기존 detail)
+   ────────────────────────────────────────────────────────── */
+function subStyle_SlideUp(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const baseY = subY(pos);
+  const y     = baseY + (1 - eased) * 32;
+  subBg(y, 74, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, getTplFontSz(74), getTplColor(), null, ap);
+}
+
+/* ──────────────────────────────────────────────────────────
+   ③ HeroWord — 마지막 단어 클라이맥스 (기존 hero)
+   ────────────────────────────────────────────────────────── */
+function subStyle_HeroWord(text, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = CH - 188 + (1 - eased) * 24;
+  const words = text.split(/\s+/).filter(Boolean);
+  subBg(y, 88, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, getTplFontSz(88), getTplColor(), words.length - 1, ap);
+}
+
+/* ──────────────────────────────────────────────────────────
+   ④ CTABounce — 바운스 콜투액션 (기존 cta)
+   ────────────────────────────────────────────────────────── */
+function subStyle_CTABounce(text, ap) {
+  const eased  = ease(Math.min(ap * 2.5, 1));
+  const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * 14 : 0;
+  const y      = CH - 128 + (1 - eased) * 28 - bounce;
+  subBg(y, 80, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, getTplFontSz(80), getTplHL(), 0, ap);
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑤ Neon — 네온 글로우 효과 (viral·review)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Neon(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = subY(pos) + (1 - eased) * 20;
+  const sz    = getTplFontSz(72);
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const hl = getTplHL();
+  // 외부 글로우 3단
+  [18, 10, 4].forEach((blur, i) => {
+    ctx.shadowColor = hl; ctx.shadowBlur = blur;
+    ctx.fillStyle = i < 2 ? 'transparent' : hl;
+    if (i === 2) ctx.fillText(text, CW / 2, y);
+  });
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑥ Split — 두 줄로 나눠서 좌우 슬라이드인 (review)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Split(text, ap) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const half  = Math.ceil(words.length / 2);
+  const line1 = words.slice(0, half).join(' ');
+  const line2 = words.slice(half).join(' ');
+  const sz    = getTplFontSz(68);
+  const baseY = CH - 230;
+  const eased = ease(Math.min(ap * 2.2, 1));
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = Math.min(ap * 4, 1);
+  // 라인1: 왼쪽에서
+  ctx.save();
+  ctx.translate((1 - eased) * -80, 0);
+  ctx.lineWidth = 8; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(line1, CW / 2, baseY);
+  ctx.fillStyle = getTplColor(); ctx.fillText(line1, CW / 2, baseY);
+  ctx.restore();
+  if (line2) {
+    // 라인2: 오른쪽에서
+    ctx.save();
+    ctx.translate((1 - eased) * 80, 0);
+    ctx.lineWidth = 8; ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(line2, CW / 2, baseY + sz * 1.3);
+    ctx.fillStyle = getTplHL(); ctx.fillText(line2, CW / 2, baseY + sz * 1.3);
+    ctx.restore();
   }
   ctx.restore();
 }
 
-/* ── CapCut 스타일 공통 렌더러 ────────────────────────────────
-   hlIdx: 강조할 단어 인덱스 (null = 없음)
-   단어별 순차 팝인 + 오버슛 바운스 + 두꺼운 검은 스트로크
-   ──────────────────────────────────────────────────────────── */
+/* ──────────────────────────────────────────────────────────
+   ⑦ Typewriter — 한 글자씩 타이핑 (vlog)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Typewriter(text, pos, ap) {
+  const visLen = Math.floor(ap * text.length * 1.4);
+  const shown  = text.slice(0, Math.min(visLen, text.length));
+  const y      = subY(pos);
+  const sz     = getTplFontSz(68);
+  subBg(y, sz * 0.9, Math.min(ap * 4, 1));
+  ctx.save();
+  ctx.font = `700 ${sz}px "Noto Sans KR", monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = 1;
+  ctx.lineWidth = 7; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(shown, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(shown, CW / 2, y);
+  // 커서 깜빡임
+  if (visLen < text.length) {
+    const tm = ctx.measureText(shown);
+    const cx = CW / 2 + tm.width / 2 + 4;
+    ctx.fillStyle = getTplHL();
+    ctx.fillRect(cx, y - sz * 0.5, 3, sz);
+  }
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑧ Glitch — RGB 글리치 (viral·충격)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Glitch(text, ap) {
+  const y   = CH - 200;
+  const sz  = getTplFontSz(78);
+  const glitchAmt = ap < 0.3 ? (0.3 - ap) * 18 : 0;
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = Math.min(ap * 3, 1);
+  if (glitchAmt > 0) {
+    // R 채널
+    ctx.fillStyle = 'rgba(255,0,80,0.7)';
+    ctx.fillText(text, CW / 2 - glitchAmt, y - 2);
+    // B 채널
+    ctx.fillStyle = 'rgba(0,200,255,0.7)';
+    ctx.fillText(text, CW / 2 + glitchAmt, y + 2);
+  }
+  ctx.lineWidth = 8; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑨ BoldDrop — 위에서 떨어지며 임팩트 (viral)
+   ────────────────────────────────────────────────────────── */
+function subStyle_BoldDrop(text, pos, ap) {
+  const target = subY(pos);
+  const eased  = ease(Math.min(ap * 3, 1));
+  // 위에서 떨어짐 + 오버슛
+  const dropProgress = ap < 0.5 ? (ap / 0.5) : 1;
+  const overshoot    = ap < 0.5 ? Math.sin(ap * Math.PI) * 20 : 0;
+  const y = (CH * 0.05) + (target - CH * 0.05) * ease(dropProgress) + overshoot;
+  const sz = getTplFontSz(82);
+  subBg(y, sz * 0.9, eased);
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = Math.min(ap * 5, 1);
+  ctx.lineWidth = 10; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#000'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑩ Pill — 배경 알약 박스 (aesthetic·info)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Pill(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = subY(pos) + (1 - eased) * 24;
+  const sz    = getTplFontSz(64);
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.font = `800 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const tw  = ctx.measureText(text).width;
+  const pad = { x: 28, y: 16 };
+  const bx  = CW / 2 - tw / 2 - pad.x;
+  const by  = y - sz * 0.58 - pad.y;
+  const bw  = tw + pad.x * 2;
+  const bh  = sz * 1.16 + pad.y * 2;
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = `rgba(0,0,0,0.72)`;
+  roundRect(ctx, bx, by, bw, bh, bh / 2); ctx.fill();
+  // 테두리
+  ctx.strokeStyle = getTplHL();
+  ctx.lineWidth = 2.5;
+  roundRect(ctx, bx, by, bw, bh, bh / 2); ctx.stroke();
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑪ Outline — 텍스트 테두리만 (cinematic)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Outline(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = subY(pos) + (1 - eased) * 20;
+  const sz    = getTplFontSz(70);
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // 두꺼운 컬러 테두리 + 얇은 흰 fill
+  ctx.lineWidth = 10; ctx.lineJoin = 'round';
+  ctx.strokeStyle = getTplHL(); ctx.strokeText(text, CW / 2, y);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑫ GradientText — 텍스트에 그라데이션 색상 (aesthetic)
+   ────────────────────────────────────────────────────────── */
+function subStyle_GradientText(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = subY(pos) + (1 - eased) * 24;
+  const sz    = getTplFontSz(72);
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.globalAlpha = alpha;
+  const tw   = ctx.measureText(text).width;
+  const grad = ctx.createLinearGradient(CW / 2 - tw / 2, 0, CW / 2 + tw / 2, 0);
+  const hl   = getTplHL();
+  grad.addColorStop(0, getTplColor());
+  grad.addColorStop(0.5, hl);
+  grad.addColorStop(1, getTplColor());
+  ctx.lineWidth = 9; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.92)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = grad; ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑬ Shake — 진동 효과 (충격·hook)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Shake(text, ap) {
+  const y     = CH - 200;
+  const sz    = getTplFontSz(80);
+  const alpha = Math.min(ap * 3, 1);
+  const shakeAmt = ap < 0.25 ? (0.25 - ap) / 0.25 * 6 : 0;
+  const dx    = shakeAmt * (Math.sin(ap * 120) * 1);
+  const dy    = shakeAmt * (Math.cos(ap * 90) * 1);
+  subBg(y, sz, alpha);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(dx, dy);
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 9; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.97)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑭ WordByWord — 단어 한 개씩 팝인 하이라이트 (mukbang·틱톡)
+   ────────────────────────────────────────────────────────── */
+function subStyle_WordByWord(text, pos, ap) {
+  const words  = text.split(/\s+/).filter(Boolean);
+  const y      = subY(pos);
+  const sz     = getTplFontSz(74);
+  const step   = 1.0 / words.length;
+  subBg(y, sz, Math.min(ap * 3, 1));
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+
+  // 전체 너비 계산
+  const widths = words.map(w => ctx.measureText(w).width);
+  const sp     = sz * 0.26;
+  const total  = widths.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let x        = CW / 2 - total / 2;
+
+  words.forEach((word, i) => {
+    const wProgress = Math.max(0, Math.min(1, (ap - i * step) / step));
+    const isActive  = Math.floor(ap / step) === i;
+    const scl       = wProgress < 0.5 ? wProgress / 0.5 * 1.2 : 1.2 - (wProgress - 0.5) / 0.5 * 0.2;
+    const wx        = x + widths[i] / 2;
+    if (wProgress > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(wProgress * 5, 1);
+      ctx.translate(wx, y);
+      ctx.scale(scl, scl);
+      if (isActive) {
+        // 현재 말하는 단어: 하이라이트 박스
+        const pad = 8;
+        ctx.fillStyle = getTplHL();
+        roundRect(ctx, -widths[i] / 2 - pad, -sz * 0.56, widths[i] + pad * 2, sz * 1.12, 6);
+        ctx.fill();
+        ctx.fillStyle = '#111'; ctx.fillText(word, -widths[i] / 2, 0);
+      } else {
+        ctx.lineWidth = 7; ctx.lineJoin = 'round';
+        ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(word, -widths[i] / 2, 0);
+        ctx.fillStyle = getTplColor(); ctx.fillText(word, -widths[i] / 2, 0);
+      }
+      ctx.restore();
+    }
+    x += widths[i] + sp;
+  });
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑮ Underline — 하단 밑줄 강조 (vlog·소프트)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Underline(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = subY(pos) + (1 - eased) * 20;
+  const sz    = getTplFontSz(68);
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `800 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 7; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(text, CW / 2, y);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, CW / 2, y);
+  // 밑줄 (왼→오 진행)
+  const tw     = ctx.measureText(text).width;
+  const ulW    = tw * Math.min(ap * 2.2, 1);
+  const ulY    = y + sz * 0.62;
+  ctx.strokeStyle = getTplHL();
+  ctx.lineWidth   = 4;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(CW / 2 - tw / 2, ulY);
+  ctx.lineTo(CW / 2 - tw / 2 + ulW, ulY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑯ Kinetic — 각 단어가 다른 방향에서 날아옴 (story)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Kinetic(text, ap) {
+  const words  = text.split(/\s+/).filter(Boolean);
+  const baseY  = CH - 210;
+  const sz     = getTplFontSz(70);
+  const step   = 0.5 / words.length;
+  ctx.save();
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const widths = words.map(w => ctx.measureText(w).width);
+  const sp     = sz * 0.26;
+  const total  = widths.reduce((a, b) => a + b, 0) + sp * (words.length - 1);
+  let x        = CW / 2 - total / 2;
+
+  const dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // 상·우·하·좌 순환
+  words.forEach((word, i) => {
+    const wProg = Math.max(0, Math.min(1, (ap - i * step) / (step * 1.8)));
+    const eW    = ease(wProg);
+    const [dx, dy] = dirs[i % 4];
+    const ox    = dx * (1 - eW) * 60;
+    const oy    = dy * (1 - eW) * 40;
+    const wx    = x + widths[i] / 2;
+    if (wProg > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(wProg * 4, 1);
+      ctx.lineWidth = 8; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+      ctx.strokeText(word, wx + ox, baseY + oy);
+      ctx.fillStyle = i % 2 === 0 ? getTplColor() : getTplHL();
+      ctx.fillText(word, wx + ox, baseY + oy);
+      ctx.restore();
+    }
+    x += widths[i] + sp;
+  });
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑰ Stamp — 도장 찍히는 효과 (mukbang·강렬)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Stamp(text, ap) {
+  const y     = CH / 2;
+  const sz    = getTplFontSz(92);
+  // 스케일: 2.0 → 1.0 (찍히는 느낌)
+  const scl   = ap < 0.4 ? 2.0 - (ap / 0.4) * 1.0 : 1.0;
+  const alpha = Math.min(ap * 8, 1);
+  const rot   = ap < 0.4 ? (0.4 - ap) / 0.4 * 0.08 : 0;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(CW / 2, y);
+  ctx.scale(scl, scl);
+  ctx.rotate(rot);
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // 외곽 테두리 박스
+  const tw  = ctx.measureText(text).width;
+  const pad = 20;
+  ctx.strokeStyle = getTplHL(); ctx.lineWidth = 6;
+  roundRect(ctx, -tw / 2 - pad, -sz * 0.62 - pad * 0.5, tw + pad * 2, sz * 1.24 + pad, 8);
+  ctx.stroke();
+  ctx.lineWidth = 10; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)'; ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = getTplColor(); ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑱ ShadowPop — 긴 그림자 레이어드 (story·무드)
+   ────────────────────────────────────────────────────────── */
+function subStyle_ShadowPop(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = subY(pos) + (1 - eased) * 28;
+  const sz    = getTplFontSz(72);
+  const alpha = Math.min(ap * 3, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // 레이어드 그림자 (4단)
+  const hl = getTplHL();
+  [6, 4, 2, 0].forEach(offset => {
+    ctx.fillStyle = offset > 0 ? `rgba(0,0,0,${0.4 - offset * 0.05})` : getTplColor();
+    ctx.fillText(text, CW / 2 + offset, y + offset);
+  });
+  // 하이라이트 색 얇은 stroke
+  ctx.strokeStyle = hl; ctx.lineWidth = 2;
+  ctx.strokeText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑲ Minimal — 얇고 깔끔 (cinematic·감성)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Minimal(text, pos, ap) {
+  const eased = ease(Math.min(ap * 2.0, 1));
+  const y     = subY(pos) + (1 - eased) * 16;
+  const sz    = getTplFontSz(58);
+  const alpha = eased;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `600 ${sz}px "Noto Sans KR", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  // 얇은 반투명 줄 배경
+  ctx.fillStyle = 'rgba(0,0,0,0.38)';
+  ctx.fillRect(0, y - sz * 0.72, CW, sz * 1.44);
+  // 좌측 컬러 액센트 바
+  ctx.fillStyle = getTplHL();
+  ctx.fillRect(20, y - sz * 0.52, 4, sz * 1.04);
+  ctx.fillStyle = getTplColor();
+  ctx.fillText(text, CW / 2, y);
+  ctx.restore();
+}
+
+/* ──────────────────────────────────────────────────────────
+   ⑳ Retro — 레트로 TV 스타일 (review·90s)
+   ────────────────────────────────────────────────────────── */
+function subStyle_Retro(text, ap) {
+  const eased = ease(Math.min(ap * 2.5, 1));
+  const y     = CH - 200 + (1 - eased) * 20;
+  const sz    = getTplFontSz(66);
+  const alpha = Math.min(ap * 4, 1);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = `900 ${sz}px "Noto Sans KR", monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const tw  = ctx.measureText(text).width;
+  const pad = { x: 22, y: 12 };
+  // 노란 배경 박스
+  ctx.fillStyle = getTplHL();
+  ctx.fillRect(CW / 2 - tw / 2 - pad.x, y - sz * 0.60 - pad.y, tw + pad.x * 2, sz * 1.2 + pad.y * 2);
+  // 검정 텍스트
+  ctx.fillStyle = '#111';
+  ctx.fillText(text, CW / 2, y);
+  // 스캔라인 효과 (레트로)
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let scanY = y - sz; scanY < y + sz; scanY += 4) {
+    ctx.fillRect(CW / 2 - tw / 2 - pad.x, scanY, tw + pad.x * 2, 2);
+  }
+  ctx.restore();
+}
+
+/* ── 기존 코드 호환 — capWords는 그대로 유지 ─────────────── */
 function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   const words = text.split(/\s+/).filter(Boolean);
   if (!words.length) return;
   ctx.save();
-  const tplSub  = getTplStyle().subtitle;
-  const fScale  = tplSub?.fontSize || 1.0;
-  const hlColor = tplSub?.hlColor  || '#FFE033';
-  let sz = maxSz * fScale;
+  let sz = maxSz;
   ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   let wM = words.map(w => ctx.measureText(w).width);
   const sp = () => sz * 0.28;
   const tot = () => wM.reduce((a, b) => a + b, 0) + sp() * (words.length - 1);
   // 캔버스 폭 초과 시 자동 축소
-  if (tot() > CW - SCALE * 56) {
-    sz = Math.max(SCALE * 34, Math.floor(sz * (CW - SCALE * 56) / tot()));
+  if (tot() > CW - 56) {
+    sz = Math.max(34, Math.floor(sz * (CW - 56) / tot()));
     ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
     wM = words.map(w => ctx.measureText(w).width);
   }
   const N  = words.length;
-  const step = 0.55 / N;
-  const sw   = Math.max(sz * 0.11, SCALE * 6);
+  const step = 0.55 / N;           // 전체 애니메이션의 55%에 모든 단어 등장
+  const sw   = Math.max(sz * 0.13, 7); // 스트로크 두께
   let x = cx - tot() / 2;
   words.forEach((word, i) => {
     const wProg = Math.max(0, Math.min(1, (ap - i * step) / (step * 1.65)));
@@ -1135,9 +1600,9 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     ctx.globalAlpha = alpha;
     ctx.translate(wx, cy); ctx.scale(scl, scl);
     if (isHL) {
-      // 하이라이트 박스 (템플릿 hlColor) + 검정 텍스트
+      // 노란 하이라이트 박스 + 검정 텍스트
       const pad = 9;
-      ctx.fillStyle = hlColor;
+      ctx.fillStyle = '#FFE033';
       roundRect(ctx, -wM[i] / 2 - pad, -sz * 0.58, wM[i] + pad * 2, sz * 1.16, 7); ctx.fill();
       ctx.lineWidth = sw * 0.35; ctx.lineJoin = 'round';
       ctx.strokeStyle = 'rgba(0,0,0,0.35)';
@@ -1155,99 +1620,18 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   ctx.restore();
 }
 
-/* 자막 영역 그라데이션 배경 (0.70 → 0.22로 대폭 감소) */
-function drawSubtitleBg(cy, lineH, alpha) {
-  const h = lineH * 1.8;
-  const g = ctx.createLinearGradient(0, cy - h * 0.55, 0, cy + h * 0.55);
-  g.addColorStop(0,    `rgba(0,0,0,0)`);
-  g.addColorStop(0.28, `rgba(0,0,0,${0.22 * alpha})`);
-  g.addColorStop(0.72, `rgba(0,0,0,${0.22 * alpha})`);
-  g.addColorStop(1,    `rgba(0,0,0,0)`);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, cy - h * 0.55, CW, h * 1.1);
-}
-
-/* ① Hook — CapCut 최대 임팩트: 첫 단어 노란 강조 + 배경 */
-function drawSubHook(text, pos, ap) {
-  const y = pos === 'upper' ? CH * 0.22 : pos === 'center' ? CH * 0.50 : CH * 0.72;
-  drawSubtitleBg(y, SCALE * 82, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 82, '#FFFFFF', 0, ap);
-}
-
-/* ② Detail — CapCut 기본: 슬라이드업 + 흰 텍스트 + 배경 */
-function drawSubDetail(text, pos, ap) {
-  const eased = ease(Math.min(ap * 2.5, 1));
-  const baseY = pos === 'upper' ? CH * 0.18 : pos === 'center' ? CH * 0.50 : CH - SCALE * 200;
-  const y     = baseY + (1 - eased) * SCALE * 30;
-  drawSubtitleBg(y, SCALE * 64, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 64, '#FFFFFF', null, ap);
-}
-
-/* ③ Hero — CapCut 대형: 마지막 단어 클라이맥스 강조 + 배경 */
-function drawSubHero(text, ap) {
-  const eased = ease(Math.min(ap * 2.5, 1));
-  const y     = CH - SCALE * 188 + (1 - eased) * SCALE * 24;
-  const words = text.split(/\s+/).filter(Boolean);
-  drawSubtitleBg(y, SCALE * 76, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 76, '#FFFFFF', words.length - 1, ap);
-}
-
-/* ④ CTA — CapCut 콜투액션 + 파워풀 바운스 + 배경 */
-function drawSubCTA(text, ap) {
-  const eased  = ease(Math.min(ap * 2.5, 1));
-  const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * SCALE * 12 : 0;
-  const y      = CH - SCALE * 128 + (1 - eased) * SCALE * 28 - bounce;
-  drawSubtitleBg(y, SCALE * 68, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, SCALE * 68, getTplStyle().subtitle?.hlColor || '#FFE033', 0, ap);
-}
-
-/* ── CapCut / TikTok 스타일 텍스트 렌더러 ───────────────── */
-function drawTrendyText(text, x, y) {
-  if (!text) return;
-  const style = getTrendyStyle();
-  ctx.save();
-  ctx.font = style.font;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  // 반투명 배경 박스 (bgColor가 있는 경우)
-  if (style.bgColor) {
-    const tw = ctx.measureText(text).width;
-    const ph = parseInt(style.font) || 68;
-    ctx.fillStyle = style.bgColor;
-    roundRect(ctx, x - tw / 2 - 20, y - ph * 0.62, tw + 40, ph * 1.24, 12);
-    ctx.fill();
-  }
-  // 외곽선 + 그림자
-  if (style.strokeWidth > 0) {
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = style.strokeWidth;
-    ctx.strokeStyle = style.stroke;
-    ctx.shadowColor = style.shadow;
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 4;
-    ctx.strokeText(text, x, y);
-  }
-  ctx.shadowColor = 'transparent';
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
-  ctx.fillStyle = style.color;
-  ctx.fillText(text, x, y);
-  ctx.restore();
-}
-
 /* ── MOOVLOG 배지 ────────────────────────────────────────── */
 function drawTopBadge() {
-  const badge = getTplStyle().badge;
-  const bgColor  = badge?.bg  || 'rgba(0,0,0,0.50)';
-  const dotColor = badge?.dot || '#ff6b9d';
-  const S = SCALE;
+  const tpl = getTplStyle();
+  const bg  = tpl.badge?.bg  || 'rgba(0,0,0,0.50)';
+  const dot = tpl.badge?.dot || '#ff6b9d';
   ctx.save();
-  ctx.fillStyle = bgColor; roundRect(ctx, 20*S, 42*S, 225*S, 54*S, 27*S); ctx.fill();
-  ctx.fillStyle = dotColor; ctx.shadowColor = dotColor; ctx.shadowBlur = 10*S;
-  ctx.beginPath(); ctx.arc(50*S, 69*S, 7*S, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
-  ctx.font = `bold ${Math.round(27*S)}px "Inter", sans-serif`;
+  ctx.fillStyle = bg; roundRect(ctx, 20, 42, 225, 54, 27); ctx.fill();
+  ctx.fillStyle = dot; ctx.shadowColor = dot; ctx.shadowBlur = 10;
+  ctx.beginPath(); ctx.arc(50, 69, 7, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.font = 'bold 27px "Inter", sans-serif';
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText('MOOVLOG', 66*S, 69*S);
+  ctx.fillText('MOOVLOG', 66, 69);
   ctx.restore();
 }
 
@@ -1267,8 +1651,7 @@ function buildSceneCards() {
   D.sceneList.innerHTML = '';
   S.script.scenes.forEach((s, i) => {
     const d = document.createElement('div'); d.className = 'scard'; d.id = `sc${i}`;
-    const capDisplay = s.caption2 ? `${esc(s.caption1 || s.subtitle)} / ${esc(s.caption2)}` : esc(s.caption1 || s.subtitle);
-    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${s.duration}s · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}</div><div class="scard-sub">${capDisplay}</div><div class="scard-nar">${esc(s.narration)}</div>`;
+    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${s.duration}s · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}</div><div class="scard-sub">${esc(s.subtitle)}</div><div class="scard-nar">${esc(s.narration)}</div>`;
     D.sceneList.appendChild(d);
   });
 }
@@ -1496,9 +1879,11 @@ async function exportRenderLoop() {
     const frame = now => {
       if (!ts) ts = now;
       const dur = sc[si].duration, el = (now - ts) / 1000, prog = Math.min(el / dur, 1);
-      const _abuf = S.audioBuffers?.[si]; const _adur = _abuf?.duration ?? null;
-      const _stgt = _adur ? Math.min(_adur / dur, 0.95) : 0.70;
-      S.subAnimProg = Math.min(prog / _stgt, 1);
+      // export도 동일한 싱크 보정
+      const audioBuf  = S.audioBuffers?.[si];
+      const audioDur  = audioBuf ? audioBuf.duration : null;
+      const subTarget = audioDur ? Math.min(audioDur / dur, 0.95) : 0.70;
+      S.subAnimProg   = Math.min(prog / subTarget, 1);
       const TD = 0.28;
       if (el >= dur - TD && si < sc.length - 1) drawTransition(si, (el - (dur - TD)) / TD);
       else renderFrame(si, prog);
@@ -1570,8 +1955,7 @@ function goBack() {
   D.sceneList.innerHTML = '';
   if (D.dlAudioBtn) { D.dlAudioBtn.disabled = false; D.dlAudioBtn.innerHTML = '<i class="fas fa-music"></i> 음성만 저장 (WAV)'; }
   if (D.sceneDots) D.sceneDots.innerHTML = '';
-  if (D.vProgText) D.vProgText.textContent = '0%';
-  if (D.bgmBadge) D.bgmBadge.hidden = true;
+  if (D.snsWrap) D.snsWrap.hidden = true;
   const styleBadge = document.getElementById('autoStyleBadge');
   if (styleBadge) styleBadge.hidden = true;
   updateStepUI(1);
@@ -1580,14 +1964,13 @@ function showLoad() { D.loadWrap.hidden = false; }
 function hideLoad() { D.loadWrap.hidden = true; }
 function setStep(n, title, sub) {
   D.loadTitle.textContent = title || ''; D.loadSub.textContent = sub || '';
-  const items    = [D.ls1, D.ls2, D.ls3, D.ls4];
+  const items   = [D.ls1, D.ls2, D.ls3, D.ls4];
   const statuses = [D.ls1s, D.ls2s, D.ls3s, D.ls4s];
-  const activeLabels = ['분석중...', '생성중...', '음성 생성중...', '렌더링중...'];
   items.forEach((el, i) => {
     if (!el) return;
     el.classList.toggle('active', i === n - 1);
     if (i < n - 1) el.classList.add('done');
-    if (statuses[i]) statuses[i].textContent = i === n - 1 ? activeLabels[i] : i < n - 1 ? '완료' : '대기중';
+    if (statuses[i]) statuses[i].textContent = i === n - 1 ? '진행중...' : i < n - 1 ? '완료' : '대기중';
   });
 }
 function doneStep(n) {
@@ -1627,7 +2010,6 @@ function updateAudioStatus(mode) {
   D.audioStatus.style.color = mode === 'google-tts' ? '#4ade80' : '#888';
   if (D.audioBadgeText) D.audioBadgeText.textContent = mode === 'google-tts' ? 'AI 보이스' : '웹 음성';
   if (D.audioBadge) D.audioBadge.style.background = mode === 'google-tts' ? 'rgba(74,222,128,0.15)' : 'rgba(100,100,100,0.2)';
-  if (D.bgmBadge) D.bgmBadge.hidden = true; // BGM 기능 추가 전까지 숨김
 }
 function toast(msg, type = 'inf') {
   const icons = { ok: 'fa-check-circle', err: 'fa-exclamation-circle', inf: 'fa-info-circle' };

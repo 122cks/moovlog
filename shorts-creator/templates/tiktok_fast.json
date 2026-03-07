@@ -1,0 +1,22 @@
+{
+  "name": "tiktok_fast",
+  "sceneDuration": [1.5, 2.2],
+  "captionStyle": {
+    "font": "900 90px 'Noto Sans KR'",
+    "size": 90,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 10,
+    "shadow": "rgba(0,0,0,0.9)",
+    "highlightColor": "#FFFB00",
+    "animation": "bounce"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.1, 1.25],
+    "transition": "wipe"
+  },
+  "layout": {
+    "captionPosition": "center"
+  }
+}

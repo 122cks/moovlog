@@ -1,0 +1,22 @@
+{
+  "name": "shorts_caption",
+  "sceneDuration": [2.0, 3.0],
+  "captionStyle": {
+    "font": "900 80px 'Noto Sans KR'",
+    "size": 80,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 9,
+    "shadow": "rgba(0,0,0,0.8)",
+    "highlightColor": "#FFFB00",
+    "animation": "pop"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.0, 1.12],
+    "transition": "fade"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

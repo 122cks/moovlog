@@ -1,0 +1,22 @@
+{
+  "name": "vlog_zoom",
+  "sceneDuration": [2.0, 3.0],
+  "captionStyle": {
+    "font": "800 74px 'Noto Sans KR'",
+    "size": 74,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 8,
+    "shadow": "rgba(0,0,0,0.75)",
+    "highlightColor": "#6EE7B7",
+    "animation": "pop"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.0, 1.12],
+    "transition": "zoom"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

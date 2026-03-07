@@ -1,0 +1,23 @@
+{
+  "name": "reels_cinematic",
+  "sceneDuration": [3.0, 4.5],
+  "captionStyle": {
+    "font": "800 68px 'Noto Sans KR'",
+    "size": 68,
+    "color": "#E8E0D0",
+    "stroke": "#C8A96E",
+    "strokeWidth": 6,
+    "shadow": "rgba(0,0,0,0.6)",
+    "highlightColor": "#C8A96E",
+    "animation": "fade"
+  },
+  "effects": {
+    "zoom": false,
+    "zoomRange": [1.0, 1.06],
+    "transition": "fade"
+  },
+  "layout": {
+    "captionPosition": "lower",
+    "letterbox": true
+  }
+}

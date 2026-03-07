@@ -1,0 +1,22 @@
+{
+  "name": "reels_story",
+  "sceneDuration": [2.5, 3.5],
+  "captionStyle": {
+    "font": "700 72px 'Noto Sans KR'",
+    "size": 72,
+    "color": "#F0E6FF",
+    "stroke": "#000000",
+    "strokeWidth": 7,
+    "shadow": "rgba(0,0,0,0.7)",
+    "highlightColor": "#C084FC",
+    "animation": "fade"
+  },
+  "effects": {
+    "zoom": false,
+    "zoomRange": [1.0, 1.06],
+    "transition": "fade"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

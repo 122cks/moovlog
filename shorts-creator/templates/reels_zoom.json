@@ -1,0 +1,22 @@
+{
+  "name": "reels_zoom",
+  "sceneDuration": [1.8, 2.5],
+  "captionStyle": {
+    "font": "900 84px 'Noto Sans KR'",
+    "size": 84,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 9,
+    "shadow": "rgba(0,0,0,0.8)",
+    "highlightColor": "#FFB347",
+    "animation": "pop"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.0, 1.15],
+    "transition": "zoom"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

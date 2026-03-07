@@ -1,0 +1,22 @@
+{
+  "name": "tiktok_review",
+  "sceneDuration": [2.5, 3.5],
+  "captionStyle": {
+    "font": "900 76px 'Noto Sans KR'",
+    "size": 76,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 8,
+    "shadow": "rgba(0,0,0,0.8)",
+    "highlightColor": "#FBBF24",
+    "animation": "slide_up"
+  },
+  "effects": {
+    "zoom": false,
+    "zoomRange": [1.0, 1.08],
+    "transition": "fade"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "tiktok_food",
+  "sceneDuration": [2.0, 3.0],
+  "captionStyle": {
+    "font": "900 82px 'Noto Sans KR'",
+    "size": 82,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 9,
+    "shadow": "rgba(0,0,0,0.85)",
+    "highlightColor": "#FFE033",
+    "animation": "word_by_word"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.0, 1.12],
+    "transition": "cut"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "reels_fastcut",
+  "sceneDuration": [1.2, 1.8],
+  "captionStyle": {
+    "font": "900 90px 'Noto Sans KR'",
+    "size": 90,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 10,
+    "shadow": "rgba(0,0,0,0.9)",
+    "highlightColor": "#FF2D55",
+    "animation": "bounce"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.05, 1.20],
+    "transition": "wipe"
+  },
+  "layout": {
+    "captionPosition": "center"
+  }
+}

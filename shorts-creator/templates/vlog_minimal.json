@@ -1,0 +1,23 @@
+{
+  "name": "vlog_minimal",
+  "sceneDuration": [3.0, 4.0],
+  "captionStyle": {
+    "font": "600 60px 'Noto Sans KR'",
+    "size": 60,
+    "color": "#ffffff",
+    "stroke": "transparent",
+    "strokeWidth": 0,
+    "shadow": "rgba(0,0,0,0.5)",
+    "highlightColor": "#7FDBFF",
+    "bgColor": "rgba(0,0,0,0.4)",
+    "animation": "underline"
+  },
+  "effects": {
+    "zoom": false,
+    "zoomRange": [1.0, 1.04],
+    "transition": "fade"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

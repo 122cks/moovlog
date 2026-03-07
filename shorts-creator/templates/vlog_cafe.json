@@ -1,0 +1,23 @@
+{
+  "name": "vlog_cafe",
+  "sceneDuration": [2.5, 3.5],
+  "captionStyle": {
+    "font": "800 72px 'Noto Sans KR'",
+    "size": 72,
+    "color": "#FFF5E4",
+    "stroke": "transparent",
+    "strokeWidth": 0,
+    "shadow": "rgba(0,0,0,0.5)",
+    "highlightColor": "#FFB347",
+    "bgColor": "rgba(0,0,0,0.45)",
+    "animation": "pill"
+  },
+  "effects": {
+    "zoom": false,
+    "zoomRange": [1.0, 1.08],
+    "transition": "fade"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

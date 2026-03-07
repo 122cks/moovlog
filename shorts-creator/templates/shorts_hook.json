@@ -1,0 +1,22 @@
+{
+  "name": "shorts_hook",
+  "sceneDuration": [1.2, 2.0],
+  "captionStyle": {
+    "font": "900 94px 'Noto Sans KR'",
+    "size": 94,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 11,
+    "shadow": "rgba(0,0,0,0.95)",
+    "highlightColor": "#FF2D55",
+    "animation": "glitch"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.08, 1.25],
+    "transition": "wipe"
+  },
+  "layout": {
+    "captionPosition": "center"
+  }
+}

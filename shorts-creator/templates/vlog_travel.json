@@ -1,0 +1,22 @@
+{
+  "name": "vlog_travel",
+  "sceneDuration": [2.0, 3.0],
+  "captionStyle": {
+    "font": "800 76px 'Noto Sans KR'",
+    "size": 76,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 8,
+    "shadow": "rgba(0,0,0,0.7)",
+    "highlightColor": "#7FDBFF",
+    "animation": "slide_up"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.0, 1.10],
+    "transition": "slide"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

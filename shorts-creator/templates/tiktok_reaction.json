@@ -1,0 +1,23 @@
+{
+  "name": "tiktok_reaction",
+  "sceneDuration": [1.8, 2.6],
+  "captionStyle": {
+    "font": "900 86px 'Noto Sans KR'",
+    "size": 86,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 10,
+    "shadow": "rgba(0,0,0,0.9)",
+    "highlightColor": "#FF2D55",
+    "bgColor": "rgba(0,0,0,0.0)",
+    "animation": "pop"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.0, 1.18],
+    "transition": "zoom"
+  },
+  "layout": {
+    "captionPosition": "center"
+  }
+}

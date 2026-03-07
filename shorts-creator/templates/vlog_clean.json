@@ -1,0 +1,23 @@
+{
+  "name": "vlog_clean",
+  "sceneDuration": [2.5, 3.5],
+  "captionStyle": {
+    "font": "700 68px 'Noto Sans KR'",
+    "size": 68,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 7,
+    "shadow": "rgba(0,0,0,0.6)",
+    "highlightColor": "#6EE7B7",
+    "bgColor": "rgba(0,0,0,0.35)",
+    "animation": "fade"
+  },
+  "effects": {
+    "zoom": false,
+    "zoomRange": [1.0, 1.06],
+    "transition": "fade"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}

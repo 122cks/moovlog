@@ -1,0 +1,22 @@
+{
+  "name": "shorts_fast",
+  "sceneDuration": [1.5, 2.0],
+  "captionStyle": {
+    "font": "900 88px 'Noto Sans KR'",
+    "size": 88,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 10,
+    "shadow": "rgba(0,0,0,0.9)",
+    "highlightColor": "#FF4444",
+    "animation": "bounce"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.08, 1.22],
+    "transition": "cut"
+  },
+  "layout": {
+    "captionPosition": "center"
+  }
+}

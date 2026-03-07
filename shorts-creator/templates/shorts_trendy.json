@@ -1,0 +1,22 @@
+{
+  "name": "shorts_trendy",
+  "sceneDuration": [1.8, 2.5],
+  "captionStyle": {
+    "font": "900 82px 'Noto Sans KR'",
+    "size": 82,
+    "color": "#ffffff",
+    "stroke": "#000000",
+    "strokeWidth": 9,
+    "shadow": "rgba(0,0,0,0.85)",
+    "highlightColor": "#00FFCC",
+    "animation": "bounce"
+  },
+  "effects": {
+    "zoom": true,
+    "zoomRange": [1.0, 1.14],
+    "transition": "wipe"
+  },
+  "layout": {
+    "captionPosition": "lower"
+  }
+}
