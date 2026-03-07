@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Shorts Creator" />
-  <meta name="description" content="무브먼트 Shorts Creator" />
+  <meta name="description" content="AI 자동 숫폼 영상 생성기 - 인스타 릴스, 틱톡, 유튜브 쇼츠 자동 제작 | MOOVLOG Shorts Creator" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <title>무브먼트 Shorts Creator</title>
@@ -92,6 +92,7 @@
 
     <!-- 템플릿 수동 선택 -->
     <div class="tpl-picker" id="tplPicker"></div>
+    <input type="hidden" id="selectedTplInput" value="auto" />
 
     <button class="make-btn" id="makeBtn">
       <span class="make-glow"></span>
@@ -169,9 +170,15 @@
           <p class="result-label">생성 완료</p>
           <p class="result-sub" id="resultSub">0개 씬 · 0초</p>
         </div>
-        <div class="audio-badge" id="audioBadge">
-          <i class="fas fa-microphone-alt"></i>
-          <span id="audioBadgeText">AI 보이스</span>
+        <div class="badge-group">
+          <div class="audio-badge" id="audioBadge">
+            <i class="fas fa-microphone-alt"></i>
+            <span id="audioBadgeText">AI 보이스</span>
+          </div>
+          <div class="bgm-badge" id="bgmBadge" hidden>
+            <i class="fas fa-film"></i>
+            <span id="bgmBadgeText">—</span>
+          </div>
         </div>
       </div>
 
@@ -193,7 +200,10 @@
         </div>
       </div>
 
-      <div class="vprog-rail"><div class="vprog-bar" id="vProg"></div></div>
+      <div class="vprog-wrap">
+        <div class="vprog-rail"><div class="vprog-bar" id="vProg"></div></div>
+        <span class="vprog-text" id="vProgText">0%</span>
+      </div>
 
       <div class="v-controls">
         <button class="vcb" id="replayBtn"><i class="fas fa-rotate-left"></i></button>
@@ -271,6 +281,6 @@
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@5.1.3/build/mp4-muxer.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/webm-muxer@3.2.0/build/webm-muxer.js"></script>
-  <script src="script.js?v=11"></script>
+  <script src="script.js?v=20260307"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v11';
+const APP_VERSION  = 'v12';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -30,7 +30,8 @@ async function geminiWithFallback(body) {
 }
 
 /* ── Canvas ──────────────────────────────────────────────── */
-const CW = 720, CH = 1280;
+const CW = 1080, CH = 1920;       // 유튜브 쇼츠·틱톡·릴스 권장 해상도
+const SCALE = CW / 720;            // 1.5 — 모든 px 좌표 기준 스케일
 const AUTO_EXPORT_ON_CREATE = true;
 const g  = id => document.getElementById(id);
 const D  = {
@@ -257,7 +258,12 @@ function addFiles(files) {
   const valid = files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
   if (!valid.length) return;
   if (S.files.length + valid.length > 10) { toast('최대 10개까지 가능합니다', 'err'); return; }
-  valid.forEach(f => S.files.push({ file: f, url: URL.createObjectURL(f), type: f.type.startsWith('video/') ? 'video' : 'image' }));
+  // 영상 우선 정렬 (video > image)
+  const sorted = [
+    ...valid.filter(f => f.type.startsWith('video/')),
+    ...valid.filter(f => f.type.startsWith('image/')),
+  ];
+  sorted.forEach(f => S.files.push({ file: f, url: URL.createObjectURL(f), type: f.type.startsWith('video/') ? 'video' : 'image' }));
   renderThumbs();
 }
 function renderThumbs() {
@@ -350,16 +356,22 @@ async function startMake() {
     buildSNSTags(script);
     await sleep(300);
     updateStepUI(3); hideLoad(); D.resultWrap.hidden = false;
+    // BGM 배지: 현재 선택 템플릿 표시
+    const bgmBadgeEl = document.getElementById('bgmBadge');
+    const bgmTextEl  = document.getElementById('bgmBadgeText');
+    if (bgmTextEl) bgmTextEl.textContent = TEMPLATE_NAMES[selectedTemplate] || selectedTemplate;
+    if (bgmBadgeEl) bgmBadgeEl.hidden = false;
     setupPlayer();
+    setTimeout(startPlay, 300);  // 결과 표시 시 자동 재생
     if (AUTO_EXPORT_ON_CREATE) {
-      toast('영상 생성 완료: 자동 저장을 시작합니다', 'inf');
-      setTimeout(() => { doExport(); }, 350);
-    } else {
-      setTimeout(startPlay, 300);
+      toast('영상 생성 완료! 자동 저장을 시작합니다', 'inf');
+      setTimeout(() => { doExport(); }, 2500);
     }
   } catch (err) {
     hideLoad(); D.makeBtn.disabled = false;
-    console.error(err); toast('오류: ' + (err.message || '알 수 없는 오류'), 'err');
+    console.error('[startMake]', err);
+    const msg = err?.message || String(err) || '알 수 없는 오류';
+    toast('오류: ' + msg, 'err');
   }
 }
 
@@ -529,15 +541,22 @@ async function extractVideoFramesB64(file, count = 4) {
       const frames = [], times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * dur);
       for (const t of times) {
         await new Promise(r => {
-          const done = () => {
-            vid.removeEventListener('seeked', done);
-            cx.drawImage(vid, 0, 0, 360, 640);
-            frames.push({ base64: c.toDataURL('image/jpeg', 0.75).split(',')[1], mimeType: 'image/jpeg' });
+          let settled = false;
+          const onSeeked = () => {
+            if (settled) return;
+            settled = true;
+            vid.removeEventListener('seeked', onSeeked);
+            try {
+              cx.drawImage(vid, 0, 0, 360, 640);
+              frames.push({ base64: c.toDataURL('image/jpeg', 0.75).split(',')[1], mimeType: 'image/jpeg' });
+            } catch (_) { /* 프레임 추출 실패 무시 */ }
             r();
           };
-          vid.addEventListener('seeked', done);
+          vid.addEventListener('seeked', onSeeked);
           vid.currentTime = t;
-          setTimeout(r, 1500);
+          setTimeout(() => {
+            if (!settled) { settled = true; vid.removeEventListener('seeked', onSeeked); r(); }
+          }, 1500);
         });
       }
       URL.revokeObjectURL(url); resolve(frames);
@@ -599,8 +618,8 @@ async function generateAllTTS(scenes) {
 // Gemini TTS: 모델 2개 × 비이스 4개 단계적 시도
 async function fetchGeminiTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
-  const voices = ['Kore', 'Aoede', 'Charon', 'Fenrir', 'Orus'];
-  const ttsModels = ['gemini-2.5-flash-preview-tts', 'gemini-2.5-flash'];
+  const voices = ['Charon', 'Fenrir', 'Kore', 'Orus'];
+  const ttsModels = ['gemini-2.5-flash-preview-tts'];
   let lastErr;
   for (const model of ttsModels) {
     const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
@@ -609,7 +628,7 @@ async function fetchGeminiTTS(text) {
         const res = await fetch(ttsUrl, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: '한국어 남성 모델. 생동감 있고 자연스러운 한국어로 나레이션해주세요. 맛집 콘텐츠 전문 성우.' }] },
+            system_instruction: { parts: [{ text: '당신은 한국어 전문 남성 성우입니다. 타입캐스트 프리미엄 스타일 — 중저음의 자연스러운 발음, 맛집 콘텐츠에 적합한 감각적 표현. 반말 허용, 감탄사와 의성어를 생동감 있게 진달하세요.' }] },
             contents: [{ parts: [{ text: text.trim() }] }],
             generationConfig: {
               responseModalities: ['AUDIO'],
@@ -744,9 +763,22 @@ async function preload() {
       const vid = Object.assign(document.createElement('video'), { src: m.url, muted: true, loop: true, playsInline: true });
       vid.setAttribute('playsinline', '');
       vid.setAttribute('webkit-playsinline', '');
-      await new Promise(r => { vid.onloadeddata = r; vid.onerror = r; setTimeout(r, 5000); });
-      vid.play().catch(() => {}); // canvas drawImage는 playing 상태 필요 (모바일)
-      S.loaded.push({ type: 'video', src: vid });
+      const loaded = await new Promise(r => {
+        vid.onloadeddata = () => r(true);
+        vid.onerror      = () => r(false);
+        setTimeout(() => r(vid.readyState >= 2), 5000);
+      });
+      if (!loaded) {
+        // 비디오 로드 실패 — 코덱 미지원 가능성
+        console.warn('[Preload] 비디오 로드 실패:', m.file?.name || m.url);
+        vid.src = '';
+        vid._loadFailed = true;
+        S.loaded.push({ type: 'video', src: vid });
+        toast(`비디오 로드 실패: ${m.file?.name || ''}. MP4(H.264) 형식을 권장합니다`, 'inf');
+      } else {
+        vid.play().catch(() => {}); // canvas drawImage는 playing 상태 필요 (모바일)
+        S.loaded.push({ type: 'video', src: vid });
+      }
     }
   }
 }
@@ -776,7 +808,10 @@ function tick() {
     const dur = sc.duration, el = (now - S.startTs) / 1000, prog = Math.min(el / dur, 1);
     const total = S.script.scenes.reduce((a, s) => a + s.duration, 0);
     const done  = S.script.scenes.slice(0, S.scene).reduce((a, s) => a + s.duration, 0);
-    D.vProg.style.width = ((done + el) / total * 100) + '%';
+    const pct   = (done + el) / total * 100;
+    D.vProg.style.width = pct + '%';
+    const vProgEl = document.getElementById('vProgText');
+    if (vProgEl) vProgEl.textContent = Math.floor(pct) + '%';
     S.subAnimProg = Math.min(prog * 2.8, 1);
     const TD = 0.28;
     if (el >= dur - TD && S.scene < S.script.scenes.length - 1)
@@ -883,9 +918,13 @@ function getMedia(sc) { return S.loaded.length ? S.loaded[(sc.idx ?? 0) % S.load
 /* ── Ken Burns (6종) ─────────────────────────────────────── */
 function drawMedia(media, effect, prog) {
   if (!media) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, CW, CH); return; }
-  // 모바일에서 video가 일시정지 상태면 재생
-  if (media.type === 'video' && media.src.paused) {
-    media.src.play().catch(() => {});
+  if (media.type === 'video') {
+    const vid = media.src;
+    // 비디오가 재생 가능 상태가 아니면 블랙 프레임으로 대체
+    if (vid._loadFailed || vid.readyState < 2) {
+      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, CW, CH); return;
+    }
+    if (vid.paused) vid.play().catch(() => {});
   }
   const e = ease(prog); let sc = 1, ox = 0, oy = 0;
   // [강화4] Ken Burns 8종으로 확장
@@ -906,7 +945,13 @@ function drawMedia(media, effect, prog) {
   const r  = Math.max(CW / sw, CH / sh), dw = sw * r, dh = sh * r;
   ctx.save();
   ctx.translate(CW / 2 + ox, CH / 2 + oy); ctx.scale(sc, sc);
-  ctx.drawImage(el, -dw / 2, -dh / 2, dw, dh);
+  try {
+    ctx.drawImage(el, -dw / 2, -dh / 2, dw, dh);
+  } catch (e) {
+    console.warn('[drawMedia] drawImage 실패:', e.message);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
+  }
   ctx.restore();
 }
 
@@ -949,13 +994,13 @@ function drawSparkles(prog) {
     const py    = seed2 * CH * 0.55 + CH * 0.18;
     const twink = Math.sin(phase + i * 0.88) * 0.5 + 0.5;
     if (twink < 0.25) continue;
-    const r     = (1.5 + seed1 * 2.5) * twink;
+    const r     = (1.5 + seed1 * 2.5) * twink * SCALE;
     const a     = twink * 0.65;
     ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
     ctx.fillStyle = `rgba(255, 230, 120, ${a})`; ctx.fill();
     // 십자 반짝임
     ctx.strokeStyle = `rgba(255, 255, 200, ${a * 0.6})`;
-    ctx.lineWidth = 0.8;
+    ctx.lineWidth = 0.8 * SCALE;
     ctx.beginPath();
     ctx.moveTo(px - r * 3, py); ctx.lineTo(px + r * 3, py);
     ctx.moveTo(px, py - r * 3); ctx.lineTo(px, py + r * 3);
@@ -1008,14 +1053,14 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   const sp = () => sz * 0.28;
   const tot = () => wM.reduce((a, b) => a + b, 0) + sp() * (words.length - 1);
   // 캔버스 폭 초과 시 자동 축소
-  if (tot() > CW - 56) {
-    sz = Math.max(34, Math.floor(sz * (CW - 56) / tot()));
+  if (tot() > CW - SCALE * 56) {
+    sz = Math.max(SCALE * 34, Math.floor(sz * (CW - SCALE * 56) / tot()));
     ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
     wM = words.map(w => ctx.measureText(w).width);
   }
   const N  = words.length;
-  const step = 0.55 / N;           // 전체 애니메이션의 55%에 모든 단어 등장
-  const sw   = Math.max(sz * 0.13, 7); // 스트로크 두께
+  const step = 0.55 / N;
+  const sw   = Math.max(sz * 0.11, SCALE * 6);
   let x = cx - tot() / 2;
   words.forEach((word, i) => {
     const wProg = Math.max(0, Math.min(1, (ap - i * step) / (step * 1.65)));
@@ -1066,35 +1111,35 @@ function drawSubtitleBg(cy, lineH, alpha) {
 /* ① Hook — CapCut 최대 임팩트: 첫 단어 노란 강조 + 배경 */
 function drawSubHook(text, pos, ap) {
   const y = pos === 'upper' ? CH * 0.22 : pos === 'center' ? CH * 0.50 : CH * 0.72;
-  drawSubtitleBg(y, 96, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, 96, '#FFFFFF', 0, ap);
+  drawSubtitleBg(y, SCALE * 82, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, SCALE * 82, '#FFFFFF', 0, ap);
 }
 
 /* ② Detail — CapCut 기본: 슬라이드업 + 흰 텍스트 + 배경 */
 function drawSubDetail(text, pos, ap) {
   const eased = ease(Math.min(ap * 2.5, 1));
-  const baseY = pos === 'upper' ? CH * 0.18 : pos === 'center' ? CH * 0.50 : CH - 200;
-  const y     = baseY + (1 - eased) * 30;
-  drawSubtitleBg(y, 74, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, 74, '#FFFFFF', null, ap);
+  const baseY = pos === 'upper' ? CH * 0.18 : pos === 'center' ? CH * 0.50 : CH - SCALE * 200;
+  const y     = baseY + (1 - eased) * SCALE * 30;
+  drawSubtitleBg(y, SCALE * 64, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, SCALE * 64, '#FFFFFF', null, ap);
 }
 
 /* ③ Hero — CapCut 대형: 마지막 단어 클라이맥스 강조 + 배경 */
 function drawSubHero(text, ap) {
   const eased = ease(Math.min(ap * 2.5, 1));
-  const y     = CH - 188 + (1 - eased) * 24;
+  const y     = CH - SCALE * 188 + (1 - eased) * SCALE * 24;
   const words = text.split(/\s+/).filter(Boolean);
-  drawSubtitleBg(y, 88, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, 88, '#FFFFFF', words.length - 1, ap);
+  drawSubtitleBg(y, SCALE * 76, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, SCALE * 76, '#FFFFFF', words.length - 1, ap);
 }
 
-/* ④ CTA — CapCut 노란 콜투액션 + 파워풀 바운스 + 배경 */
+/* ④ CTA — CapCut 콜투액션 + 파워풀 바운스 + 배경 */
 function drawSubCTA(text, ap) {
   const eased  = ease(Math.min(ap * 2.5, 1));
-  const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * 14 : 0;
-  const y      = CH - 128 + (1 - eased) * 28 - bounce;
-  drawSubtitleBg(y, 80, Math.min(ap * 3, 1));
-  capWords(text, CW / 2, y, 80, getTplStyle().subtitle?.hlColor || '#FFE033', 0, ap);
+  const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * SCALE * 12 : 0;
+  const y      = CH - SCALE * 128 + (1 - eased) * SCALE * 28 - bounce;
+  drawSubtitleBg(y, SCALE * 68, Math.min(ap * 3, 1));
+  capWords(text, CW / 2, y, SCALE * 68, getTplStyle().subtitle?.hlColor || '#FFE033', 0, ap);
 }
 
 /* ── MOOVLOG 배지 ────────────────────────────────────────── */
@@ -1102,13 +1147,14 @@ function drawTopBadge() {
   const badge = getTplStyle().badge;
   const bgColor  = badge?.bg  || 'rgba(0,0,0,0.50)';
   const dotColor = badge?.dot || '#ff6b9d';
+  const S = SCALE;
   ctx.save();
-  ctx.fillStyle = bgColor; roundRect(ctx, 20, 42, 225, 54, 27); ctx.fill();
-  ctx.fillStyle = dotColor; ctx.shadowColor = dotColor; ctx.shadowBlur = 10;
-  ctx.beginPath(); ctx.arc(50, 69, 7, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
-  ctx.font = 'bold 27px "Inter", sans-serif';
+  ctx.fillStyle = bgColor; roundRect(ctx, 20*S, 42*S, 225*S, 54*S, 27*S); ctx.fill();
+  ctx.fillStyle = dotColor; ctx.shadowColor = dotColor; ctx.shadowBlur = 10*S;
+  ctx.beginPath(); ctx.arc(50*S, 69*S, 7*S, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+  ctx.font = `bold ${Math.round(27*S)}px "Inter", sans-serif`;
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.fillText('MOOVLOG', 66, 69);
+  ctx.fillText('MOOVLOG', 66*S, 69*S);
   ctx.restore();
 }
 
@@ -1432,6 +1478,8 @@ function goBack() {
   if (D.snsWrap) D.snsWrap.hidden = true;
   const styleBadge = document.getElementById('autoStyleBadge');
   if (styleBadge) styleBadge.hidden = true;
+  const bgmBadge = document.getElementById('bgmBadge');
+  if (bgmBadge) bgmBadge.hidden = true;
   updateStepUI(1);
 }
 function showLoad() { D.loadWrap.hidden = false; }
