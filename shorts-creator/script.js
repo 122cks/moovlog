@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v9';
+const APP_VERSION  = 'v10';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -89,6 +89,27 @@ const HOOK_HINTS = {
   ranking:   '랭킹형 훅: "TOP 1 맛집", "내 인생 최고", "1등 메뉴는?"',
   pov:       'POV형 훅: "너가 여기 왔을 때", "맛집 찾았을 때 기분", "혼밥 성공 POV"',
 };
+
+/* ── 숏폼 훅 풀 (틱톡 스타일 첫 씬 참고) ───────────────── */
+const HOOK_POOL = [
+  '이거 왜 유명한지 알았다', '여기 모르면 손해', '이거 진짜 미쳤다',
+  '줄 서는 이유 있음', '아는 사람만 안다', '진짜 실화임?',
+  '여기 왜 이제 왔지', '내 최애 맛집 생김',
+];
+
+/* ── 자막 분할 (5~12자 틱톡 스타일) ──────────────────────── */
+function splitCaptions(text) {
+  if (!text) return [text || '', ''];
+  const stripped = text.replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
+  if (stripped.length <= 10) return [text, ''];
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) {
+    const mid = Math.ceil(text.length / 2);
+    return [text.slice(0, mid), text.slice(mid)];
+  }
+  const mid = Math.ceil(words.length / 2);
+  return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+}
 
 /* ── State ───────────────────────────────────────────────── */
 const S = {
@@ -211,12 +232,23 @@ async function startMake() {
       S.audioBuffers = script.scenes.map(() => null);
       toast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
     }
-    // duration을 TTS 오디오 실제 길이에 맞춤 (자막·내레이션 싱크 보정)
+    // 오디오 실제 길이로 씬 duration 완전 동기화 (항상 적용)
     for (let i = 0; i < script.scenes.length; i++) {
+      const sc  = script.scenes[i];
       const buf = S.audioBuffers[i];
-      if (buf && buf.duration > script.scenes[i].duration) {
-        script.scenes[i].duration = Math.ceil(buf.duration * 10) / 10 + 0.3;
+      if (buf && buf.duration > 0) {
+        sc.duration = Math.round((buf.duration + 0.3) * 10) / 10;
       }
+      // caption1 / caption2 초기화 (AI가 제공 또는 splitCaptions 분할)
+      if (!sc.caption1) {
+        const sub = sc.subtitle || '';
+        const [c1, c2] = splitCaptions(sub);
+        sc.caption1 = c1; sc.caption2 = c2;
+      } else if (!sc.caption2) {
+        sc.caption2 = '';
+      }
+      // subtitle fallback (씬 카드·레거시 표시용)
+      if (!sc.subtitle) sc.subtitle = sc.caption1 || '';
     }
     doneStep(3);
 
@@ -355,9 +387,11 @@ ${imgSummary || '분석 없음'}
 ■ 씬N CTA (2~3s): 저장·팔로우 유도. 구체적 행동 지시.
   → "저장 안 하면 나중에 못 옴 💾" / "팔로우하면 맛집 다 알려드림 🙏" / "여기 꼭 가봐 진심"
 
-[★ SEO 최적화 자막·나레이션 규칙]
-- subtitle: narration의 핵심 키워드 1~3단어 + 이모지 1~2개 (10~16자). 반드시 narration과 같은 주제·내용으로 작성.
-  예: "🔥 ${restaurantName} 찐맛집" / "✨ 육즙 터지는 한우"
+[★ 틱톡 스타일 자막 규칙 — 핵심]
+- caption1: 씬 전반부 자막. 5~10자, 실제 사람 말투, 광고 금지, 감탄/의문형 허용. 이모지 선택적.
+  예: "이거 뭐냐", "비주얼 미쳤다", "진짜임?", "여기 실화", "🔥 대박이다"
+- caption2: 씬 후반부 자막. 5~10자, caption1 반응/이어지는 포인트. 없으면 빈문자열 허용.
+  예: "진짜 맛있다", "여기 또 온다", "저장각이다", "이건 찐이야"
 - subtitle_style: "hook"(훅)|"detail"(디테일)|"hero"(대표메뉴)|"cta"(콜투액션)
 - subtitle_position: "center"|"lower"|"upper"
 - narration: 구어체 남성 성우 스타일, 입맛 당기는 감각 묘사, 글자 수 ≤ duration×8
@@ -377,7 +411,7 @@ ${imgSummary || '분석 없음'}
 - tiktok_tags: 틱톡 바이럴 5개 태그 (#먹방 형태)
 
 JSON만 반환 (백틱·설명 없이 순수 JSON):
-{"title":"제목","hashtags":"#태그들","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[{"idx":0,"duration":3,"subtitle":"🔥 이거 실화임?","subtitle_style":"hook","subtitle_position":"center","narration":"진짜 이 가격에 이게 나온다고?","effect":"zoom-out"}]}`;
+{"title":"제목","hashtags":"#태그들","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[{"idx":0,"duration":3,"caption1":"이거 실화임?","caption2":"진짜 미쳤다","subtitle_style":"hook","subtitle_position":"center","narration":"진짜 이 가격에 이게 나온다고?","effect":"zoom-out"}]}`;
 
   const makeReq = async url => {
     const data = await apiPost(url, { contents: [{ parts: [...imgParts, { text: prompt }] }], generationConfig: { temperature: 0.92, responseMimeType: 'application/json' } });
@@ -691,7 +725,7 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
     drawLetterbox(Math.min(prog * 4, 1));
     drawSparkles(prog);
   }
-  drawSubtitle(sc, sap);
+  drawSubtitle(sc, sap, prog);
   if (si === 0) drawTopBadge();
 }
 function drawTransition(fi, t) {
@@ -744,7 +778,7 @@ function renderFrameAtTime(t) {
         drawLetterbox(Math.min(prog * 4, 1));
         drawSparkles(prog);
       }
-      drawSubtitle(sc[i], subAnimProg);
+      drawSubtitle(sc[i], subAnimProg, prog);
       if (i === 0) drawTopBadge();
       S.subAnimProg = prevSubAnim;
       return;
@@ -839,14 +873,24 @@ function drawSparkles(prog) {
    SUBTITLE SYSTEM — 4 Instagram Reels 스타일 + 애니메이션
    animProg: 0=시작, 1=완전 표시
    ════════════════════════════════════════════════════════════ */
-function drawSubtitle(sc, animProg) {
-  if (!sc.subtitle) return;
+function drawSubtitle(sc, animProg, sceneProg) {
+  // 씬 진행도 50% 기준으로 caption1 → caption2 전환 (없으면 subtitle fallback)
+  let text, localAnim;
+  const c2 = sc.caption2;
+  if (c2 && sceneProg !== undefined && sceneProg >= 0.5) {
+    text      = c2;
+    localAnim = Math.min((sceneProg - 0.5) * 5.6, 1); // 후반부 애니메이션 리셋
+  } else {
+    text      = sc.caption1 || sc.subtitle;
+    localAnim = animProg;
+  }
+  if (!text) return;
   ctx.save();
   switch (sc.subtitle_style || 'detail') {
-    case 'hook':   drawSubHook  (sc.subtitle, sc.subtitle_position || 'center', animProg); break;
-    case 'hero':   drawSubHero  (sc.subtitle, animProg); break;
-    case 'cta':    drawSubCTA   (sc.subtitle, animProg); break;
-    default:       drawSubDetail(sc.subtitle, sc.subtitle_position || 'lower', animProg);
+    case 'hook':   drawSubHook  (text, sc.subtitle_position || 'center', localAnim); break;
+    case 'hero':   drawSubHero  (text, localAnim); break;
+    case 'cta':    drawSubCTA   (text, localAnim); break;
+    default:       drawSubDetail(text, sc.subtitle_position || 'lower', localAnim);
   }
   ctx.restore();
 }
@@ -983,7 +1027,8 @@ function buildSceneCards() {
   D.sceneList.innerHTML = '';
   S.script.scenes.forEach((s, i) => {
     const d = document.createElement('div'); d.className = 'scard'; d.id = `sc${i}`;
-    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${s.duration}s · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}</div><div class="scard-sub">${esc(s.subtitle)}</div><div class="scard-nar">${esc(s.narration)}</div>`;
+    const capDisplay = s.caption2 ? `${esc(s.caption1 || s.subtitle)} / ${esc(s.caption2)}` : esc(s.caption1 || s.subtitle);
+    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${s.duration}s · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}</div><div class="scard-sub">${capDisplay}</div><div class="scard-nar">${esc(s.narration)}</div>`;
     D.sceneList.appendChild(d);
   });
 }
