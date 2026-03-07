@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v18';
+const APP_VERSION  = 'v19';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -66,6 +66,7 @@ D.canvas.width = CW; D.canvas.height = CH;
 
 /* ── Audio ───────────────────────────────────────────────── */
 let audioCtx = null, audioMixDest = null;
+let _sessionDocId = null;  // 현재 Firestore sessions 문서 ID (saveSession 후 설정)
 function ensureAudio() {
   if (audioCtx) return;
   audioCtx     = new (window.AudioContext || window.webkitAudioContext)();
@@ -294,6 +295,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => speechSynthesis.getVoices(), 500);
   }
   renderTemplatePicker();
+
+  // Firebase Firestore 세션 로드 (firebase-ready 이벤트 또는 폴백 timeout)
+  const _tryLoadSession = () => { if (window.FB_db) loadRecentSession(); };
+  window.addEventListener('firebase-ready', _tryLoadSession, { once: true });
+  setTimeout(_tryLoadSession, 1500); // 폴백: firebase-ready가 이미 불렸을 때
 });
 
 /* ── Template Picker UI ─────────────────────────────────── */
@@ -445,6 +451,7 @@ async function startMake() {
     }
     buildSceneDots();
     buildSNSTags(script);
+    saveSession(script).catch(() => {});  // Firestore sessions 컬렉션에 저장
     await sleep(300);
     updateStepUI(3); hideLoad(); D.resultWrap.hidden = false;
     // BGM 배지: 현재 선택 템플릿 표시
@@ -1037,9 +1044,12 @@ async function preload() {
 /* ── Player ──────────────────────────────────────────────── */
 function setupPlayer() { S.playing = false; S.scene = 0; S.startTs = null; S.subAnimProg = 0; D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); }
 function togglePlay()  { S.playing ? pausePlay() : startPlay(); }
-function startPlay() {
-  if (audioCtx?.state === 'suspended') audioCtx.resume();
-  S.playing = true; S.startTs = performance.now(); S.subAnimProg = 0;
+async function startPlay() {
+  // [Bug Fix] AudioContext suspended 상태에서 resume을 await해야 모바일/iOS에서 오디오 재생 보장
+  if (audioCtx?.state === 'suspended') {
+    try { await audioCtx.resume(); } catch (_) {}
+  }
+  S.playing = true; S.startTs = null; S.subAnimProg = 0;
   setPlayIcon(true); if (!S.muted) playSceneAudio(S.scene); tick();
 }
 function pausePlay()  { S.playing = false; if (S.raf) cancelAnimationFrame(S.raf); stopAudio(); setPlayIcon(false); }
@@ -1055,6 +1065,7 @@ function setPlayIcon(pl) { D.playIco.className = pl ? 'fas fa-pause' : 'fas fa-p
 function tick() {
   const run = now => {
     if (!S.playing) return;
+    if (S.startTs === null) S.startTs = now;  // [Bug Fix] async resume 이후 첫 프레임에서 타이머 시작 → 오디오 싱크
     const sc = S.script.scenes[S.scene];
     const dur = sc.duration, el = (now - S.startTs) / 1000, prog = Math.min(el / dur, 1);
     const total = S.script.scenes.reduce((a, s) => a + s.duration, 0);
@@ -2252,9 +2263,76 @@ async function _fbLog(videoUrl, ext) {
       version:     APP_VERSION,
       createdAt:   window.FB_ts(),
     });
+    // sessions 컬렉션 문서에 videoUrl 업데이트 (최근 영상 재생에 활용)
+    if (_sessionDocId && window.FB_docFn && window.FB_updateDoc) {
+      await window.FB_updateDoc(window.FB_docFn(_sessionDocId), { videoUrl, ext });
+    }
   } catch (e) {
     console.warn('[Firebase] Firestore 기록 실패:', e.message);
   }
+}
+
+// sessions 컬렉션에 생성 스크립트 메타 저장 (영상 저장 전단계)
+async function saveSession(script) {
+  if (!window.FB_db || !window.FB_col || !window.FB_addDoc || !window.FB_ts) return;
+  _sessionDocId = null;
+  try {
+    const docRef = await window.FB_addDoc(window.FB_col(window.FB_db, 'sessions'), {
+      restaurant: D.restName?.value || '',
+      template:   selectedTemplate || 'auto',
+      sceneCount: script.scenes.length,
+      title:      script.title || '',
+      version:    APP_VERSION,
+      videoUrl:   null,
+      ext:        null,
+      createdAt:  window.FB_ts(),
+    });
+    _sessionDocId = docRef.id;
+    console.log('[Firebase] 세션 저장 완료:', _sessionDocId);
+  } catch (e) {
+    console.warn('[Firebase] 세션 저장 실패:', e.message);
+  }
+}
+
+// sessions 컬렉션에서 가장 최근 videoUrl 있는 세션 로드
+async function loadRecentSession() {
+  if (!window.FB_db || !window.FB_getDocs || !window.FB_query ||
+      !window.FB_orderBy || !window.FB_limitQ) return;
+  try {
+    const q = window.FB_query(
+      window.FB_col(window.FB_db, 'sessions'),
+      window.FB_orderBy('createdAt', 'desc'),
+      window.FB_limitQ(5)
+    );
+    const snap = await window.FB_getDocs(q);
+    if (snap.empty) return;
+    let latest = null;
+    snap.forEach(d => { if (!latest && d.data().videoUrl) latest = { id: d.id, ...d.data() }; });
+    if (latest) showRecentSession(latest);
+  } catch (e) {
+    console.warn('[Firebase] 최근 세션 로드 실패:', e.message);
+  }
+}
+
+// 최근 세션 카드 UI 표시
+function showRecentSession(session) {
+  const wrap     = document.getElementById('recentSession');
+  const video    = document.getElementById('recentVideo');
+  const nameEl   = document.getElementById('recentName');
+  const dateEl   = document.getElementById('recentDate');
+  const closeBtn = document.getElementById('recentCloseBtn');
+  if (!wrap || !video) return;
+  video.src = session.videoUrl;
+  if (nameEl) nameEl.textContent = session.restaurant
+    ? `${session.restaurant} · ${session.sceneCount || 0}컷`
+    : `생성 영상 · ${session.sceneCount || 0}컷`;
+  if (dateEl) {
+    const d = session.createdAt?.toDate?.() || new Date();
+    dateEl.textContent = d.toLocaleDateString('ko-KR',
+      { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+  if (closeBtn) closeBtn.onclick = () => { wrap.hidden = true; };
+  wrap.hidden = false;
 }
 
 // 생성된 영상 Blob → Storage 업로드 + Firestore 로그

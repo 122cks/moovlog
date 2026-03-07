@@ -101,6 +101,24 @@
     </button>
     <p class="make-hint">이미지 분석 → 스타일 자동 선택 → 스크립트 → 나레이션 → 영상 완성</p>
 
+    <!-- 최근 생성 영상 (Firebase Firestore sessions 컬렉션에서 로드) -->
+    <div id="recentSession" hidden>
+      <div class="recent-card">
+        <div class="recent-card-head">
+          <span class="recent-label"><i class="fas fa-history"></i> 최근 저장 영상</span>
+          <button id="recentCloseBtn" class="recent-close-btn" aria-label="닫기">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <video id="recentVideo" playsinline controls preload="metadata"
+               style="width:100%;border-radius:12px;max-height:280px;object-fit:cover;background:#111;display:block;margin-top:10px;"></video>
+        <div class="recent-card-info">
+          <p id="recentName" class="recent-name"></p>
+          <p id="recentDate" class="recent-date"></p>
+        </div>
+      </div>
+    </div>
+
     <a href="moovlog-shorts-creator.apk" download="moovlog-shorts-creator.apk"
        id="apkBanner" class="apk-banner">
       <span class="apk-icon"><i class="fab fa-android"></i></span>
@@ -288,7 +306,8 @@
     import { initializeApp }       from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
     import { getStorage, ref, uploadBytes, getDownloadURL }
                                    from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
-    import { getFirestore, collection, addDoc, serverTimestamp }
+    import { getFirestore, collection, addDoc, serverTimestamp,
+             query, orderBy, limit, getDocs, doc, updateDoc }
                                    from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
     const firebaseConfig = {
@@ -315,7 +334,15 @@
       window.FB_col      = collection;
       window.FB_addDoc   = addDoc;
       window.FB_ts       = serverTimestamp;
+      // sessions 컬렉션 관리용
+      window.FB_query     = query;
+      window.FB_orderBy   = orderBy;
+      window.FB_limitQ    = limit;
+      window.FB_getDocs   = getDocs;
+      window.FB_docFn     = (id) => doc(db, 'sessions', id);
+      window.FB_updateDoc = updateDoc;
       console.log('[Firebase] 초기화 완료 — moovlog-be7a6');
+      window.dispatchEvent(new Event('firebase-ready'));
     } else {
       console.log('[Firebase] API 키 미주입 — 로컬 모드 (업로드 비활성)');
     }
