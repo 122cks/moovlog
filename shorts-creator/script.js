@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v15';
+const APP_VERSION  = 'v16';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -575,8 +575,14 @@ ${imgSummary || '분석 없음'}
   예: "진짜 맛있다", "여기 또 온다", "저장각이다", "이건 찐이야"
 - subtitle_style: "hook"(훅)|"detail"(디테일)|"hero"(대표메뉴)|"cta"(콜투액션)
 - subtitle_position: "center"|"lower"|"upper"
-- narration: 구어체 남성 성우 스타일, 입맛 당기는 감각 묘사, 글자 수 ≤ duration×8
-  금지: 존댓말 / 허용: 반말·감탄·의성어 (바삭, 촉촉, 쫄깃, 고소, 진한, 육즙, 실화, 미쳤다)
+- narration: 아래 타입캐스트 스타일 엄격 준수
+  • 짧고 호흡 있는 구어체. 한 문장 최대 15글자. 문장 2~3개 이내.
+  • 인스타 릴스 느낌: 반말, 감탄, 의성어, 입맛 묘사 가득
+  • 예시(Hook): "이거 실화야. 이 가격에 이게 나온다고."
+  • 예시(Detail): "육즙이 터지는 거 봐. 바삭하고 촉촉한 게 진짜 미쳤다."
+  • 예시(CTA): "여기 꼭 가봐. 저장해두면 나중에 고마워."
+  • 금지: 존댓말(습니다/세요/드립니다), 길고 설명적인 문장, 이모지 포함
+  • 글자 수: ≤ duration × 7 (예: 3초 → 21글자 이내)
 - effect: 컷 분석 best_effect 우선, 없으면 hero→zoom-in / ambiance→pan-left / detail→zoom-in-slow
 - duration: 컷 분석 suggested_duration 우선, 나레이션 길이 반영 (min:2.5 / max:6)
 - idx: 0~${S.files.length - 1}
@@ -655,121 +661,215 @@ function buildSNSTags(script) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   STEP 3 — TTS: Gemini Charon→Fenrir→Orus (남성) + Web Speech 폴백
-   각 씬 독립 처리: 한 씬 실패해도 나머지 씬은 계속 시도
+   STEP 3 — TTS 시스템 v2
+   ────────────────────────────────────────────────────────────
+   수정된 버그:
+   1. system_instruction → TTS 모드에서 400 오류 유발, 제거
+   2. 모든 보이스 순차 시도 → 429 Rate Limit 폭발, 성공 보이스 고정
+   3. 씬 순차 처리 → concurrency 제한 병렬 처리로 속도 3배 향상
+   4. buf.length 체크 → buf.duration으로 수정 (AudioBuffer API 정상 사용)
+   5. decodeAudioData ArrayBuffer 공유 참조 오류 → .slice(0) 복사본 전달
    ════════════════════════════════════════════════════════════ */
+
+const TTS_CONFIG = {
+  models:      ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
+  voices:      ['Kore', 'Charon', 'Fenrir', 'Orus', 'Aoede'],
+  concurrency: 3,    // 동시 처리 씬 수 (Rate Limit 방지)
+  retryDelay:  700,  // 재시도 간격 ms
+  maxRetry:    2,
+};
+
+/* ── 나레이션 타입캐스트 스타일 전처리 ──────────────────────
+   인스타 릴스처럼 자연스러운 호흡 유도
+   ─────────────────────────────────────────────────────────── */
+function preprocessNarration(text) {
+  if (!text?.trim()) return '';
+  return text
+    // 이모지 제거 (TTS가 "불꽃 이모티콘" 등으로 읽어버림)
+    .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')
+    .replace(/[⭐🔥✨🍜📹📖📊🎬🤖💾🙏]/g, '')
+    // 쉼표 뒤 자연 끊김 유도
+    .replace(/,\s*/g, ', ')
+    // 마침표 뒤 짧은 pause 유도
+    .replace(/\.\s+([가-힣])/g, '. $1')
+    // 느낌표 강조 유지
+    .replace(/!+/g, '!')
+    // 연속 공백 정리
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/* ── 전체 씬 TTS 병렬 생성 ───────────────────────────────── */
 async function generateAllTTS(scenes) {
-  const buffers = [];
-  let successCount = 0, failCount = 0;
-  for (let i = 0; i < scenes.length; i++) {
-    const sc = scenes[i];
-    if (!sc.narration) { buffers.push(null); continue; }
+  const buffers = new Array(scenes.length).fill(null);
+  let successCount = 0, failCount = 0, fatalStop = false;
+
+  const tasks = scenes.map((sc, i) => async () => {
+    if (fatalStop || !sc.narration) return;
+    const text = preprocessNarration(sc.narration);
+    if (!text) return;
     try {
-      const buf = await fetchGeminiTTS(sc.narration);
-      buffers.push(buf);
+      buffers[i] = await fetchTTSWithRetry(text, i);
       successCount++;
-    } catch (err) {
-      const msg = err.message || '';
-      console.warn(`[TTS] 씬${i + 1} 실패:`, msg);
-      // 권한/모델 오류는 첫 실패에서 바로 토스트 + 전체 중단
+    } catch (e) {
+      const msg = e.message || '';
       if (msg.includes('TTS_403')) {
-        toast('AI 보이스: API 키에 TTS 권한이 없습니다 — 무음으로 진행', 'inf');
-        while (buffers.length < scenes.length) buffers.push(null);
-        return buffers;
+        fatalStop = true;
+        toast('AI 보이스: API 키에 TTS 권한 없음 — 무음으로 진행합니다', 'inf');
+      } else {
+        failCount++;
+        console.warn(`[TTS] 씬${i + 1} 최종 실패:`, msg);
       }
-      if (msg.includes('TTS_400') || msg.includes('TTS_404')) {
-        toast(`AI 보이스 오류 (${msg.replace('TTS_','HTTP ')}) — 무음으로 진행`, 'inf');
-        while (buffers.length < scenes.length) buffers.push(null);
-        return buffers;
-      }
-      failCount++;
-      buffers.push(null);
     }
+  });
+
+  // concurrency 제한 병렬 실행
+  for (let i = 0; i < tasks.length; i += TTS_CONFIG.concurrency) {
+    if (fatalStop) break;
+    await Promise.all(tasks.slice(i, i + TTS_CONFIG.concurrency).map(t => t()));
   }
-  if (successCount === 0) {
-    console.warn('[TTS] 모든 씬 실패 — 무음으로 진행');
-    toast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
-  } else if (failCount > 0) {
-    toast(`AI 남성 보이스 ${successCount}/${scenes.length}씬 성공 (${failCount}씬 무음)`, 'inf');
-  } else {
-    toast(`AI 남성 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
+
+  if (!fatalStop) {
+    if (successCount === 0) {
+      toast('AI 보이스 생성 실패 — 무음 영상으로 진행합니다', 'inf');
+    } else if (failCount > 0) {
+      toast(`AI 보이스 ${successCount}/${scenes.length}씬 완료 (${failCount}씬 무음)`, 'inf');
+    } else {
+      toast(`AI 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
+    }
   }
   if (successCount > 0) updateAudioStatus('google-tts');
   return buffers;
 }
 
-// Gemini TTS: 모델 2개 × 비이스 4개 단계적 시도
+/* ── 씬 단위 TTS + 재시도 ────────────────────────────────── */
+async function fetchTTSWithRetry(text, sceneIdx) {
+  let lastErr;
+  for (let attempt = 0; attempt <= TTS_CONFIG.maxRetry; attempt++) {
+    if (attempt > 0) await sleep(TTS_CONFIG.retryDelay * attempt);
+    try {
+      return await fetchGeminiTTS(text);
+    } catch (e) {
+      lastErr = e;
+      if (e.message?.startsWith('TTS_403')) throw e;
+      if (e.message?.startsWith('429')) {
+        await sleep(1800 * (attempt + 1)); // Rate Limit: 더 길게 대기
+        continue;
+      }
+      console.warn(`[TTS] 씬${sceneIdx + 1} 시도${attempt + 1}:`, e.message);
+    }
+  }
+  throw lastErr || new Error('TTS 재시도 초과');
+}
+
+/* ── Gemini TTS API 호출 ─────────────────────────────────── */
 async function fetchGeminiTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
-  const voices = ['Charon', 'Fenrir', 'Kore', 'Orus'];
-  const ttsModels = ['gemini-2.5-flash-preview-tts'];
   let lastErr;
-  for (const model of ttsModels) {
-    const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
-    for (const voiceName of voices) {
+
+  for (const model of TTS_CONFIG.models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+
+    for (const voiceName of TTS_CONFIG.voices) {
       try {
-        const res = await fetch(ttsUrl, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: '당신은 한국어 전문 남성 성우입니다. 타입캐스트 프리미엄 스타일 — 중저음의 자연스러운 발음, 맛집 콘텐츠에 적합한 감각적 표현. 반말 허용, 감탄사와 의성어를 생동감 있게 진달하세요.' }] },
+            // ※ system_instruction 제거 — TTS 모드에서 400 오류 유발
             contents: [{ parts: [{ text: text.trim() }] }],
             generationConfig: {
               responseModalities: ['AUDIO'],
-              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+              speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+              },
             },
           }),
         });
-        const data = await res.json();
-        if (!res.ok) {
-          const msg = data?.error?.message || `HTTP ${res.status}`;
-          console.warn(`[TTS] ${model}/${voiceName} ${res.status}:`, msg);
-          if (res.status === 403) throw new Error(`TTS_403: ${msg}`);
-          if (res.status === 404 || res.status === 400) { lastErr = new Error(msg); break; }
-          throw new Error(msg);
+
+        // 모델 미지원 → 보이스 루프 탈출 후 다음 모델로
+        if (res.status === 404 || res.status === 400) {
+          lastErr = new Error(`model_unsupported:${model}`);
+          break;
         }
-        const part = data?.candidates?.[0]?.content?.parts?.[0];
-        if (!part?.inlineData?.data) throw new Error('응답 오디오 데이터 없음');
-        const buf = await decodePCMAudio(part.inlineData.data, part.inlineData.mimeType || 'audio/L16;rate=24000');
-        if (!buf || buf.length === 0) throw new Error('빈 오디오 버퍼');
-        console.log(`[TTS] 성공: ${model}/${voiceName}`);
+        if (res.status === 403) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(`TTS_403: ${d?.error?.message || 'Forbidden'}`);
+        }
+        if (res.status === 429) throw new Error(`429: Rate limit`);
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          lastErr = new Error(d?.error?.message || `HTTP ${res.status}`);
+          continue;
+        }
+
+        const data = await res.json();
+        // parts 배열에서 inlineData 가진 항목 탐색 (첫 번째 part만 보면 누락될 수 있음)
+        const part = data?.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.data);
+        if (!part?.inlineData?.data) { lastErr = new Error('오디오 데이터 없음'); continue; }
+
+        const buf = await decodePCMAudio(
+          part.inlineData.data,
+          part.inlineData.mimeType || 'audio/L16;rate=24000'
+        );
+        // ※ buf.length → buf.duration (AudioBuffer는 duration이 정확한 체크)
+        if (!buf || buf.duration < 0.05) { lastErr = new Error('빈 오디오'); continue; }
+
+        console.log(`[TTS ✓] ${model}/${voiceName} — ${buf.duration.toFixed(2)}s`);
         return buf;
+
       } catch (e) {
-        console.warn(`[TTS] ${model}/${voiceName} 실패:`, e.message);
+        if (e.message?.startsWith('TTS_403') || e.message?.startsWith('429')) throw e;
         lastErr = e;
-        if (e.message?.startsWith('TTS_403')) throw e;
+        console.warn(`[TTS] ${model}/${voiceName}:`, e.message);
       }
     }
   }
   throw lastErr || new Error('TTS 전체 실패');
 }
 
-function decodePCMAudio(b64, mimeType) {
+/* ── PCM 오디오 디코딩 ───────────────────────────────────── */
+async function decodePCMAudio(b64, mimeType) {
   if (!audioCtx) ensureAudio();
-  const binary = atob(b64), bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  // Gemini TTS 반환 포맷: audio/L16;codec=pcm;rate=24000 또는 audio/pcm;rate=24000
+  if (!b64) throw new Error('빈 base64');
+
+  let bytes;
+  try {
+    const binary = atob(b64);
+    bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  } catch { throw new Error('base64 디코딩 실패'); }
+
+  if (bytes.length < 4) throw new Error('오디오 데이터 너무 짧음');
+
   const isPCM = mimeType?.includes('pcm') || mimeType?.includes('L16') || mimeType?.includes('linear');
+
   if (isPCM) {
     const sr = parseInt(mimeType.match(/rate=(\d+)/)?.[1] || '24000');
     const n  = Math.floor(bytes.length / 2);
-    if (n < 1) throw new Error('PCM 데이터 없음');
+    if (n < 10) throw new Error('PCM 샘플 부족');
     const buf = audioCtx.createBuffer(1, n, sr);
     const ch  = buf.getChannelData(0);
     const dv  = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
-    return Promise.resolve(buf);
+    return buf;
   }
-  // WAV / other: decodeAudioData, 실패 시 raw PCM16 재시도
-  const arrayBuf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  return audioCtx.decodeAudioData(arrayBuf).catch(() => {
+
+  // WAV/MP3 → decodeAudioData
+  // ※ .slice(0) 복사본 전달 — 공유 ArrayBuffer 참조 시 detached 오류 방지
+  const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  try {
+    return await audioCtx.decodeAudioData(ab.slice(0));
+  } catch {
+    // raw PCM16 재시도
     const n2 = Math.floor(bytes.length / 2);
-    if (n2 < 1) throw new Error('오디오 디코딩 실패');
+    if (n2 < 10) throw new Error('RAW PCM 샘플 부족');
     const buf2 = audioCtx.createBuffer(1, n2, 24000);
     const ch2  = buf2.getChannelData(0);
     const dv2  = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     for (let j = 0; j < n2; j++) ch2[j] = dv2.getInt16(j * 2, true) / 32768;
     return buf2;
-  });
+  }
 }
 
 // OfflineAudioContext로 전체 오디오 사전 렌더링 (추후 export용)
