@@ -46,7 +46,7 @@ const D  = {
   resultWrap: g('resultWrap'), canvas: g('videoCanvas') || g('vc'),
   vProg: g('vProg'), playBtn: g('playBtn'), playIco: g('playIco'),
   replayBtn: g('replayBtn'), muteBtn: g('muteBtn'), muteIco: g('muteIco'),
-  sceneList: g('sceneList'), dlBtn: g('dlBtn'),
+  sceneList: g('sceneList'), dlBtn: g('dlBtn'), dlAudioBtn: g('dlAudioBtn'),
   recStatus: g('recStatus'), recTimer: g('recTimer'),
   reBtn: g('reBtn'), reBtnBottom: g('reBtnBottom'),
   toasts: g('toasts'), audioStatus: g('audioStatus'),
@@ -119,6 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
   D.replayBtn.addEventListener('click', doReplay);
   D.muteBtn.addEventListener('click',   toggleMute);
   D.dlBtn.addEventListener('click',     doExport);
+  if (D.dlAudioBtn) D.dlAudioBtn.addEventListener('click', doExportAudio);
   D.reBtn.addEventListener('click',     goBack);
   if (D.reBtnBottom) D.reBtnBottom.addEventListener('click', goBack);
   updateStepUI(1);
@@ -136,7 +137,13 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   });
-  if ('speechSynthesis' in window) setTimeout(() => speechSynthesis.getVoices(), 500);
+  if ('speechSynthesis' in window) {
+    // voices를 종종 비동기로 로드됨 — 이벤트 리스너로 선제 로드
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+    }
+    setTimeout(() => speechSynthesis.getVoices(), 500);
+  }
 });
 
 /* ── File Upload ─────────────────────────────────────────── */
@@ -296,47 +303,59 @@ async function generateScript(restaurantName, analysis) {
   const imgParts = [];
   for (const img of sampleImgs) { const b64 = await toB64(img.file); imgParts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
 
-  const prompt = `당신은 팔로워 10만+ 인스타그램 Reels 전문 PD "무브먼트(MOOVLOG)"입니다.
-인천·서울·부천 맛집 채널 / 감성적이고 트렌디한 영상 스타일.
+  const prompt = `당신은 팔로워 50만+ 한국 맛집 인스타그램·유튜브 Shorts 전문 감독 "무브먼트(MOOVLOG)"입니다.
+인천·서울·부천·경기 맛집 채널 / 매 영상 조회수 10만+ 달성하는 최상위 크리에이터.
 
-[음식점]
+[음식점 정보]
 이름: ${restaurantName}
 분위기: ${analysis.mood || '감성적인'}
 메뉴: ${(analysis.menu || []).join(', ') || restaurantName}
 비주얼 훅: ${analysis.visual_hook || ''}
-키워드: ${(analysis.keywords || []).join(', ')}
+핵심 키워드: ${(analysis.keywords || []).join(', ')}
 
-[선택된 스타일]
-콘텐츠 템플릿: ${TEMPLATE_HINTS[selectedTemplate] || TEMPLATE_HINTS.story}
-오프닝 훅: ${HOOK_HINTS[selectedHook] || HOOK_HINTS.question}
+[선택된 콘텐츠 전략]
+템플릿: ${TEMPLATE_HINTS[selectedTemplate] || TEMPLATE_HINTS.story}
+훅 스타일: ${HOOK_HINTS[selectedHook] || HOOK_HINTS.question}
 
-[컷 분석]
+[비주얼 컷 분석]
 ${imgSummary || '분석 없음'}
-권장 순서: [${order.join(',')}]
+권장 컷 순서: [${order.join(',')}]
 
-[Instagram Reels 내러티브 구조 — 총 ${totalTarget}초 목표, ${S.files.length}씬]
-씬1 (Hook 2~3s): 즉각적 시선 강탈. 질문형·반전형 강한 훅. "이거 진짜야?", "여기 이걸 팔아?", "무조건 저장해"
-씬2 (Context 3~4s): 공간/무드 소개. 따뜻하고 감성적. 어디인지 암시.
-씬3 (Hero 4~5s): 대표 메뉴 원샷. 색감·윤기·볼륨감 극대화. 식욕 최고조.
-씬4~N-1 (Detail 3~4s): 디테일 컷. 질감·온도·두께·색감 감각적 묘사.
-씬N (CTA 2~3s): "저장하고 꼭 가봐 💾", "팔로우하면 다 알려드림 🙏", "나중에 여기 가려고 저장 필수"
+[★ 조회수 폭발 공식 — 총 ${totalTarget}초, ${S.files.length}씬]
+■ 씬1 Hook (2~3s): 첫 1.5초 안에 시청자를 멈추게 하는 임팩트.
+  → 질문형: "이거 진짜야?" / 충격형: "이 가격에 이게 나온다고?" / FOMO: "이거 모르면 손해"
+  → 나레이션: 강렬, 짧게, 의문형이나 감탄으로 끝내기
+■ 씬2 Context (3~4s): 공간·무드 감성 소개. 보는 사람이 가고 싶게 만들기.
+  → "인천에 이런 곳이?" / "여기 분위기 미쳤는데" 스타일
+■ 씬3 Hero (4~5s): 대표 메뉴 클로즈업. 육즙·윤기·볼륨감·색감 감각 묘사 극대화.
+  → "바삭하고 촉촉한" / "육즙이 터지는" / "보기만 해도 침 고이는" 표현 활용
+■ 씬4~N-1 Detail (3~4s): 음식 디테일. 질감·온도·냄새·두께 입체적 묘사.
+  → 관객이 직접 먹는 것처럼 몰입감 있게
+■ 씬N CTA (2~3s): 저장·팔로우 유도. 구체적 행동 지시.
+  → "저장 안 하면 나중에 못 옴 💾" / "팔로우하면 맛집 다 알려드림 🙏" / "여기 꼭 가봐 진심"
 
-[자막 규칙]
-- subtitle: 8~15자, 이모지 1~2개, 구어체, 임팩트, 완결성
-- subtitle_style: "hook"|"detail"|"hero"|"cta"
-- subtitle_position: "center"|"lower"|"upper"  
-- narration: 친근한 구어체 남성 1~2문장, 글자 수 ≤ duration×7
-- effect: 컷분석의 best_effect 우선 적용
-- duration: 컷분석 suggested_duration 우선, 나레이션 길이 반영 (min:2, max:6)
+[★ SEO 최적화 자막·나레이션 규칙]
+- subtitle: 음식점명 또는 지역명 포함, 10~16자, 이모지 1~2개, 구어체, 검색 키워드 포함
+  예: "🔥 ${restaurantName} 찐맛집" / "✨ 인생 ${(analysis.menu || ['메뉴'])[0]}"
+- subtitle_style: "hook"(훅)|"detail"(디테일)|"hero"(대표메뉴)|"cta"(콜투액션)
+- subtitle_position: "center"|"lower"|"upper"
+- narration: 구어체 남성 성우 스타일, 입맛 당기는 감각 묘사, 글자 수 ≤ duration×8
+  금지: 존댓말 / 허용: 반말·감탄·의성어 (바삭, 촉촉, 쫄깃, 고소, 진한, 육즙, 실화, 미쳤다)
+- effect: 컷 분석 best_effect 우선, 없으면 hero→zoom-in / ambiance→pan-left / detail→zoom-in-slow
+- duration: 컷 분석 suggested_duration 우선, 나레이션 길이 반영 (min:2.5 / max:6)
 - idx: 0~${S.files.length - 1}
 
-[SNS 태그]
-- naver_clip_tags: 300자 이내 #태그, 지역+음식+감성
-- youtube_shorts_tags: 100자 이내 #태그
-- instagram_caption: 반말 감성 2줄 소개 + 이모지 + 해시태그 12개
-- tiktok_tags: 핵심 5개 #태그
+[★ 플랫폼별 최적화 SNS 태그]
+- naver_clip_tags: 300자 이내 #태그 (지역명맛집 + 음식종류 + 가격대 + 감성키워드 + 채널명)
+  형식: #${restaurantName} #인천맛집 #맛집추천 #음식스타그램 #MOOVLOG ...
+- youtube_shorts_tags: 유튜브 쇼츠 SEO 최적화 태그 100자 이내
+  형식: #맛집 #Shorts #먹방 #한국맛집 #${restaurantName}
+- instagram_caption: 인스타 릴스 최적화
+  형식: 감성 2줄(반말·이모지) + 개행 + #태그 30개(지역맛집계 + 음식계 + 라이프스타일 + 영어태그)
+  영어 태그 필수 포함: #foodporn #koreanfood #instafood #reels #foodie
+- tiktok_tags: 틱톡 바이럴 5개 태그 (#먹방 형태)
 
-JSON만 반환:
+JSON만 반환 (백틱·설명 없이 순수 JSON):
 {"title":"제목","hashtags":"#태그들","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[{"idx":0,"duration":3,"subtitle":"🔥 이거 실화임?","subtitle_style":"hook","subtitle_position":"center","narration":"진짜 이 가격에 이게 나온다고?","effect":"zoom-out"}]}`;
 
   const makeReq = async url => {
@@ -376,7 +395,19 @@ async function generateAllTTS(scenes) {
       buffers.push(buf);
       successCount++;
     } catch (err) {
-      console.warn(`[TTS] 씬${i + 1} 실패:`, err.message);
+      const msg = err.message || '';
+      console.warn(`[TTS] 씬${i + 1} 실패:`, msg);
+      // 권한/모델 오류는 첫 실패에서 바로 토스트 + 전체 중단
+      if (msg.includes('TTS_403')) {
+        toast('AI 보이스: API 키에 TTS 권한이 없습니다 — 무음으로 진행', 'inf');
+        while (buffers.length < scenes.length) buffers.push(null);
+        return buffers;
+      }
+      if (msg.includes('TTS_400') || msg.includes('TTS_404')) {
+        toast(`AI 보이스 오류 (${msg.replace('TTS_','HTTP ')}) — 무음으로 진행`, 'inf');
+        while (buffers.length < scenes.length) buffers.push(null);
+        return buffers;
+      }
       failCount++;
       buffers.push(null);
     }
@@ -393,38 +424,64 @@ async function generateAllTTS(scenes) {
   return buffers;
 }
 
-// Charon → Fenrir → Orus 순으로 남성 보이스 시도
+// Gemini TTS: 모델 2개 × 비이스 4개 단계적 시도
 async function fetchGeminiTTS(text) {
-  const maleVoices = ['Charon', 'Fenrir', 'Orus'];
-  for (const voiceName of maleVoices) {
-    try {
-      const res = await fetch(getApiUrl('gemini-2.5-flash-preview-tts'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: '낮고 굵은 남성 목소리로 천천히 자신감 있게 읽어주세요. 성조는 최대한 낮게 유지하세요.' }] },
-          contents: [{ parts: [{ text }] }],
-          generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || `TTS ${res.status}`);
-      const part = data?.candidates?.[0]?.content?.parts?.[0];
-      if (!part?.inlineData?.data) throw new Error('empty');
-      return await decodePCMAudio(part.inlineData.data, part.inlineData.mimeType);
-    } catch (e) {
-      console.warn(`[TTS] ${voiceName} 실패:`, e.message);
-      if (voiceName === 'Orus') throw e;
+  if (!text?.trim()) throw new Error('빈 텍스트');
+  const maleVoices = ['Charon', 'Fenrir', 'Orus', 'Puck'];
+  // 2026 시점 모델 우선순위: GA 명칭 먼저 시도, preview 폴백
+  const ttsModels = [
+    'gemini-2.5-flash-preview-tts',
+    'gemini-2.5-flash',
+  ];
+  let lastErr;
+  for (const model of ttsModels) {
+    const ttsUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+    for (const voiceName of maleVoices) {
+      try {
+        const res = await fetch(ttsUrl, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: text.trim() }] }],
+            generationConfig: {
+              responseModalities: ['AUDIO'],
+              speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          const msg = data?.error?.message || `HTTP ${res.status}`;
+          console.warn(`[TTS] ${model}/${voiceName} ${res.status}:`, msg);
+          // 403(권한없음) / 404(모델없음) → 이 모델의 다른 voice도 같으므로 다음 모델로
+          if (res.status === 403) throw new Error(`TTS_403: ${msg}`);
+          if (res.status === 404 || res.status === 400) { lastErr = new Error(msg); break; }
+          throw new Error(msg);
+        }
+        const part = data?.candidates?.[0]?.content?.parts?.[0];
+        if (!part?.inlineData?.data) throw new Error('응답 오디오 데이터 없음');
+        const buf = await decodePCMAudio(part.inlineData.data, part.inlineData.mimeType || 'audio/L16;rate=24000');
+        if (!buf || buf.length === 0) throw new Error('빈 오디오 버퍼');
+        console.log(`[TTS] 성공: ${model}/${voiceName}`);
+        return buf;
+      } catch (e) {
+        console.warn(`[TTS] ${model}/${voiceName} 실패:`, e.message);
+        lastErr = e;
+        if (e.message?.startsWith('TTS_403')) throw e;  // 권한 없음: 전체 중단
+      }
     }
   }
+  throw lastErr || new Error('TTS 전체 실패');
 }
 
 function decodePCMAudio(b64, mimeType) {
   if (!audioCtx) ensureAudio();
   const binary = atob(b64), bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  if (mimeType?.includes('pcm')) {
+  // Gemini TTS 반환 포맷: audio/L16;codec=pcm;rate=24000 또는 audio/pcm;rate=24000
+  const isPCM = mimeType?.includes('pcm') || mimeType?.includes('L16') || mimeType?.includes('linear');
+  if (isPCM) {
     const sr = parseInt(mimeType.match(/rate=(\d+)/)?.[1] || '24000');
-    const n  = bytes.length / 2;
+    const n  = Math.floor(bytes.length / 2);
     if (n < 1) throw new Error('PCM 데이터 없음');
     const buf = audioCtx.createBuffer(1, n, sr);
     const ch  = buf.getChannelData(0);
@@ -432,8 +489,17 @@ function decodePCMAudio(b64, mimeType) {
     for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * 2, true) / 32768;
     return Promise.resolve(buf);
   }
-  // WAV or other: decodeAudioData requires a copy of the buffer
-  return audioCtx.decodeAudioData(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  // WAV / other: decodeAudioData, 실패 시 raw PCM16 재시도
+  const arrayBuf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  return audioCtx.decodeAudioData(arrayBuf).catch(() => {
+    const n2 = Math.floor(bytes.length / 2);
+    if (n2 < 1) throw new Error('오디오 디코딩 실패');
+    const buf2 = audioCtx.createBuffer(1, n2, 24000);
+    const ch2  = buf2.getChannelData(0);
+    const dv2  = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let j = 0; j < n2; j++) ch2[j] = dv2.getInt16(j * 2, true) / 32768;
+    return buf2;
+  });
 }
 
 // OfflineAudioContext로 전체 오디오 사전 렌더링 (추후 export용)
@@ -465,27 +531,32 @@ function playSceneAudio(si, capture = false) {
     if (capture && audioMixDest) src.connect(audioMixDest);
     src.start(); S.currentAudio = src;
   } else {
-    console.error(`씬 ${si + 1}의 남성 나레이션 오디오가 없습니다.`);
-    toast('남성 나레이션 오디오가 누락되어 재생을 중단했습니다', 'err');
-    S.playing = false;
-    setPlayIcon(false);
+    // AI TTS 없음 → Web Speech 자동 폴백 (재생 중단 없음)
+    if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
+    console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: Web Speech 폴백`);
   }
 }
-// Web Speech 폴백 — 목소리에서 pitch=0 + 명시적 남성 탐색
+// Web Speech 폴백 — AI TTS 실패 시 자동 호출, 남성 없어도 한국어 음성 사용
 function playWebSpeech(sc) {
-  if (!sc?.narration) return;
+  if (!sc?.narration || typeof speechSynthesis === 'undefined') return;
+  speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(sc.narration);
-  u.lang = 'ko-KR'; u.pitch = 0; u.rate = 0.85; u.volume = 1;
-  const v = speechSynthesis.getVoices();
-  // 남성 보이스만 허용. 없으면 여성 보이스로 폴백하지 않음.
-  const pick = v.find(x => /male|남성/i.test(x.name) && x.lang.startsWith('ko'))
-             || null;
-  if (!pick) {
-    toast('이 기기 브라우저에는 남성 웹 음성이 없어 무음 처리됩니다', 'inf');
-    return;
+  u.lang = 'ko-KR'; u.pitch = 0.1; u.rate = 0.85; u.volume = 1;
+  const trySpeak = () => {
+    const all  = speechSynthesis.getVoices();
+    const pick = all.find(x => /male|남성/i.test(x.name) && x.lang.startsWith('ko'))
+              || all.find(x => x.lang.startsWith('ko'))
+              || null;
+    if (pick) u.voice = pick;
+    speechSynthesis.speak(u);
+  };
+  const voices = speechSynthesis.getVoices();
+  if (voices.length > 0) {
+    trySpeak();
+  } else {
+    // 아직 로드 안 됨 — voiceschanged 돌 때까지 대기
+    speechSynthesis.addEventListener('voiceschanged', trySpeak, { once: true });
   }
-  u.voice = pick;
-  speechSynthesis.speak(u);
 }
 function stopAudio() {
   if (S.currentAudio) { try { S.currentAudio.stop(); } catch {} S.currentAudio = null; }
@@ -497,8 +568,10 @@ async function preload() {
   S.loaded = [];
   for (const m of S.files) {
     if (m.type === 'image') {
-      const img = await new Promise((ok, fail) => { const i = new Image(); i.src = m.url; i.onload = () => ok(i); i.onerror = fail; });
-      S.loaded.push({ type: 'image', src: img });
+      try {
+        const img = await new Promise((ok, fail) => { const i = new Image(); i.src = m.url; i.onload = () => ok(i); i.onerror = () => fail(new Error('이미지 로드 실패')); });
+        S.loaded.push({ type: 'image', src: img });
+      } catch (e) { console.warn('[Preload] 이미지 건너뜀:', e.message); }
     } else {
       const vid = Object.assign(document.createElement('video'), { src: m.url, muted: true, loop: true, playsInline: true });
       vid.setAttribute('playsinline', '');
@@ -800,33 +873,49 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   ctx.restore();
 }
 
-/* ① Hook — CapCut 최대 임팩트: 첫 단어 노란 강조 */
+/* 자막 영역 그라데이션 배경 (가독성·조회수 향상) */
+function drawSubtitleBg(cy, lineH, alpha) {
+  const h = lineH * 2.6;
+  const g = ctx.createLinearGradient(0, cy - h * 0.6, 0, cy + h * 0.6);
+  g.addColorStop(0,    `rgba(0,0,0,0)`);
+  g.addColorStop(0.22, `rgba(0,0,0,${0.70 * alpha})`);
+  g.addColorStop(0.78, `rgba(0,0,0,${0.70 * alpha})`);
+  g.addColorStop(1,    `rgba(0,0,0,0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, cy - h * 0.6, CW, h * 1.2);
+}
+
+/* ① Hook — CapCut 최대 임팩트: 첫 단어 노란 강조 + 배경 */
 function drawSubHook(text, pos, ap) {
   const y = pos === 'upper' ? CH * 0.22 : pos === 'center' ? CH * 0.50 : CH * 0.72;
+  drawSubtitleBg(y, 96, Math.min(ap * 3, 1));
   capWords(text, CW / 2, y, 96, '#FFFFFF', 0, ap);
 }
 
-/* ② Detail — CapCut 기본: 슬라이드업 + 흰 텍스트 */
+/* ② Detail — CapCut 기본: 슬라이드업 + 흰 텍스트 + 배경 */
 function drawSubDetail(text, pos, ap) {
   const eased = ease(Math.min(ap * 2.5, 1));
   const baseY = pos === 'upper' ? CH * 0.18 : pos === 'center' ? CH * 0.50 : CH - 200;
   const y     = baseY + (1 - eased) * 30;
+  drawSubtitleBg(y, 74, Math.min(ap * 3, 1));
   capWords(text, CW / 2, y, 74, '#FFFFFF', null, ap);
 }
 
-/* ③ Hero — CapCut 대형: 마지막 단어 클라이맥스 강조 */
+/* ③ Hero — CapCut 대형: 마지막 단어 클라이맥스 강조 + 배경 */
 function drawSubHero(text, ap) {
   const eased = ease(Math.min(ap * 2.5, 1));
   const y     = CH - 188 + (1 - eased) * 24;
   const words = text.split(/\s+/).filter(Boolean);
+  drawSubtitleBg(y, 88, Math.min(ap * 3, 1));
   capWords(text, CW / 2, y, 88, '#FFFFFF', words.length - 1, ap);
 }
 
-/* ④ CTA — CapCut 노란 콜투액션 + 파워풀 바운스 */
+/* ④ CTA — CapCut 노란 콜투액션 + 파워풀 바운스 + 배경 */
 function drawSubCTA(text, ap) {
   const eased  = ease(Math.min(ap * 2.5, 1));
   const bounce = ap < 0.4 ? Math.sin(ap * Math.PI * 2.5) * 14 : 0;
   const y      = CH - 128 + (1 - eased) * 28 - bounce;
+  drawSubtitleBg(y, 80, Math.min(ap * 3, 1));
   capWords(text, CW / 2, y, 80, '#FFE033', 0, ap);
 }
 
@@ -892,6 +981,9 @@ async function doExport() {
   // iOS Safari: canvas.captureStream() 미지원, WebCodecs 미지원
   if (isIOS && !hasWebCodecs) {
     toast('iOS Safari에서는 Chrome 앱을 이용해 저장해주세요', 'err');
+    S.exporting = false;
+    D.dlBtn.disabled = false;
+    D.dlBtn.innerHTML = '<i class="fas fa-download"></i> 영상 저장하기';
     return;
   }
 
@@ -930,7 +1022,8 @@ async function doExportWebCodecs() {
       } catch {}
     }
     if (fmt) {
-      try { const as = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 1, bitrate: 128000 }); if (!as.supported) fmt.ac = { enc: 'opus', mux: 'opus' }; } catch { fmt.ac = { enc: 'opus', mux: 'opus' }; }
+      // AAC 미지원 시 MP4+Opus 불일치 방지 → WebM 폴백으로 전환
+      try { const as = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 1, bitrate: 128000 }); if (!as.supported) fmt = null; } catch { fmt = null; }
     }
   }
   // WebM (VP9/VP8) 폴백
@@ -960,6 +1053,7 @@ async function doExportWebCodecs() {
     video:    { codec: fmt.vc.mux, width: CW, height: CH, frameRate: FPS },
     ...(pcm ? { audio: { codec: fmt.ac.mux, numberOfChannels: 1, sampleRate: 48000 } } : {}),
     firstTimestampBehavior: 'offset',
+    ...(fmt.ext === 'mp4' ? { fastStart: 'in-memory' } : {}),
   });
 
   // 3. VideoEncoder
@@ -1089,6 +1183,44 @@ async function exportRenderLoop() {
   });
 }
 
+/* ── WAV 오디오만 저장 ────────────────────────────────────── */
+async function doExportAudio() {
+  if (!S.audioBuffers?.some(b => b)) { toast('AI 음성이 없습니다. 먼저 영상을 생성해주세요', 'err'); return; }
+  if (!D.dlAudioBtn) return;
+  D.dlAudioBtn.disabled = true;
+  D.dlAudioBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 음성 처리 중...';
+  try {
+    const totalDur = S.script.scenes.reduce((a, s) => a + s.duration, 0);
+    const pcm = await prerenderAudio(totalDur);
+    const wav = encodeWav(pcm, 48000);
+    downloadBlob(new Blob([wav], { type: 'audio/wav' }), `moovlog_audio_${sanitizeName()}.wav`);
+    toast('✓ AI 음성 WAV 저장 완료', 'ok');
+  } catch (e) {
+    toast('음성 저장 오류: ' + e.message, 'err');
+  } finally {
+    D.dlAudioBtn.disabled = false;
+    D.dlAudioBtn.innerHTML = '<i class="fas fa-music"></i> 음성만 저장 (WAV)';
+  }
+}
+function encodeWav(f32, sr) {
+  const N = f32.length, bps = 16, ch = 1;
+  const byteRate = sr * ch * bps / 8, blockAlign = ch * bps / 8;
+  const dataSize = N * blockAlign;
+  const buf = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(buf);
+  const ws = (off, s) => [...s].forEach((c, i) => v.setUint8(off + i, c.charCodeAt(0)));
+  ws(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
+  v.setUint32(24, sr, true); v.setUint32(28, byteRate, true);
+  v.setUint16(32, blockAlign, true); v.setUint16(34, bps, true);
+  ws(36, 'data'); v.setUint32(40, dataSize, true);
+  for (let i = 0; i < N; i++) {
+    const s = Math.max(-1, Math.min(1, f32[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return buf;
+}
+
 /* ── helpers ─────────────────────────────────────────────── */
 function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob);
@@ -1107,6 +1239,7 @@ function goBack() {
   S.currentAudio = null; S.scene = 0; S.startTs = null; S.subAnimProg = 0;
   D.thumbGrid.innerHTML = '';
   D.sceneList.innerHTML = '';
+  if (D.dlAudioBtn) { D.dlAudioBtn.disabled = false; D.dlAudioBtn.innerHTML = '<i class="fas fa-music"></i> 음성만 저장 (WAV)'; }
   if (D.sceneDots) D.sceneDots.innerHTML = '';
   if (D.snsWrap) D.snsWrap.hidden = true;
   const styleBadge = document.getElementById('autoStyleBadge');

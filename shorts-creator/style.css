@@ -424,6 +424,16 @@ html, body {
 }
 .dl-btn:hover { opacity: .85; transform: translateY(-1px); }
 .dl-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.dl-audio-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
+  background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); color: var(--t1);
+  font-size: 14px; font-weight: 600; font-family: 'Noto Sans KR', sans-serif;
+  padding: 12px 20px; border-radius: 50px; cursor: pointer; margin-top: 10px;
+  transition: opacity .2s, transform .2s, background .2s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.dl-audio-btn:hover { background: rgba(255,255,255,0.13); transform: translateY(-1px); }
+.dl-audio-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
 
 .rec-status {
   display: flex; align-items: center; gap: 9px; margin-top: 12px;
@@ -805,3 +815,41 @@ html, body {
 }
 .rsb:hover { background: rgba(255,255,255,.18); }
 .rsb:focus-visible { outline: 2px solid var(--acc1); outline-offset: 2px; }
+
+/* ===== Galaxy S25+ 최적화 (393px 내외, safe-area 포함) ===== */
+
+/* 상단/하단 Safe-Area 여백 */
+.app-header {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.result-inner {
+  padding-bottom: max(60px, calc(env(safe-area-inset-bottom) + 48px));
+}
+.toasts {
+  bottom: max(20px, calc(env(safe-area-inset-bottom) + 8px));
+}
+.blog-link-btn {
+  bottom: max(20px, calc(env(safe-area-inset-bottom) + 8px));
+}
+
+/* 393~430px (Galaxy S25+, S24+, Pixel 9 Pro) */
+@media (min-width: 393px) and (max-width: 460px) {
+  .phone { width: 248px; }
+  .phone-wrap { gap: 16px; }
+  .make-btn { font-size: 16px; padding: 18px 20px; }
+  .vcb { width: 48px; height: 48px; }
+  .vcb-play { width: 62px; height: 62px; font-size: 22px; }
+  .rsb { width: 44px; height: 44px; font-size: 18px; }
+}
+
+/* 360px 이하 (소형 안드로이드) */
+@media (max-width: 360px) {
+  .phone { width: 190px; border-radius: 28px; }
+  .header-inner { padding: 0 14px; }
+  .app-main { padding: 16px 12px 60px; }
+  .card { padding: 16px; }
+  .rsb { width: 38px; height: 38px; font-size: 15px; }
+  .vcb { width: 40px; height: 40px; font-size: 14px; }
+  .vcb-play { width: 52px; height: 52px; font-size: 18px; }
+  .dl-btn { font-size: 14px; padding: 14px 16px; }
+}
