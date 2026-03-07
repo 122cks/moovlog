@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v14';
+const APP_VERSION  = 'v15';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -67,7 +67,7 @@ function ensureAudio() {
 }
 
 /* ── Template / Hook 전역 상태 (Instagram/TikTok 스타일) ── */
-let selectedTemplate = 'aesthetic';
+let selectedTemplate = 'auto';
 let selectedHook     = 'question';
 const TEMPLATE_HINTS = {
   cinematic:  '시네마틱 스타일: 슬로우 컷, 무디 색감, 영화 같은 구성, 감성 BGM 느낌',
@@ -253,6 +253,13 @@ document.addEventListener('DOMContentLoaded', () => {
   if (D.dlAudioBtn) D.dlAudioBtn.addEventListener('click', doExportAudio);
   D.reBtn.addEventListener('click',     goBack);
   if (D.reBtnBottom) D.reBtnBottom.addEventListener('click', goBack);
+  // 좋아요 버튼 애니메이션
+  const likeBtn = document.querySelector('.rsb-like');
+  if (likeBtn) likeBtn.addEventListener('click', function() {
+    this.classList.toggle('liked');
+    this.style.transform = 'scale(1.35)';
+    setTimeout(() => { this.style.transform = ''; }, 200);
+  });
   updateStepUI(1);
   const verEl = document.getElementById('appVersion');
   if (verEl) verEl.textContent = `${APP_VERSION} · ${APP_BUILD_TS}`;
@@ -306,6 +313,7 @@ function renderTemplatePicker() {
   Object.entries(TEMPLATE_NAMES).forEach(([key, label]) => {
     const btn = document.createElement('button');
     btn.className = 'tpl-chip' + (key === selectedTemplate ? ' active' : '');
+    btn.dataset.tpl = key;
     btn.textContent = label;
     btn.addEventListener('click', () => {
       selectedTemplate = key;
@@ -361,9 +369,17 @@ async function startMake() {
   try {
     setStep(1, '이미지 분석 + 스타일 자동 선택 중...', 'AI가 최적의 템플릿과 훅을 찾고 있습니다');
     const analysis = await visionAnalysis(name);
-    // AI 자동 스타일 선택
-    if (analysis.recommended_template && TEMPLATE_HINTS[analysis.recommended_template]) {
+    // AI 자동 스타일 선택 (수동 선택 시 무시)
+    const userChoseManually = D.selectedTplInput && D.selectedTplInput.value !== 'auto';
+    if (!userChoseManually && analysis.recommended_template && TEMPLATE_HINTS[analysis.recommended_template]) {
       selectedTemplate = analysis.recommended_template;
+      // tplPicker active 칩 동기화
+      const picker = document.getElementById('tplPicker');
+      if (picker) {
+        picker.querySelectorAll('.tpl-chip').forEach(c => c.classList.remove('active'));
+        const matchChip = picker.querySelector(`[data-tpl="${selectedTemplate}"]`);
+        if (matchChip) matchChip.classList.add('active');
+      }
     }
     if (analysis.recommended_hook && HOOK_HINTS[analysis.recommended_hook]) {
       selectedHook = analysis.recommended_hook;
@@ -374,7 +390,8 @@ async function startMake() {
       styleName.textContent = TEMPLATE_NAMES[selectedTemplate] || selectedTemplate;
       styleBadge.hidden = false;
     }
-    toast(`AI 추천: ${TEMPLATE_NAMES[selectedTemplate] || selectedTemplate}`, 'inf');
+    if (!userChoseManually) toast(`AI 추천: ${TEMPLATE_NAMES[selectedTemplate] || selectedTemplate}`, 'inf');
+    else toast(`수동 선택: ${TEMPLATE_NAMES[selectedTemplate] || selectedTemplate}`, 'inf');
     doneStep(1);
 
     setStep(2, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');

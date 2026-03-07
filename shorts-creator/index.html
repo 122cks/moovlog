@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Shorts Creator" />
-  <meta name="description" content="AI 자동 숯폼 영상 생성기 - 인스타 릴스, 틱톡, 유튜브 쿤츠 자동 제작 | MOOVLOG Shorts Creator" />
+  <meta name="description" content="AI 자동 숏폼 영상 생성기 - 인스타 릴스, 틱톡, 유튜브 쇼츠 자동 제작 | MOOVLOG Shorts Creator" />
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <title>무브먼트 Shorts Creator</title>
@@ -90,17 +90,8 @@
       <p class="ai-auto-hint"><i class="fas fa-sparkles"></i> AI가 이미지를 분석해 최적의 스타일 · 훅 · 템플릿을 자동 선택합니다</p>
     </div>
 
-    <!-- 템플릿 수동 선택 -->
-    <div class="tpl-picker" id="tplPicker">
-      <button class="tpl-chip active">✨ 감성</button>
-      <button class="tpl-chip">🔥 바이랄</button>
-      <button class="tpl-chip">🎬 시네마틱</button>
-      <button class="tpl-chip">🍜 먹방</button>
-      <button class="tpl-chip">📹 브이로그</button>
-      <button class="tpl-chip">⭐ 리뷰</button>
-      <button class="tpl-chip">📖 스토리</button>
-      <button class="tpl-chip">📊 정보</button>
-    </div>
+    <!-- 템플릿 수동 선택 (JS renderTemplatePicker()가 동적으로 채움) -->
+    <div class="tpl-picker" id="tplPicker"></div>
     <input type="hidden" id="selectedTplInput" value="auto" />
 
     <button class="make-btn" id="makeBtn">
@@ -196,7 +187,7 @@
         <div class="phone">
           <div class="phone-notch"></div>
           <div class="phone-screen">
-            <canvas id="videoCanvas"></canvas>
+            <canvas id="videoCanvas" width="1080" height="1920"></canvas>
             <div class="scene-dots" id="sceneDots"></div>
           </div>
           <div class="phone-bar"></div>
