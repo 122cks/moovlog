@@ -110,23 +110,32 @@ export async function visionAnalysis(restaurantName) {
     return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
   }
 
-  const prompt = `당신은 인스타그램 Reels 전문 비주얼 디렉터입니다.
+  const prompt = `당신은 2026년 인스타그램 Reels · 유튜브 Shorts 알고리즘 전문 비주얼 디렉터입니다.
 음식점: "${restaurantName}" / 미디어 ${parts.length}개
 
-각 이미지를 분석하세요.
-- type: "hook"|"hero"|"detail"|"ambiance"|"process"|"wide"
+[핵심 분석 규칙] 2026 릴스/쉽츠 알고리즘
+• 첫 0.5초에 시청자를 멈춰라 → hook 이미지 최우선
+• 시각적 충격도(emotional_score 9~10) 컷을 첫 씨이 배치
+• 음식 클로즈업, 디테일 샷이 코멘트/공유 환율 3배
+
+각 이미지:
+- type: "hook"|"추마"|"detail"|"ambiance"|"process"|"wide"
 - best_effect: "zoom-in"|"zoom-out"|"pan-left"|"pan-right"|"zoom-in-slow"|"float-up"
 - emotional_score: 1~10
-- suggested_duration: 2~5초
+- suggested_duration: 0.5~5초
 - focus: 핵심 포인트 1문장
 - focus_coords: {"x":0.5,"y":0.5}
+- viral_potential: "high"|"medium"|"low"
 
 전체:
-- keywords, mood, menu, visual_hook
-- recommended_order, recommended_template, recommended_hook
+- keywords: 트렌딩 검색어 포함 (ex: "줄서는 집", "인생 맛집", "핸릹투어")
+- mood, menu, visual_hook
+- recommended_order: 시청자 유지률 최고 순서
+- recommended_template: pov|reveal|viral_fast|aesthetic|mukbang|foreshadow 중 선택
+- recommended_hook: viral_2026|pov|shock|question|challenge 중 선택
 
 JSON만 반환:
-{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"aesthetic","recommended_hook":"question","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":3,"focus":"설명","focus_coords":{"x":0.5,"y":0.45}}]}`;
+{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"설명","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high"}]}`;
 
   const data = await geminiWithFallback({
     contents: [{ parts: [...parts, { text: prompt }] }],

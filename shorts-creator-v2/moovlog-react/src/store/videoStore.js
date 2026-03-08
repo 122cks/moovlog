@@ -7,6 +7,7 @@ export const TEMPLATE_NAMES = {
   mukbang: '🍜 먹방', vlog: '📹 브이로그', review: '⭐ 리뷰',
   story: '📖 스토리', info: '📊 정보',
   viral_fast: '⚡ 빠른 비트', vlog_aesthetic: '☕ 감성 브이로그',
+  pov: '👁 POV 몰입', reveal: '🎯 반전 공개', foreshadow: '💫 복선 회수',
   auto: '🤖 AI 자동',
 };
 
@@ -19,6 +20,9 @@ export const TEMPLATE_HINTS = {
   review:     '리뷰 스타일: 솔직 평가, 장단점 분석, 가성비 중심',
   story:      '스토리 스타일: 감성 여정, 도입→전개→클라이맥스→여운',
   info:       '정보 스타일: 핵심 정보 간결 전달, 카드뉴스 느낌',
+  pov:        'POV 몰입 스타일: 1인칭 시점, "지금 이 순간" 완전 몰입, 2026 릴스 최강 포맷',
+  reveal:     '반전 공개 스타일: 기대감 쌓기 → 충격 공개, "이게 뭐야" 반응 극대화',
+  foreshadow: '복선 회수 스타일: 첫 씬에 떡밥 → 마지막에 회수, 시청 완료율 최상위',
 };
 
 export const HOOK_HINTS = {
@@ -28,6 +32,9 @@ export const HOOK_HINTS = {
   secret:    '비밀 훅: "아무도 모르는 찐 맛집" — 독점 정보 느낌',
   ranking:   '랭킹 훅: "서울 3대 ○○ 중 하나" — 권위/검증',
   pov:       'POV 훅: "나 지금 여기 왔는데..." — 1인칭 몰입감',
+  viral_2026: '2026 바이럴 훅: "이거 진짜임.." + 0.5초 정지 — 알고리즘 최적화',
+  cliffhanger: '클리프행어 훅: "끝까지 봐야 함" — 시청 완료율 극대화',
+  trend_sound: '트렌드 사운드 훅: 첫 프레임부터 BGM 몰입 — 릴스 공유율 3배',
 };
 
 export const VIRAL_TRENDS = {
@@ -42,6 +49,24 @@ export const VIRAL_TRENDS = {
     durations: [3.0, 1.2, 1.2, 1.2, 2.5],
     transition: 'fade', subtitle_style: 'minimal',
     effect: ['zoom-in-slow', 'drift', 'drift', 'drift', 'float-up'],
+  },
+  pov: {
+    name: '👁 POV 몰입 (2026 인스타 릴스)',
+    durations: [0.8, 1.2, 2.0, 2.0, 2.5, 2.5],
+    transition: 'cut', subtitle_style: 'bold_drop',
+    effect: ['zoom-in', 'zoom-in', 'pan-left', 'zoom-out', 'zoom-in-slow', 'float-up'],
+  },
+  reveal: {
+    name: '🎯 반전 공개 (릴스 저장율 1위)',
+    durations: [0.5, 0.8, 1.5, 2.5, 3.0, 2.0],
+    transition: 'wipe', subtitle_style: 'hook',
+    effect: ['zoom-out', 'zoom-in', 'pan-right', 'zoom-in', 'zoom-in-slow', 'float-up'],
+  },
+  foreshadow: {
+    name: '💫 복선 회수 (시청 완료율 85%+)',
+    durations: [1.5, 2.0, 2.0, 2.0, 2.0, 3.0],
+    transition: 'fade', subtitle_style: 'minimal',
+    effect: ['zoom-out', 'drift', 'pan-left', 'pan-right', 'zoom-in-slow', 'zoom-out'],
   },
 };
 

@@ -20,6 +20,8 @@ export default function Header() {
         <span className="ftag"><i className="fab fa-instagram"></i> 릴스 최적화</span>
         <span className="ftag"><i className="fab fa-tiktok"></i> 틱톡 트렌드</span>
         <span className="ftag"><i className="fas fa-robot"></i> 남성 AI 보이스</span>
+        <span className="ftag"><i className="fas fa-eye"></i> POV 모드</span>
+        <span className="ftag"><i className="fas fa-bolt"></i> 0.5초 훅</span>
       </div>
 
       <div className="step-indicator">
