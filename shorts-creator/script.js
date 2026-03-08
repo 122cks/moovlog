@@ -1368,6 +1368,16 @@ function drawMedia(media, effect, prog) {
   ctx.restore();
 }
 
+/* ── 시네마틱 컬러 그레이드 ──────────────────────────────── */
+function drawColorGrade(prog) {
+  // 연한 웜 톤 오버레이 (음식 영상 식욕 자극용)
+  ctx.save();
+  ctx.globalAlpha = 0.04;
+  ctx.fillStyle = 'rgba(255, 170, 60, 1)';
+  ctx.fillRect(0, 0, CW, CH);
+  ctx.restore();
+}
+
 /* ── 비네트 ──────────────────────────────────────────────── */
 function drawVignetteGrad() {
   const tpl = getTplStyle();
