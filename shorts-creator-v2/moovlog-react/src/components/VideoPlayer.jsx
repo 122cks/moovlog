@@ -1,7 +1,7 @@
 // src/components/VideoPlayer.jsx
 // Canvas + 재생 루프 — React ref로 엔진 격리, 상태는 Zustand
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 import { getAudioCtx, getAudioMixDest } from '../engine/tts.js';
 
@@ -15,6 +15,7 @@ const ASPECT_MAP = {
 export default function VideoPlayer() {
   const canvasRef = useRef(null);
   const engineRef = useRef(null);   // { raf, currentAudio, audioStartTs, startTs }
+  const [showSafeZone, setShowSafeZone] = useState(false);
 
   const {
     script, loaded, audioBuffers, playing, muted, scene,
@@ -82,6 +83,7 @@ export default function VideoPlayer() {
     drawVignetteGrad(ctx, CW, CH);
     drawChannelTop(ctx, restaurantName, CW, CH, SCALE);
     drawSubtitle(ctx, sc, subAnim ?? subAnimProg, CW, CH, SCALE);
+    if (showSafeZone && !playing) drawSafeZone(ctx, CW, CH);
 
     // 씬 진입 flash burst
     if (prog < 0.10) {
@@ -89,7 +91,7 @@ export default function VideoPlayer() {
       ctx.fillStyle = `rgba(255,255,255,${flashT * 0.45})`;
       ctx.fillRect(0, 0, CW, CH);
     }
-  }, [script, loaded, aspectRatio, subAnimProg, restaurantName]);
+  }, [script, loaded, aspectRatio, subAnimProg, restaurantName, showSafeZone, playing]);
 
   // ── tick 루프 ─────────────────────────────────────────────
   useEffect(() => {
@@ -277,6 +279,13 @@ export default function VideoPlayer() {
           <button className="vcb" onClick={toggleMute}>
             <i className={`fas ${muted ? 'fa-volume-mute' : 'fa-volume-up'}`} />
           </button>
+          <button
+            className={`vcb${showSafeZone ? ' vcb-active' : ''}`}
+            onClick={() => setShowSafeZone(v => !v)}
+            title="안전 영역 표시"
+          >
+            <i className="fas fa-crop-alt" />
+          </button>
         </div>
       </div>
     </div>
@@ -344,6 +353,42 @@ function drawVignetteGrad(ctx, CW, CH) {
   g.addColorStop(0, 'rgba(0,0,0,0)');
   g.addColorStop(1, 'rgba(0,0,0,0.72)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, CW, CH);
+}
+
+// ── Safe Zone 가이드 (인스타그램·틱톡·유튜브쇼츠 UI 영역 표시) ──────
+function drawSafeZone(ctx, CW, CH) {
+  const topH    = Math.round(CH * 0.15);   // 상단 15% — 채널명/상태바 영역
+  const bottomH = Math.round(CH * 0.28);   // 하단 28% — 좋아요/댓글/공유 버튼 영역
+  const sideW   = Math.round(CW * 0.08);   // 좌우 8% — 텍스트 컷 방지 여백
+
+  // 세미-투명 빨간 오버레이 — UI가 가리는 영역
+  ctx.save();
+  const danger = 'rgba(255,40,40,0.28)';
+  ctx.fillStyle = danger;
+  ctx.fillRect(0, 0, CW, topH);
+  ctx.fillRect(0, CH - bottomH, CW, bottomH);
+  ctx.fillRect(0, 0, sideW, CH);
+  ctx.fillRect(CW - sideW, 0, sideW, CH);
+
+  // 안전 영역 테두리 (초록 점선)
+  ctx.strokeStyle = 'rgba(80,255,120,0.85)';
+  ctx.lineWidth   = Math.max(2, CW * 0.003);
+  ctx.setLineDash([Math.round(CW * 0.025), Math.round(CW * 0.015)]);
+  ctx.strokeRect(
+    sideW, topH,
+    CW - sideW * 2, CH - topH - bottomH
+  );
+  ctx.setLineDash([]);
+
+  // 라벨
+  ctx.font = `bold ${Math.round(CW * 0.034)}px Inter, sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.textAlign = 'center';
+  ctx.fillText('⚠ 상단 UI', CW / 2, topH / 2 + Math.round(CW * 0.017));
+  ctx.fillText('⚠ 하단 버튼/캡션', CW / 2, CH - bottomH / 2 + Math.round(CW * 0.017));
+  ctx.fillStyle = 'rgba(80,255,120,0.95)';
+  ctx.fillText('✓ 안전 영역', CW / 2, topH + Math.round(CH * 0.06));
+  ctx.restore();
 }
 
 function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {

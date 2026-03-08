@@ -26,7 +26,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── pre-built dist/ 를 그대로 복사 (CI 빌드 없음) ──────────
+      # ── React 앱 빌드 (GEMINI_KEY2 주입) ─────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: shorts-creator-v2/moovlog-react/package-lock.json
+
+      - name: Install & Build React app
+        working-directory: shorts-creator-v2/moovlog-react
+        env:
+          VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY2 }}
+        run: |
+          npm ci --prefer-offline 2>/dev/null || npm install
+          npm run build
+
+      # ── pre-built dist/ 를 그대로 복사 ───────────────────────
       - name: Prepare _site staging directory
         run: |
           mkdir -p _site/shorts-creator

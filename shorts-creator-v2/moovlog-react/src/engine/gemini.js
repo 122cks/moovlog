@@ -3,16 +3,18 @@
 
 import { useVideoStore, TEMPLATE_HINTS, HOOK_HINTS, VIRAL_TRENDS } from '../store/videoStore.js';
 
-// 고정 API 키 (미리터닝 없이도 동작 보장)
-const BUILT_IN_KEY = 'AIzaSyDzYoTeyFdOO8LuSeVYD-iF5_27Cxok_nc';
-let geminiKey = BUILT_IN_KEY;
+// API 키 관리 — 빌드 시 VITE_GEMINI_KEY 환경변수 주입 (GitHub GEMINI_KEY2 시크릿)
+// 하드코딩 금지: 키가 공개 저장소에 노출되면 Google이 즉시 차단(403)
+let geminiKey = import.meta.env.VITE_GEMINI_KEY || localStorage.getItem('moovlog_gemini_key') || '';
 
-export function setGeminiKey(key) { geminiKey = key || BUILT_IN_KEY; }
+export function setGeminiKey(key) {
+  if (key) geminiKey = key;
+}
 export function getGeminiKey() { return geminiKey; }
 export function hasGeminiKey() { return !!geminiKey; }
 
-export function getApiUrl(model) {
-  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+export function getApiUrl(model, key) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key || geminiKey}`;
 }
 
 async function fetchWithTimeout(url, options, timeout = 30000) {
@@ -25,11 +27,11 @@ async function fetchWithTimeout(url, options, timeout = 30000) {
   }
 }
 
-export async function apiPost(url, body) {
+export async function apiPost(url, body, timeoutMs = 30000) {
   const r = await fetchWithTimeout(
     url,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-    30000
+    timeoutMs
   );
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
@@ -38,18 +40,18 @@ export async function apiPost(url, body) {
   return r.json();
 }
 
-// 텍스트/비전 전용 모델 폴백 체인 (오디오 지원 모델 제외)
-const TEXT_MODELS = [
-  'gemini-2.5-pro-preview-05-06',   // 2.5 Pro 최신 Preview (2026-Q1)
-  'gemini-2.5-flash-preview-05-20', // 2.5 Flash 최신 Preview
-  'gemini-2.5-pro',                 // 2.5 Pro stable
-  'gemini-2.5-flash',               // 2.5 Flash stable
-  'gemini-2.0-flash',               // 2.0 Flash (안정)
-  'gemini-2.0-flash-lite',          // 2.0 Flash Lite (빠름)
-  'gemini-1.5-pro',
-  'gemini-1.5-flash',
+// ─── 모델 목록 (2026-03 v1beta 확인된 유효 모델만) ────────
+// 404: preview-05-06, preview-05-20, 1.5-pro, 1.5-flash (모두 deprecated/미지원)
+// 403: 누출 키 문제 (새 키 사용 시 정상 동작)
+// ⚡ 병렬 그룹: 같은 그룹은 동시 요청 → 가장 빠른 응답 사용
+export const TEXT_MODELS = [
+  'gemini-2.5-flash',     // 최신 2.5 Flash (안정, 무료 티어)
+  'gemini-2.5-pro',       // 최신 2.5 Pro (고품질)
+  'gemini-2.0-flash',     // 2.0 Flash (안정, 빠름)
+  'gemini-2.0-flash-lite', // 2.0 Flash Lite (초고속 폴백)
 ];
 
+// ─── 순차 폴백 (기본) ─────────────────────────────────────
 export async function geminiWithFallback(body) {
   let lastErr;
   for (const model of TEXT_MODELS) {
@@ -61,6 +63,23 @@ export async function geminiWithFallback(body) {
     }
   }
   throw lastErr || new Error('모든 Gemini 모델 실패');
+}
+
+// ─── 병렬 경쟁 (가장 빠른 모델 응답 채택) ───────────────
+// Promise.any: 하나라도 성공하면 즉시 반환, 모두 실패하면 AggregateError
+export async function geminiRace(body, models = TEXT_MODELS, timeoutMs = 28000) {
+  if (!models.length) throw new Error('모델 목록 없음');
+  const attempts = models.map(model =>
+    apiPost(getApiUrl(model), body, timeoutMs)
+      .then(r => ({ model, data: r }))
+      .catch(e => {
+        console.warn(`[Gemini 병렬] ${model} 실패:`, e.message);
+        throw e;
+      })
+  );
+  const result = await Promise.any(attempts);
+  console.log(`[Gemini ✓] 채택 모델: ${result.model}`);
+  return result.data;
 }
 
 // ─── 파일 → Base64 변환 ───────────────────────────────────
