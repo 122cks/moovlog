@@ -527,13 +527,18 @@ async function startMake() {
    ════════════════════════════════════════════════════════════ */
 async function visionAnalysis(restaurantName) {
   const parts = [];
-  // 이미지 + 영상 프레임 모두 포함 (이미지 최대 6장, 영상 1개당 2프레임)
-  for (const img of S.files.filter(f => f.type === 'image').slice(0, 6)) { const b64 = await toB64(img.file); parts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
-  for (const vf of S.files.filter(f => f.type === 'video').slice(0, 2)) {
-    try {
-      const frames = await extractVideoFramesB64(vf.file, 2);
-      for (const fr of frames) parts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
-    } catch (e) { console.warn('[Vision] 비디오 프레임 추출 실패:', e.message); }
+  // 업로드 순서대로 최대 8개 처리 (이미지 + 영상 프레임 혼용)
+  for (let i = 0; i < Math.min(S.files.length, 8); i++) {
+    const m = S.files[i];
+    if (m.type === 'image') {
+      const b64 = await toB64(m.file);
+      parts.push({ inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } });
+    } else {
+      try {
+        const frames = await extractVideoFramesB64(m.file, 2);
+        for (const fr of frames) parts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
+      } catch (e) { console.warn('[Vision] 비디오 프레임 추출 실패 무시'); }
+    }
   }
   if (!parts.length) return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
   const mediaCount = parts.length;
@@ -581,13 +586,18 @@ async function generateScript(restaurantName, analysis) {
   const totalTarget = Math.min(Math.max(S.files.length * 3 + 6, 22), 42);
 
   const imgParts = [];
-  // 이미지 + 영상 프레임 모두 포함
-  for (const img of S.files.filter(f => f.type === 'image').slice(0, 4)) { const b64 = await toB64(img.file); imgParts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
-  for (const vf of S.files.filter(f => f.type === 'video').slice(0, 2)) {
-    try {
-      const frames = await extractVideoFramesB64(vf.file, 1);
-      for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
-    } catch (e) { console.warn('[generateScript] 비디오 프레임 추출 실패:', e.message); }
+  // 업로드 순서대로 최대 8개 처리 (이미지 + 영상 프레임 혼용)
+  for (let i = 0; i < Math.min(S.files.length, 8); i++) {
+    const m = S.files[i];
+    if (m.type === 'image') {
+      const b64 = await toB64(m.file);
+      imgParts.push({ inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } });
+    } else {
+      try {
+        const frames = await extractVideoFramesB64(m.file, 2);
+        for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
+      } catch (e) { console.warn('[generateScript] 비디오 프레임 추출 실패 무시'); }
+    }
   }
 
   const prompt = `당신은 팔로워 50만+ 한국 맛집 인스타그램·유튜브 Shorts 전문 감독 "무브먼트(MOOVLOG)"입니다.
@@ -755,10 +765,11 @@ const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_
 
 const TTS_CONFIG = {
   models:      ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
-  voices:      ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'], // 남성 우선: Fenrir(남), Orus(남), Charon(남)
-  concurrency: 3,    // 동시 처리 씬 수 (Rate Limit 방지)
-  retryDelay:  700,  // 재시도 간격 ms
-  maxRetry:    2,
+  voices:      ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'],
+  concurrency: 1,    // 순차 처리 (429 Rate Limit 방지)
+  retryDelay:  1500, // 재시도 간격 ms
+  maxRetry:    3,
+  sceneDelay:  600,  // 씬 간 딜레이 ms
 };
 
 /* ── 나레이션 타입캐스트 스타일 전처리 ──────────────────────
@@ -838,10 +849,11 @@ async function generateAllTTS(scenes) {
     }
   });
 
-  // concurrency 제한 병렬 실행
-  for (let i = 0; i < tasks.length; i += TTS_CONFIG.concurrency) {
+  // 순새 실행 + 씨 간 딥레이 (429 Rate Limit 방지)
+  for (let i = 0; i < tasks.length; i++) {
     if (fatalStop) break;
-    await Promise.all(tasks.slice(i, i + TTS_CONFIG.concurrency).map(t => t()));
+    await tasks[i]();
+    if (i < tasks.length - 1) await sleep(TTS_CONFIG.sceneDelay);
   }
 
   if (!fatalStop) {
@@ -1073,31 +1085,6 @@ async function prerenderAudio(totalDur) {
     offset += scDur;
   }
 
-  // 2. BGM 트랙 자동 믹싱 (템플릿 기반 무드 매칭)
-  try {
-    const BGM_MAP = {
-      cinematic: 'Oceanic_Overflow', viral:  'Sizzle_Flow',
-      aesthetic: 'Vinyl_Daydreams',  mukbang: 'Grill_Masters_Anthem',
-      vlog:      'Sizzle_Flow',       review:  'Vinyl_Daydreams',
-      story:     'Oceanic_Overflow',  info:    'Sizzle_Flow',
-    };
-    const bgmFile = BGM_MAP[selectedTemplate] || 'Vinyl_Daydreams';
-    const bgmRes  = await fetch(`./bgm/${bgmFile}.mp3`);
-    if (bgmRes.ok) {
-      const bgmBuf = await audioCtx.decodeAudioData(await bgmRes.arrayBuffer());
-      const bgmSrc = off.createBufferSource();
-      bgmSrc.buffer = bgmBuf; bgmSrc.loop = true;
-      const bgmGain = off.createGain();
-      bgmGain.gain.setValueAtTime(0.08, 0);                          // BGM 8% 유지
-      bgmGain.gain.setValueAtTime(0.08, Math.max(0, maxEnd - 1.5)); // 종료 1.5초 전
-      bgmGain.gain.linearRampToValueAtTime(0, maxEnd);               // 페이드아웃
-      bgmSrc.connect(bgmGain); bgmGain.connect(off.destination);
-      bgmSrc.start(0);
-    }
-  } catch (e) {
-    console.warn('[Export] BGM 믹싱 실패 (무시):', e.message);
-  }
-
   const rendered = await off.startRendering();
   return rendered.getChannelData(0); // Float32Array@48kHz
 }
@@ -1154,49 +1141,13 @@ function stopAudio() {
   if ('speechSynthesis' in window) speechSynthesis.cancel();
 }
 
-/* ── BGM 실시간 재생 시스템 ──────────────────────────────── */
-let _bgmSrc  = null;
-let _bgmGain = null;
-const BGM_MAP = {
-  cinematic: 'Oceanic_Overflow', viral:   'Sizzle_Flow',
-  aesthetic: 'Vinyl_Daydreams',  mukbang: 'Grill_Masters_Anthem',
-  vlog:      'Sizzle_Flow',      review:  'Vinyl_Daydreams',
-  story:     'Oceanic_Overflow', info:    'Sizzle_Flow',
-};
-async function playBGM() {
-  if (!audioCtx) ensureAudio();
-  stopBGM();
-  if (!_bgmBuf) return; // 사전 로드된 버퍼 없으면 무시 (첫 화면 렉 방지)
-  try {
-    _bgmSrc = audioCtx.createBufferSource();
-    _bgmSrc.buffer = _bgmBuf; _bgmSrc.loop = true;
-    _bgmGain = audioCtx.createGain();
-    _bgmGain.gain.value = 0.08;
-    _bgmSrc.connect(_bgmGain);
-    _bgmGain.connect(audioCtx.destination);
-    if (audioMixDest) _bgmGain.connect(audioMixDest);
-    _bgmSrc.start(0);
-    console.log('[BGM] 즉시 재생 완료 (사전 로드된 버퍼)');
-  } catch (e) { console.warn('[BGM] 재생 실패:', e.message); }
-}
-function stopBGM() {
-  if (_bgmSrc) { try { _bgmSrc.stop(); } catch {} _bgmSrc = null; _bgmGain = null; }
-}
+/* ── BGM 제거 ─────────────────────────────────────────────── */
+async function playBGM() {} // BGM 제거
+function stopBGM()       {} // BGM 제거
 
 /* ── Preload media ───────────────────────────────────────── */
 async function preload() {
   S.loaded = [];
-
-  // BGM 사전 디코딩 — 첫 화릴 레 없이 즐시 재생 보장 (preload에서 라운드로빈 없이 고정됨)
-  if (!_bgmBuf) {
-    try {
-      if (!audioCtx) ensureAudio();
-      const bgmFile = BGM_MAP[selectedTemplate] || 'Vinyl_Daydreams';
-      const res = await fetch(`./bgm/${bgmFile}.mp3`);
-      if (res.ok) _bgmBuf = await audioCtx.decodeAudioData(await res.arrayBuffer());
-      console.log('[BGM Preload]', bgmFile);
-    } catch (e) { console.warn('[BGM Preload] 실패:', e.message); }
-  }
 
   for (const m of S.files) {
     if (m.type === 'image') {
@@ -1234,7 +1185,6 @@ function setupPlayer() {
   D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); hideRepeatPrompt();
   const _ytFill = document.getElementById('ytProgressFill');
   if (_ytFill) _ytFill.style.width = '0%';
-  stopBGM(); // 초기화 시 BGM 정지
   S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = 0; });
 }
 function togglePlay()  { S.playing ? pausePlay() : startPlay(); }
@@ -1251,20 +1201,17 @@ async function startPlay() {
       if (D.vProgText) D.vProgText.textContent = '0%';
       highlightScene(0);
       S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = 0; });
-      if (!S.muted) playBGM(); // 처음부터 다시 시작할 때 BGM 켜기
-    } else if (!_bgmSrc && !S.muted) {
-      playBGM(); // 일시정지 후 이어서 재생할 때 BGM 켜기
     }
   }
   S.playing = true; S.startTs = null; S.subAnimProg = 0;
   setPlayIcon(true); if (!S.muted) playSceneAudio(S.scene); tick();
 }
-function pausePlay()  { S.playing = false; if (S.raf) cancelAnimationFrame(S.raf); stopAudio(); stopBGM(); setPlayIcon(false); }
+function pausePlay()  { S.playing = false; if (S.raf) cancelAnimationFrame(S.raf); stopAudio(); setPlayIcon(false); }
 function doReplay()   { pausePlay(); S.scene = 0; S.startTs = null; S.subAnimProg = 0; D.vProg.style.width = '0%'; renderFrame(0, 0); highlightScene(0); setTimeout(startPlay, 80); }
 function toggleMute() {
   S.muted = !S.muted;
   D.muteIco.className = S.muted ? 'fas fa-volume-mute' : 'fas fa-volume-up';
-  if (S.muted) { stopAudio(); stopBGM(); } else if (S.playing) { playSceneAudio(S.scene); playBGM(); }
+  if (S.muted) { stopAudio(); } else if (S.playing) { playSceneAudio(S.scene); }
 }
 function setPlayIcon(pl) { D.playIco.className = pl ? 'fas fa-pause' : 'fas fa-play'; }
 
