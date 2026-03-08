@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v31 (20260308-1530)';
+const APP_VERSION  = 'v31 (20260308-1600)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -229,14 +229,14 @@ function getTplStyle() {
    JSON 템플릿과 연동, drawTrendyText()에서 참조
    ════════════════════════════════════════════════════════════ */
 const videoTemplates = {
-  cinematic:  { font: `900 ${Math.round(68*SCALE)}px 'Noto Sans KR'`,  color: '#E8E0D0', stroke: '#C8A96E', strokeWidth: 6,  shadow: 'rgba(0,0,0,0.6)', highlightColor: '#C8A96E' },
-  viral:      { font: `900 ${Math.round(84*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 10, shadow: 'rgba(0,0,0,0.9)', highlightColor: '#FF2D55' },
-  aesthetic:  { font: `800 ${Math.round(72*SCALE)}px 'Noto Sans KR'`,  color: '#FFF5E4', stroke: 'transparent', strokeWidth: 0, shadow: 'rgba(0,0,0,0.5)', highlightColor: '#FFB347', bgColor: 'rgba(0,0,0,0.42)' },
-  mukbang:    { font: `900 ${Math.round(82*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 9,  shadow: 'rgba(0,0,0,0.85)', highlightColor: '#FFE033' },
-  vlog:       { font: `700 ${Math.round(68*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 7,  shadow: 'rgba(0,0,0,0.6)', highlightColor: '#7FDBFF', bgColor: 'rgba(0,0,0,0.32)' },
-  review:     { font: `900 ${Math.round(76*SCALE)}px 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 8,  shadow: 'rgba(0,0,0,0.8)', highlightColor: '#FFD700' },
-  story:      { font: `800 ${Math.round(72*SCALE)}px 'Noto Sans KR'`,  color: '#FFF9F0', stroke: '#000000', strokeWidth: 7,  shadow: 'rgba(0,0,0,0.7)', highlightColor: '#FF9F7F' },
-  info:       { font: `900 ${Math.round(68*SCALE)}px 'Noto Sans KR'`,  color: '#E0F0FF', stroke: '#000000', strokeWidth: 8,  shadow: 'rgba(0,0,0,0.8)', highlightColor: '#00E5FF', bgColor: 'rgba(0,10,30,0.50)' },
+  cinematic:  { font: `900 ${Math.round(72*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#E8E0D0', stroke: '#C8A96E', strokeWidth: 10, shadow: 'rgba(0,0,0,0.7)', highlightColor: '#C8A96E' },
+  viral:      { font: `900 ${Math.round(88*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#D2FF00',  stroke: '#000000', strokeWidth: 14, shadow: 'rgba(0,0,0,0.95)', shadowOffsetY: 8, highlightColor: '#FF2D55' },
+  aesthetic:  { font: `800 ${Math.round(76*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFF5E4', stroke: 'transparent', strokeWidth: 0, shadow: 'rgba(0,0,0,0.5)', highlightColor: '#FFB347', bgColor: 'rgba(0,0,0,0.42)' },
+  mukbang:    { font: `900 ${Math.round(86*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 13, shadow: 'rgba(255,107,53,0.6)', highlightColor: '#FFE033' },
+  vlog:       { font: `700 ${Math.round(72*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 10, shadow: 'rgba(0,0,0,0.6)', highlightColor: '#7FDBFF', bgColor: 'rgba(0,0,0,0.32)' },
+  review:     { font: `900 ${Math.round(80*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 12, shadow: 'rgba(0,0,0,0.8)', highlightColor: '#FFD700' },
+  story:      { font: `800 ${Math.round(76*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFF9F0', stroke: '#000000', strokeWidth: 11, shadow: 'rgba(0,0,0,0.7)', highlightColor: '#FF9F7F' },
+  info:       { font: `900 ${Math.round(72*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#E0F0FF', stroke: '#000000', strokeWidth: 12, shadow: 'rgba(0,0,0,0.8)', highlightColor: '#00E5FF', bgColor: 'rgba(0,10,30,0.50)' },
 };
 
 /** 현재 selectedTemplate에 대한 videoTemplates 스타일 반환 */
@@ -1573,9 +1573,9 @@ function drawVignetteGrad() {
   const top = ctx.createLinearGradient(0, 0, 0, CH * 0.30);
   top.addColorStop(0, topColor); top.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = top; ctx.fillRect(0, 0, CW, CH * 0.30);
-  const bot = ctx.createLinearGradient(0, CH * 0.36, 0, CH);
-  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.5, 'rgba(0,0,0,0.20)'); bot.addColorStop(1, botColor);
-  ctx.fillStyle = bot; ctx.fillRect(0, CH * 0.36, CW, CH * 0.64);
+  const bot = ctx.createLinearGradient(0, CH * 0.50, 0, CH);
+  bot.addColorStop(0, 'rgba(0,0,0,0)'); bot.addColorStop(0.55, 'rgba(0,0,0,0.40)'); bot.addColorStop(1, 'rgba(0,0,0,0.80)');
+  ctx.fillStyle = bot; ctx.fillRect(0, CH * 0.50, CW, CH * 0.50);
 }
 
 /* ── [강화1] 씬 무드 컬러 오버레이 ──────────────────────── */
@@ -1762,12 +1762,13 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     const drawX = x;
     x += wM[i] + sp();
     if (wProg <= 0) return;
-    // 스프링 바운스: 0→1.42(오버슛)→1.0 (캡컷 특유의 팡!)
-    let scl;
+    // 스프링 바운스: 0→1.55(오버슛)→1.0 + 진입 시 미세 회전
+    let scl, rot = 0;
     if (wProg < 0.45) {
-      scl = (wProg / 0.45) * 1.42;          // 빠르게 1.42x까지 확대
+      scl = (wProg / 0.45) * 1.55;          // 빠르게 1.55x까지 확대
+      rot = (1 - wProg / 0.45) * -0.10;     // 진입 시 미세 기울기
     } else if (wProg < 0.72) {
-      scl = 1.42 - ((wProg - 0.45) / 0.27) * 0.42;  // 1.42 → 1.0으로 복귀
+      scl = 1.55 - ((wProg - 0.45) / 0.27) * 0.55;  // 1.55 → 1.0으로 복귀
     } else {
       // 미세 진동 (2회 리바운드)
       const vibT = (wProg - 0.72) / 0.28;
@@ -1776,19 +1777,22 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     const alpha = Math.min(wProg * 5, 1);
     const wx    = drawX + wM[i] / 2;
     const isHL  = (i === hlIdx);
+    // 자동 키워드 강조 감지
+    const KEYWORDS = ['진짜', '대박', '미쳤다', '역대급', '최고', '꼭', '실화', '잔낙', '업업', '얼마'];
+    const isKeyword = KEYWORDS.some(k => word.includes(k));
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.translate(wx, cy); ctx.scale(scl, scl);
-    if (isHL) {
-      // [캡컷] 강조 단어: 노란(또는 템플릿 컬러) 배경 + 검은 텍스트 + 그림자
+    ctx.translate(wx, cy); ctx.scale(scl, scl); ctx.rotate(rot);
+    if (isHL || isKeyword) {
+      // [캔컷] 강조 단어: 배경 박스 + 특수 코드 주스
       const padX = sz * 0.18, padY = sz * 0.14;
       const bw = wM[i] + padX * 2, bh = sz * 1.15;
       ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = sz * 0.25;
-      ctx.fillStyle = hlColor;
+      ctx.fillStyle = isKeyword && !isHL ? '#FF2D55' : hlColor; // 키워드면 핯핑크
       roundRect(ctx, -wM[i] / 2 - padX, -bh / 2, bw, bh, Math.min(bh * 0.28, 16 * SCALE));
       ctx.fill();
       ctx.shadowBlur = 0;
-      ctx.fillStyle = '#0a0a0a';
+      ctx.fillStyle = '#ffffff';
       ctx.fillText(word, -wM[i] / 2, 0);
     } else {
       // [캡컷] 일반 단어: 굵은 검은 스트로크 + 드롭 섀도우
