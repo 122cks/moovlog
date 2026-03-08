@@ -9,11 +9,11 @@ export function setGeminiKey(key) { geminiKey = key; }
 export function getGeminiKey() { return geminiKey; }
 export function hasGeminiKey() { return !!geminiKey; }
 
-function getApiUrl(model) {
+export function getApiUrl(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 }
 
-async function fetchWithTimeout(url, options, timeout = 7000) {
+async function fetchWithTimeout(url, options, timeout = 30000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {
@@ -23,7 +23,7 @@ async function fetchWithTimeout(url, options, timeout = 7000) {
   }
 }
 
-async function apiPost(url, body) {
+export async function apiPost(url, body) {
   const r = await fetchWithTimeout(
     url,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
@@ -36,12 +36,26 @@ async function apiPost(url, body) {
   return r.json();
 }
 
+// 텍스트/비전 전용 모델 폴백 체인 (오디오 지원 모델 제외)
+const TEXT_MODELS = [
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-pro',
+  'gemini-1.5-flash',
+];
+
 export async function geminiWithFallback(body) {
-  try { return await apiPost(getApiUrl('gemini-2.5-pro'), body); }
-  catch (e) {
-    console.warn('[Gemini] Pro → Flash 폴백:', e.message);
-    return apiPost(getApiUrl('gemini-2.5-flash'), body);
+  let lastErr;
+  for (const model of TEXT_MODELS) {
+    try {
+      return await apiPost(getApiUrl(model), body);
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[Gemini] ${model} 실패 → 다음 모델:`, e.message);
+    }
   }
+  throw lastErr || new Error('모든 Gemini 모델 실패');
 }
 
 // ─── 파일 → Base64 변환 ───────────────────────────────────
@@ -222,5 +236,75 @@ JSON만 반환:
   catch (e) {
     console.warn('[Script] Pro → Flash 폴백:', e.message);
     return makeReq(getApiUrl('gemini-2.5-flash'));
+  }
+}
+
+// ─── 블로그 포스팅 생성 ───────────────────────────────────
+export async function generateBlogPost({ name, location, keywords, extra, imageFiles }) {
+  const imgParts = [];
+  for (const f of (imageFiles || []).slice(0, 8)) {
+    if (f.type.startsWith('image/')) {
+      const b64 = await toB64(f);
+      imgParts.push({ inline_data: { mime_type: f.type || 'image/jpeg', data: b64 } });
+    } else if (f.type.startsWith('video/')) {
+      try {
+        const frames = await extractVideoFramesB64(f, 2);
+        for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
+      } catch (_) {}
+    }
+  }
+
+  const mediaList = (imageFiles || []).map((m, i) =>
+    m.type.startsWith('video/') ? `[영상 ${i + 1}]` : `[사진 ${i + 1}]`
+  ).join(', ');
+
+  const prompt = `당신은 한국에서 가장 인기 있는 맛집 블로거 "무브먼트(moovlog)"입니다.
+다음 정보와 이미지를 바탕으로 네이버 블로그 포스팅을 작성해주세요.
+
+음식점: ${name}
+위치: ${location || '(이미지에서 파악)'}
+첨부 파일: ${mediaList || '없음'} (총 ${(imageFiles || []).length}개)
+${keywords ? `본문에 자연스럽게 녹여야 할 키워드: ${keywords}` : ''}
+${extra ? `추가 지시사항: ${extra}` : ''}
+
+[무브먼트 블로그 스타일 — 2026 네이버 상위 노출 최적화]
+① 도입: 방문 동기·설레는 기대감 (친근한 구어체, 이모지 활용) → [사진 1]
+② 외관·입구 소개 → [사진/영상 2]
+③ 대표 메뉴 소개·메뉴판, 가격 정보 → [사진/영상 3]
+④ 음식 디테일 묘사 (구체적 맛·식감·비주얼) → 추가 사진 삽입
+⑤ 분위기·서비스·웨이팅 언급
+⑥ 재방문 의사 + 결론 + 위치·영업시간 정보
+⑦ 해시태그 (지역명 키워드 2~3개 포함, 최대 30개)
+
+[중요 규칙]
+- 첨부 파일이 있으면 본문의 적절한 위치에 [사진 N] 또는 [영상 N] 마커 반드시 삽입
+- 키워드는 한 문장에 자연스럽게 (광고성 나열 금지)
+- 단락 구분은 빈줄로, 구어체 사용, 이모지 적당히
+- 네이버 상위 노출을 위해 첫 문단에 핵심 키워드 포함
+
+JSON만 반환:
+{
+  "title": "블로그 제목 (클릭률 높은 감성 제목)",
+  "body": "블로그 본문 전체 (단락마다 빈줄, [사진/영상 N] 마커 포함)",
+  "naver_clip_tags": "#태그들 (300자 이내, 지역+음식 위주)",
+  "youtube_shorts_tags": "#태그들 (100자 이내)",
+  "instagram_caption": "소개 2~3줄\\n\\n#해시태그들 (10개)",
+  "tiktok_tags": "#태그1 #태그2 #태그3 #태그4 #태그5"
+}`;
+
+  const body = {
+    contents: [{ parts: [...imgParts, { text: prompt }] }],
+    generationConfig: { temperature: 0.85, responseMimeType: 'application/json' },
+  };
+
+  try {
+    const data = await apiPost(getApiUrl('gemini-2.5-pro'), body);
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    return JSON.parse(raw.replace(/```json|```/g, '').trim());
+  } catch (e) {
+    console.warn('[Blog] Pro → Flash 폴백:', e.message);
+    const data = await apiPost(getApiUrl('gemini-2.5-flash'), body);
+    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    return JSON.parse(raw.replace(/```json|```/g, '').trim());
   }
 }

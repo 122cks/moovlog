@@ -27,11 +27,11 @@ export default function ResultScreen() {
             <p className="result-sub">{script?.scenes?.length || 0}개 씬 · {totalSec.toFixed(1)}초</p>
           </div>
           <div className="badge-group">
-            <div className="audio-badge">
-              <i className="fas fa-microphone-alt" />
-              <span>{hasAudio ? 'AI 보이스' : '무음'}</span>
-            </div>
+          <div className={`audio-badge ${hasAudio ? '' : 'muted'}`}>
+            <i className={`fas ${hasAudio ? 'fa-microphone-alt' : 'fa-volume-mute'}`} />
+            <span>{hasAudio ? 'AI 보이스' : '무음'}</span>
           </div>
+        </div>
         </div>
 
         {/* 영상 플레이어 */}

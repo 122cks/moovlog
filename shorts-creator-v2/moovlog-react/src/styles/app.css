@@ -149,6 +149,7 @@ html, body {
 .result-title-box { flex: 1; }
 .badge-group { display: flex; gap: 6px; }
 .audio-badge { display: flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 20px; background: rgba(34,197,94,.15); border: 1px solid rgba(34,197,94,.3); color: var(--ok); font-size: .72rem; }
+.audio-badge.muted { background: rgba(255,255,255,.06); border-color: #333; color: #555; }
 
 /* ── Phone Mockup ────────────────────────────────────────── */
 .phone-wrap { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 16px; }
@@ -256,3 +257,53 @@ html, body {
 .toast.err { background: rgba(127,29,29,.9); border: 1px solid #ef4444; color: #fca5a5; }
 .toast.inf { background: rgba(30,58,138,.9); border: 1px solid #3b82f6; color: #93c5fd; }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── App Tab Nav ─────────────────────────────────────────── */
+.app-tab-nav { display: flex; gap: 0; border-top: 1px solid rgba(255,255,255,.06); margin-top: 6px; }
+.app-tab-btn { flex: 1; padding: 12px 4px; background: transparent; border: none; border-bottom: 2px solid transparent; color: #666; font-size: .82rem; font-weight: 700; cursor: pointer; transition: all .2s; font-family: inherit; letter-spacing: .02em; }
+.app-tab-btn.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+.app-tab-btn:hover:not(.active) { color: var(--text2); }
+
+/* ── Blog Page ───────────────────────────────────────────── */
+.blog-loading-wrap { position: fixed; inset: 0; background: rgba(0,0,0,.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 200; backdrop-filter: blur(6px); }
+
+/* Form */
+.blog-form-row { display: flex; align-items: flex-start; gap: 10px; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.04); }
+.blog-form-row:last-child { border-bottom: none; }
+.blog-form-row label { min-width: 70px; font-size: .75rem; color: var(--text2); padding-top: 2px; flex-shrink: 0; }
+.blog-form-row input, .blog-form-row textarea { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-size: .85rem; font-family: inherit; }
+.blog-textarea { resize: vertical; min-height: 72px; line-height: 1.7; }
+
+/* Result tabs */
+.blog-tabs { display: flex; gap: 7px; margin-bottom: 14px; flex-wrap: wrap; }
+.btab { padding: 7px 16px; border-radius: 50px; font-size: .75rem; font-weight: 600; border: 1px solid #333; background: rgba(255,255,255,.04); color: #777; cursor: pointer; transition: all .2s; font-family: inherit; }
+.btab.active { background: linear-gradient(135deg,#7c3aed,#a855f7); border-color: transparent; color: #fff; box-shadow: 0 2px 12px rgba(124,58,237,.35); }
+
+/* Content */
+.blog-pane-content { }
+.blog-section { margin-bottom: 18px; }
+.blog-section-title { font-size: .8rem; font-weight: 700; color: var(--accent2); display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.blog-text { background: var(--surface); border: 1px solid rgba(255,255,255,.06); border-radius: 10px; padding: 14px; font-size: .82rem; color: var(--text); line-height: 1.85; white-space: pre-wrap; word-break: break-all; min-height: 60px; }
+.blog-body-text { min-height: 200px; }
+.blog-info-hint { font-size: .7rem; color: var(--accent2); margin-bottom: 8px; opacity: .8; }
+.blog-copy-btn { background: rgba(255,255,255,.06); border: 1px solid #333; border-radius: 20px; color: var(--text2); padding: 4px 10px; font-size: .68rem; cursor: pointer; display: flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .2s; font-family: inherit; }
+.blog-copy-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+
+/* Naver guide */
+.naver-guide-card { background: rgba(3,199,90,.06); border: 1px solid rgba(3,199,90,.2); border-radius: 14px; padding: 18px; }
+.naver-guide-title { font-size: .88rem; font-weight: 700; color: #03c75a; display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+.naver-guide-list { padding-left: 18px; margin: 0; }
+.naver-guide-list li { font-size: .78rem; color: var(--text2); line-height: 1.9; margin-bottom: 2px; }
+.naver-guide-list li strong { color: var(--text); }
+.naver-open-btn { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; background: #03c75a; border: none; color: #fff; font-size: .92rem; font-weight: 700; padding: 14px; border-radius: 50px; cursor: pointer; margin-top: 14px; text-decoration: none; transition: opacity .2s; font-family: inherit; }
+.naver-open-btn:hover { opacity: .85; }
+
+/* Image preview grid for blog upload */
+.blog-img-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+.blog-img-thumb { aspect-ratio: 1; border-radius: 8px; overflow: hidden; position: relative; cursor: pointer; }
+.blog-img-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.blog-img-thumb .remove-thumb { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; background: rgba(0,0,0,.7); border: none; border-radius: 50%; color: #fff; font-size: .6rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* Tag wrap in blog SNS tab */
+.blog-tag-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.blog-tag { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); border-radius: 50px; padding: 3px 10px; font-size: .72rem; color: var(--text2); }

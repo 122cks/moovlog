@@ -284,18 +284,22 @@ export default function VideoPlayer() {
 
 function YtInfoOverlay({ script }) {
   if (!script) return null;
-  const name = useVideoStore.getState().restaurantName || 'MOOVLOG';
+  const { audioBuffers, restaurantName } = useVideoStore();
+  const hasAudio = audioBuffers?.some(b => b);
+  const name = restaurantName || 'MOOVLOG';
   return (
     <div className="yt-info">
       <div className="yt-info-channel">
         <span className="yt-channel-name">@{name.replace(/\s+/g, '').toLowerCase().slice(0, 18)}</span>
         <button className="yt-follow-btn">팔로우</button>
       </div>
-      <p className="yt-info-title">{script.scenes[0]?.subtitle || name}</p>
-      <div className="yt-music-row">
-        <i className="fas fa-music yt-music-icon" />
-        <span>Original Sound · {name}</span>
-      </div>
+      <p className="yt-info-title">{script.title || name}</p>
+      {hasAudio && (
+        <div className="yt-music-row">
+          <i className="fas fa-music yt-music-icon" />
+          <span>Original Sound · {name}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -351,53 +355,83 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
 
   const pos    = sc.subtitle_position || 'lower';
   const style  = sc.subtitle_style    || 'detail';
-  const baseY  = pos === 'upper' ? CH * 0.18 : pos === 'center' ? CH * 0.50 : CH * 0.80;
-  const fontSize = Math.round(68 * SCALE);
 
-  // 등장 애니메이션
-  const appear = Math.min(animProg * 3.0, 1);
-  const oy     = (1 - ease(appear)) * 40 * SCALE;
+  // 졼츠/릴스 스엠리: 하단 1/4 영역에 자막 비치
+  const baseY = pos === 'upper'  ? CH * 0.17
+              : pos === 'center' ? CH * 0.46
+              : CH * 0.81;                   // lower (default)
+
+  // 멀티라인 지원: cap1 위에 cap2 표시
+  const hasBoth = cap1 && cap2;
+  const lineGap = Math.round(60 * SCALE);
+
+  // 등장 애니메이션 — 쉽새릅에 사라짐
+  const appear = Math.min(animProg * 3.5, 1);
+  const oy     = (1 - ease(appear)) * 28 * SCALE;
 
   ctx.save();
   ctx.globalAlpha = appear;
   ctx.translate(0, oy);
 
-  // 스타일별 색상
-  const colors = {
-    hook:   { fill: '#FFFFFF', hl: '#FF2D55', stroke: '#000' },
-    hero:   { fill: '#FFFFFF', hl: '#FFD700', stroke: '#000' },
-    cta:    { fill: '#D2FF00', hl: '#FF2D55', stroke: '#000' },
-    detail: { fill: '#FFFFFF', hl: '#7FDBFF', stroke: '#000' },
+  // 스타일별 반응형 세트
+  const styleMap = {
+    hook:   { fill: '#FFFFFF', accent: '#FF2D55', fontSize: 58 },  // 선명한 효크
+    hero:   { fill: '#FFD60A', accent: '#FF9F0A', fontSize: 54 },  // 권덕 골든
+    cta:    { fill: '#D2FF00', accent: '#FF2D55', fontSize: 52 },  // CTA 라이마
+    detail: { fill: '#FFFFFF', accent: '#0A84FF', fontSize: 50 },  // 세밀한
   };
-  const c = colors[style] || colors.detail;
-
-  // cap1, cap2 순서 결정
-  const switchPt = Math.max(0.1, cap2 ? 0.5 : 1.0);
-  const showCap2 = cap2 && animProg > switchPt;
-  const text = showCap2 ? cap2 : cap1;
+  const c = styleMap[style] || styleMap.detail;
+  const fontSize = Math.round(c.fontSize * SCALE);
 
   ctx.font = `900 ${fontSize}px 'Black Han Sans', 'Noto Sans KR', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // 텍스트 배경
-  const tw = ctx.measureText(text).width;
-  const pad = 28 * SCALE;
-  const bh  = fontSize * 1.25;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.beginPath();
-  ctx.roundRect(CW/2 - tw/2 - pad, baseY - bh/2, tw + pad*2, bh, 12 * SCALE);
-  ctx.fill();
+  const drawOneLine = (text, yPos, isAccent) => {
+    if (!text) return;
+    const tw  = ctx.measureText(text).width;
+    const pad = 22 * SCALE;
+    const bh  = fontSize * 1.22;
+    const rx  = CW / 2 - tw / 2 - pad;
+    const ry  = yPos - bh / 2;
+    const rw  = tw + pad * 2;
 
-  // 텍스트 스트로크
-  ctx.strokeStyle = c.stroke;
-  ctx.lineWidth = 8 * SCALE;
-  ctx.lineJoin = 'round';
-  ctx.strokeText(text, CW/2, baseY);
+    // 소프트 백그라운드 (릴스 스타일 얼룩한 섬도)
+    ctx.fillStyle = isAccent
+      ? `rgba(0,0,0,0.65)`
+      : `rgba(0,0,0,0.45)`;
+    ctx.beginPath();
+    ctx.roundRect(rx, ry, rw, bh, Math.round(10 * SCALE));
+    ctx.fill();
 
-  // 텍스트 본체
-  ctx.fillStyle = c.fill;
-  ctx.fillText(text, CW/2, baseY);
+    // Accent 일려있으면 왼쪽 수직선
+    if (isAccent) {
+      ctx.strokeStyle = c.accent;
+      ctx.lineWidth   = Math.round(5 * SCALE);
+      ctx.beginPath();
+      ctx.moveTo(rx + Math.round(8 * SCALE), ry + Math.round(6 * SCALE));
+      ctx.lineTo(rx + Math.round(8 * SCALE), ry + bh - Math.round(6 * SCALE));
+      ctx.stroke();
+    }
+
+    // 텍스트 아웃라인
+    ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+    ctx.lineWidth   = Math.round(6 * SCALE);
+    ctx.lineJoin    = 'round';
+    ctx.strokeText(text, CW / 2, yPos);
+
+    // 텍스트 본체
+    ctx.fillStyle = isAccent ? c.accent : c.fill;
+    ctx.fillText(text, CW / 2, yPos);
+  };
+
+  if (hasBoth) {
+    // cap1 (accent) + cap2 동시 표시
+    drawOneLine(cap1, baseY - lineGap / 2, true);
+    drawOneLine(cap2, baseY + lineGap / 2, false);
+  } else {
+    drawOneLine(cap1 || cap2, baseY, animProg > 0.5 && cap2 ? false : true);
+  }
 
   ctx.restore();
 }

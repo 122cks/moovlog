@@ -1,0 +1,25 @@
+{
+  "name": "MOOVLOG Shorts Creator",
+  "short_name": "Shorts Creator",
+  "description": "AI 자동 숏폼 영상 생성기 — 릴스·쇼츠 한 방에",
+  "start_url": "/moovlog/shorts-creator/",
+  "scope": "/moovlog/shorts-creator/",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#7c3aed",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

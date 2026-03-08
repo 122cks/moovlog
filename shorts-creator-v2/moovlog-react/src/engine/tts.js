@@ -1,7 +1,7 @@
 // src/engine/tts.js
 // TTS 시스템 — Typecast 우선 + Gemini 폴백 (기존 script.js에서 이식)
 
-import { geminiWithFallback } from './gemini.js';
+import { getApiUrl, getGeminiKey } from './gemini.js';
 
 // ─── AudioContext (싱글턴) ────────────────────────────────
 let audioCtx = null;
@@ -149,12 +149,19 @@ export async function fetchTypeCastTTS(text) {
 }
 
 // ─── Gemini TTS 재시도 래퍼 ──────────────────────────────
+// 오디오 출력을 지원하는 모델만 사용 (2.5-pro/flash는 텍스트 전용)
 const TTS_CONFIG = {
-  models:     ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
+  models: [
+    'gemini-2.5-flash-preview-tts',         // 1순위: TTS 전용 최신 모델
+    'gemini-2.0-flash-exp',                  // 2순위: 실험적 오디오 지원
+    'gemini-2.0-flash-preview-audio-generation', // 3순위
+    'gemini-2.5-flash-exp',                  // 4순위: 실험적 플래시
+    'gemini-2.0-flash',                      // 5순위
+  ],
   voices:     ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'],
-  maxRetry:   4,
-  retryDelay: 3000,
-  sceneDelay: 3000,
+  maxRetry:   5,
+  retryDelay: 2000,
+  sceneDelay: 2500,
 };
 
 export async function fetchTTSWithRetry(text, sceneIdx) {
@@ -165,10 +172,24 @@ export async function fetchTTSWithRetry(text, sceneIdx) {
     const model     = TTS_CONFIG.models[attempt % TTS_CONFIG.models.length];
     const voiceName = TTS_CONFIG.voices[sceneIdx % TTS_CONFIG.voices.length];
     try {
-      const data = await geminiWithFallback({
-        contents: [{ parts: [{ text }] }],
-        generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } },
-      });
+      // 오디오 전용 모델에 직접 요청 (geminiWithFallback은 텍스트 모델만 순환)
+      const r = await fetchWithTimeout(
+        getApiUrl(model),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text }] }],
+            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } },
+          }),
+        },
+        25000
+      );
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e?.error?.message || `HTTP ${r.status}`);
+      }
+      const data = await r.json();
       const b64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (!b64) throw new Error('빈 base64');
 
