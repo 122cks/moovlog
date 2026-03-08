@@ -1,7 +1,7 @@
 // MOOVLOG Shorts Creator — Service Worker
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
-const CACHE_NAME = 'moovlog-v2.2';
+const CACHE_NAME = 'moovlog-v2.3';
 const STATIC_ASSETS = [
   '/moovlog/shorts-creator/',
   '/moovlog/shorts-creator/index.html',
@@ -16,9 +16,13 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then(clients => {
+        // 새 SW가 활성화되면 모든 탭을 자동 새로고침 → 구버전 캐시 즉시 해소
+        for (const client of clients) client.navigate(client.url);
+      })
   );
   self.clients.claim();
 });

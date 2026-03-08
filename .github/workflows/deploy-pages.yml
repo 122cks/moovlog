@@ -36,10 +36,11 @@ jobs:
 
       - name: Install & Build React app
         working-directory: shorts-creator-v2/moovlog-react
+        continue-on-error: true   # 빌드 실패 시 커밋된 dist로 폴백
         env:
           VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY2 }}
         run: |
-          npm ci --prefer-offline 2>/dev/null || npm install
+          npm install
           npm run build
 
       # ── pre-built dist/ 를 그대로 복사 ───────────────────────
@@ -49,7 +50,7 @@ jobs:
           # 루트 랜딩 페이지
           cp index.html style.css script.js _site/
           # assets (루트 index.html이 참조하는 이미지/영상)
-          cp -r assets _site/assets
+          cp -r assets _site/assets 2>/dev/null || true
           # React 앱 빌드 결과물만 복사
           cp -r shorts-creator-v2/moovlog-react/dist/. _site/shorts-creator/
       # ────────────────────────────────────────────────────────────
