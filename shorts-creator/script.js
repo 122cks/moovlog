@@ -233,16 +233,32 @@ const HOOK_POOL = [
 
 /* ── 자막 분할 (5~12자 틱톡 스타일) ──────────────────────── */
 function splitCaptions(text) {
-  if (!text) return [text || '', ''];
-  const stripped = text.replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
-  if (stripped.length <= 10) return [text, ''];
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length <= 1) {
-    const mid = Math.ceil(text.length / 2);
-    return [text.slice(0, mid), text.slice(mid)];
+  if (!text) return ['', ''];
+  const clean = text.trim();
+  // ① 이미 줄바꿈 있으면 그 경계로 분리
+  if (clean.includes('\n')) {
+    const parts = clean.split('\n').map(s => s.trim()).filter(Boolean);
+    return [parts[0] || '', parts.slice(1).join(' ') || ''];
   }
-  const mid = Math.ceil(words.length / 2);
-  return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+  // ② 마침표·느낌표·물음표 뒤 자연 끊기 (숏폼 리듬)
+  const sm = clean.match(/^(.{3,14}[.!?…]+)\s*(.{2,})$/);
+  if (sm) return [sm[1], sm[2]];
+  // ③ 쉼표 기준 분리
+  const cp = clean.split(/[,，]/);
+  if (cp.length >= 2 && cp[0].trim().length >= 3)
+    return [cp[0].trim(), cp.slice(1).join(',').trim()];
+  // ④ 이모지 제거 후 10자 이하 — 분리 불필요
+  const stripped = clean.replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, '').trim();
+  if (stripped.length <= 10) return [clean, ''];
+  // ⑤ 공백 기준 단어 단위 반분
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    const mid = Math.ceil(words.length / 2);
+    return [words.slice(0, mid).join(' '), words.slice(mid).join(' ')];
+  }
+  // ⑥ 글자 수 반분
+  const mid = Math.ceil(clean.length / 2);
+  return [clean.slice(0, mid), clean.slice(mid)];
 }
 
 /* ── State ───────────────────────────────────────────────── */
@@ -603,33 +619,41 @@ ${imgSummary || '분석 없음'}
 권장 컷 순서: [${order.join(',')}]
 
 [★ 조회수 폭발 공식 — 총 ${totalTarget}초, ${S.files.length}씬]
-■ 씬1 Hook (2~3s): 첫 1.5초 안에 시청자를 멈추게 하는 임팩트.
-  → 질문형: "이거 진짜야?" / 충격형: "이 가격에 이게 나온다고?" / FOMO: "이거 모르면 손해"
-  → 나레이션: 강렬, 짧게, 의문형이나 감탄으로 끝내기
-■ 씬2 Context (3~4s): 공간·무드 감성 소개. 보는 사람이 가고 싶게 만들기.
-  → "인천에 이런 곳이?" / "여기 분위기 미쳤는데" 스타일
-■ 씬3 Hero (4~5s): 대표 메뉴 클로즈업. 육즙·윤기·볼륨감·색감 감각 묘사 극대화.
-  → "바삭하고 촉촉한" / "육즙이 터지는" / "보기만 해도 침 고이는" 표현 활용
-■ 씬4~N-1 Detail (3~4s): 음식 디테일. 질감·온도·냄새·두께 입체적 묘사.
-  → 관객이 직접 먹는 것처럼 몰입감 있게
-■ 씬N CTA (2~3s): 저장·팔로우 유도. 구체적 행동 지시.
-  → "저장 안 하면 나중에 못 옴 💾" / "팔로우하면 맛집 다 알려드림 🙏" / "여기 꼭 가봐 진심"
+■ 씬1 Hook (1.8~2.5s): 첫 0.8초 안에 멈추게 하는 임팩트. 짧을수록 좋음.
+  → caption1 예: "이거 실화?" / "이게 가능?" / "여기 실화?"
+  → narration: 반말로 딱 2문장. "이거 실화야. 이 가격에 이게 나온다고."
+■ 씬2 Context (2~3s): 공간·분위기 감성. 가고 싶게 만들기.
+  → caption1: 장소명+감성 ("을지로 숨은 맛집" / "여기 분위기 미쳤다")
+  → narration: "을지로에 이런 데가 있었어. 완전 숨은 맛집이잖아."
+■ 씬3 Hero (3~4.5s): 대표 메뉴 클로즈업. 육즙·윤기·볼륨감·색감 극대화 묘사.
+  → caption1: 재료나열 또는 비주얼 반응 ("연어 + 계란 + 밥" / "비주얼 미쳤다")
+  → caption2: 리액션 ("단골 됩니다" / "저장각이다")
+  → narration: "육즙이 터지는 거 봐. 바삭하고 촉촉한 게 진짜 미쳤다."
+■ 씬4~N-1 Detail (2.5~3.5s): 식감·온도·두께 입체적 묘사. 직접 먹는 것처럼.
+■ 씬N CTA (1.8~2.5s): 저장·팔로우 유도. 딱 2문장.
+  → "여기 꼭 가봐. 저장해두면 나중에 고마워."
 
-[★ 틱톡 스타일 자막 규칙 — 핵심]
-- caption1: 씬 전반부 자막. 5~10자, 실제 사람 말투, 광고 금지, 감탄/의문형 허용. 이모지 선택적.
-  예: "이거 뭐냐", "비주얼 미쳤다", "진짜임?", "여기 실화", "🔥 대박이다"
-- caption2: 씬 후반부 자막. 5~10자, caption1 반응/이어지는 포인트. 없으면 빈문자열 허용.
-  예: "진짜 맛있다", "여기 또 온다", "저장각이다", "이건 찐이야"
+[★ 틱톡/릴스 스타일 자막 규칙 — 이것만큼은 반드시 지킬 것]
+- caption1: 씬 전반부 자막. 한국어 기준 4~8자 (최대 10자), 반말, 입소문체, 광고체 절대 금지.
+  ✅ 맞는 예: "이거 뭐냐", "비주얼 미침", "진짜야?", "여기 실화", "연어 미쳤다", "대박..."
+  ✅ 재료 나열도 OK: "연어 + 계란 + 밥", "3만원인데?", "숨은 맛집"
+  ❌ 틀린 예: "이곳은 정말 맛있는 집입니다", "신선한 재료로 만든", "지금 방문하세요"
+- caption2: 씬 후반부 자막 (caption1 이후 팝인). 4~8자, 반응·심화·리액션형.
+  ✅ 맞는 예: "단골 됩니다", "저장각이다", "여기 또 온다", "진짜 찐이야", "이건 찐"
+  ❌ 빈 문자열도 허용 (한 줄로 충분할 때)
+  ⚠️  caption1과 caption2가 합쳐서 하나의 짧은 메시지를 만들어야 함
+  예. caption1="비주얼 미쳤다" + caption2="여기 또 온다" → 자연스러운 흐름
 - subtitle_style: "hook"(훅)|"detail"(디테일)|"hero"(대표메뉴)|"cta"(콜투액션)
 - subtitle_position: "center"|"lower"|"upper"
-- narration: 아래 타입캐스트 스타일 엄격 준수
+- narration: 아래 규칙 엄격 준수
   • 짧고 호흡 있는 구어체. 한 문장 최대 15글자. 문장 2~3개 이내.
-  • 인스타 릴스 느낌: 반말, 감탄, 의성어, 입맛 묘사 가득
-  • 예시(Hook): "이거 실화야. 이 가격에 이게 나온다고."
-  • 예시(Detail): "육즙이 터지는 거 봐. 바삭하고 촉촉한 게 진짜 미쳤다."
-  • 예시(CTA): "여기 꼭 가봐. 저장해두면 나중에 고마워."
-  • 금지: 존댓말(습니다/세요/드립니다), 길고 설명적인 문장, 이모지 포함
-  • 글자 수: ≤ duration × 7 (예: 3초 → 21글자 이내)
+  • 인스타 릴스 느낌: 반말, 감탄, 의성어, 구체적 맛·식감 묘사
+  • ✅ 예시(Hook): "이거 실화야. 이 가격에 이게 나온다고."
+  • ✅ 예시(Detail): "육즙이 터지는 거 봐. 바삭하고 촉촉한 게 진짜 미쳤다."
+  • ✅ 예시(CTA): "여기 꼭 가봐. 저장해두면 나중에 고마워."
+  • ✅ 예시(Ambiance): "분위기가 너무 좋아. 여기 데이트 코스야."
+  • ❌ 금지(반드시): 습니다/세요/드립니다 등 존댓말, 설명적 긴 문장, 이모지 포함
+  • 글자 수: ≤ duration × 6 (예: 3초 씬 → 18글자 이내로 짧게)
 - effect: 컷 분석 best_effect 우선, 없으면 hero→zoom-in / ambiance→pan-left / detail→zoom-in-slow
 - duration: 컷 분석 suggested_duration 우선, 나레이션 길이 반영 (min:2.5 / max:6)
 - idx: 0~${S.files.length - 1}
@@ -645,7 +669,11 @@ ${imgSummary || '분석 없음'}
 - tiktok_tags: 틱톡 바이럴 5개 태그 (#먹방 형태)
 
 JSON만 반환 (백틱·설명 없이 순수 JSON):
-{"title":"제목","hashtags":"#태그들","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[{"idx":0,"duration":3,"caption1":"이거 실화임?","caption2":"진짜 미쳤다","subtitle_style":"hook","subtitle_position":"center","narration":"진짜 이 가격에 이게 나온다고?","effect":"zoom-out"}]}`;
+{"title":"제목","hashtags":"#태그들","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[
+  {"idx":0,"duration":2.5,"caption1":"이거 실화임?","caption2":"이 가격에..","subtitle_style":"hook","subtitle_position":"center","narration":"이거 실화야. 이 가격에 이게 나온다고.","effect":"zoom-out"},
+  {"idx":1,"duration":3,"caption1":"을지로 숨은 맛집","caption2":"여기 진짜야","subtitle_style":"detail","subtitle_position":"lower","narration":"을지로에 이런 데가 있었어. 완전 숨은 맛집이잖아.","effect":"pan-left"},
+  {"idx":2,"duration":3.5,"caption1":"비주얼 미쳤다","caption2":"단골 됩니다","subtitle_style":"hero","subtitle_position":"lower","narration":"육즙이 터지는 거 봐. 바삭하고 촉촉한 게 진짜 미쳤다.","effect":"zoom-in"}
+]}`;
 
   const makeReq = async url => {
     const data = await apiPost(url, { contents: [{ parts: [...imgParts, { text: prompt }] }], generationConfig: { temperature: 0.92, responseMimeType: 'application/json' } });
@@ -1439,15 +1467,31 @@ const TEMPLATE_SUB_STYLE = {
 };
 
 function drawSubtitle(sc, animProg) {
-  if (!sc.subtitle) return;
+  const cap1 = sc.caption1 || sc.subtitle || '';
+  const cap2 = sc.caption2?.trim() ? sc.caption2 : '';
+  if (!cap1) return;
+
+  // caption2가 있으면 50% 지점에서 전환 — 각각 0→1 fresh pop-in
+  let text, localAp;
+  if (cap2 && animProg >= 0.50) {
+    text    = cap2;
+    localAp = Math.min((animProg - 0.50) / 0.50, 1);  // 후반: 새로 0→1
+  } else {
+    text    = cap1;
+    localAp = cap2 ? Math.min(animProg / 0.50, 1) : animProg;  // 전반: 0→1 정규화
+  }
+
   ctx.save();
   let style = sc.subtitle_style || 'detail';
   const tplOverride = TEMPLATE_SUB_STYLE[selectedTemplate];
   if (tplOverride && style !== 'hero' && style !== 'cta') {
     style = tplOverride[style] || tplOverride['detail'] || style;
   }
-  const renderer = SUBTITLE_RENDERERS[style] || SUBTITLE_RENDERERS.detail;
-  renderer(sc, animProg);
+  // 렌더러가 sc.subtitle을 읽으므로 표시할 텍스트로 임시 교체 후 복원
+  const _orig = sc.subtitle;
+  sc.subtitle = text;
+  (SUBTITLE_RENDERERS[style] || SUBTITLE_RENDERERS.detail)(sc, localAp);
+  sc.subtitle = _orig;
   ctx.restore();
 }
 
