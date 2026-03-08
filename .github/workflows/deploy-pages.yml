@@ -26,7 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── moovlog-react Vite 빌드 ─────────────────────────────────
+      # ── 1. moovlog-react Vite 빌드 ──────────────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -53,14 +53,16 @@ jobs:
           VITE_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
         run: npm run build
 
-      - name: Copy build → shorts-creator/
+      # ── 2. 최소 스테이징 디렉터리 구성 (node_modules 미포함) ────
+      - name: Prepare _site staging directory
         run: |
-          rm -rf shorts-creator
-          mkdir -p shorts-creator
-          cp -r shorts-creator-v2/moovlog-react/dist/. shorts-creator/
-
-      - name: Remove node_modules (아티팩트 크기 최적화)
-        run: rm -rf shorts-creator-v2
+          mkdir -p _site/shorts-creator
+          # 루트 랜딩 페이지
+          cp index.html style.css script.js _site/
+          # assets (루트 index.html이 참조하는 이미지/영상)
+          cp -r assets _site/assets
+          # React 앱 빌드 결과물만 복사
+          cp -r shorts-creator-v2/moovlog-react/dist/. _site/shorts-creator/
       # ────────────────────────────────────────────────────────────
 
       - name: Setup Pages
@@ -69,7 +71,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         id: deployment
