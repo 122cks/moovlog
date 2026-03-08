@@ -2326,7 +2326,9 @@ function formatDuration(sec) {
   const hh = Math.floor(s / 3600);
   const mm = Math.floor((s % 3600) / 60);
   const ss = s % 60;
-  return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+  // 시간 단위이면서 1시간 이상일 때만 HH:MM:SS, 그렇지 않으면 MM:SS로 표시
+  if (hh > 0) return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+  return `${pad2(mm)}:${pad2(ss)}`;
 }
 function buildSceneCards() {
   D.sceneList.innerHTML = '';
