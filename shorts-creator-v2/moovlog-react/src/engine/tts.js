@@ -160,14 +160,17 @@ export async function fetchTypeCastTTS(text) {
 // AUDIO 모달리티를 지원하는 실제 TTS 전용 모델만 사용
 // gemini-2.0-flash-exp / gemini-2.5-flash-exp / gemini-2.0-flash 는 audio 미지원 (404/400)
 const TTS_CONFIG = {
+  // 429(쿼타 초과) 시 다음 모델로 즉시 전환, 동일 모델 2회 재시도 포함
   models: [
     'gemini-2.5-flash-preview-tts',   // 1순위: TTS 전용 100/day 무료
-    'gemini-2.5-pro-preview-tts',     // 2순위: Pro TTS 폴백
+    'gemini-2.5-pro-preview-tts',     // 2순위: Pro TTS (다른 쿼타)
+    'gemini-2.5-flash-preview-tts',   // 3순위: flash 재시도
+    'gemini-2.5-pro-preview-tts',     // 4순위: pro 재시도
   ],
-  voices:     ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'],
-  maxRetry:   2,
-  retryDelay: 4000,
-  sceneDelay: 3000,
+  voices:     ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede', 'Puck'],
+  maxRetry:   4,
+  retryDelay: 2000,   // 429 이외 오류 대기 (ms)
+  sceneDelay: 2500,
 };
 
 export async function fetchTTSWithRetry(text, sceneIdx) {
@@ -189,11 +192,18 @@ export async function fetchTTSWithRetry(text, sceneIdx) {
             generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } },
           }),
         },
-        25000
+        42000   // TTS 응답은 최대 42초 대기
       );
       if (!r.ok) {
-        const e = await r.json().catch(() => ({}));
-        throw new Error(e?.error?.message || `HTTP ${r.status}`);
+        const errJson = await r.json().catch(() => ({}));
+        const errMsg  = errJson?.error?.message || `HTTP ${r.status}`;
+        // 429(쿼타 초과)는 즉시 다음 모델로 전환 (retryDelay 없이)
+        if (r.status === 429) {
+          console.warn(`[TTS] ${model} 쿼타 초과(429) → 다음 모델로 즉시 전환`);
+          lastErr = new Error(errMsg);
+          continue;  // 대기 없이 다음 attempt
+        }
+        throw new Error(errMsg);
       }
       const data = await r.json();
       const b64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -228,8 +238,9 @@ export async function fetchTTSWithRetry(text, sceneIdx) {
       }
     } catch (e) {
       lastErr = e;
-      if (e.message?.startsWith('TTS_403') || e.message?.startsWith('429')) throw e;
+      if (e.message?.startsWith('TTS_403')) throw e;  // 인증 오류는 즉시 중단
       console.warn(`[TTS] 시도 ${attempt + 1}/${TTS_CONFIG.maxRetry} 실패:`, e.message);
+      // abort/timeout 은 대기 후 재시도, 429는 위에서 continue로 처리됨
       if (attempt < TTS_CONFIG.maxRetry - 1) await sleep(TTS_CONFIG.retryDelay);
     }
   }

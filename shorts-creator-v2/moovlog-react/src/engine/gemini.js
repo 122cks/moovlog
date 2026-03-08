@@ -40,9 +40,12 @@ export async function apiPost(url, body) {
 
 // 텍스트/비전 전용 모델 폴백 체인 (오디오 지원 모델 제외)
 const TEXT_MODELS = [
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
+  'gemini-2.5-pro-preview-05-06',   // 2.5 Pro 최신 Preview (2026-Q1)
+  'gemini-2.5-flash-preview-05-20', // 2.5 Flash 최신 Preview
+  'gemini-2.5-pro',                 // 2.5 Pro stable
+  'gemini-2.5-flash',               // 2.5 Flash stable
+  'gemini-2.0-flash',               // 2.0 Flash (안정)
+  'gemini-2.0-flash-lite',          // 2.0 Flash Lite (빠름)
   'gemini-1.5-pro',
   'gemini-1.5-flash',
 ];
@@ -174,7 +177,7 @@ export async function generateScript(restaurantName, analysis) {
   const isTrend = VIRAL_TRENDS[selectedTemplate];
   const totalTarget = isTrend
     ? isTrend.durations.reduce((a, v) => a + v, 0)
-    : Math.min(Math.max(files.length * 3 + 6, 22), 42);
+    : Math.min(Math.max(files.length * 4 + 8, 30), 55);
 
   const imgParts = [];
   for (let i = 0; i < Math.min(files.length, 8); i++) {
@@ -193,10 +196,11 @@ export async function generateScript(restaurantName, analysis) {
   const trendInstruction = isTrend ? `
 [🚨 바이럴 트렌드 템플릿 강제 규칙 🚨]
 "${isTrend.name}" 포맷 — 정확히 ${isTrend.durations.length}개 씬, duration 배열: [${isTrend.durations.join(', ')}]
-duration 1초 미만 씬 → narration 비우거나 단어 1개만.
+duration 1.5초 미만 씬 → narration 비우거나 단어 1~2개만.
 ` : '';
 
   const prompt = `당신은 팔로워 50만+ 한국 맛집 인스타그램·유튜브 Shorts 전문 감독 "무브먼트(MOOVLOG)"입니다.
+2026 최신 릴스/쇼츠 트렌드: 스토리 아크(기승전결), 감정 몰입, 느린 여운, 자막 임팩트.
 ${trendInstruction}
 [음식점 정보]
 이름: ${restaurantName} / 분위기: ${analysis.mood || '감성적인'}
@@ -211,13 +215,22 @@ ${trendInstruction}
 ${imgSummary || '분석 없음'}
 권장 컷 순서: [${order.join(',')}]
 
-[★ 총 ${totalTarget}초, ${files.length}씬 구성]
-씬1 Hook(2~2.5s) → 씬2 Context(2~3s) → 씬3 Hero(3~4s) → 씬N CTA(2~2.5s)
+[★ 총 ${totalTarget}초, ${files.length}씬 구성 — 완성형 스토리 아크]
+씬1 발견/훅(2.5~3.5s): 충격적 첫 비주얼 + 궁금증 폭발 자막
+씬2 설정/기대(3~4s): 이 곳이 특별한 이유, 분위기·비하인드
+씬3 클라이맥스 전(3~4s): 대표 메뉴 등장, 텍스처·디테일 극대화
+씬4 감정 피크(3~4.5s): 맛 반응, 경험 최고조 → 가장 인상적인 컷
+씬N CTA(2.5~3.5s): 감성 마무리 + "꼭 가봐", 위치 힌트
 
-[자막 규칙]
-caption1: narration 첫 임팩트 구절 4~8자, 반말 구어체
-caption2: narration 후반 핵심 4~8자 (없으면 빈 문자열)
-narration: 반말, 1~2문장, 해당 씬 duration × 7글자 이하, 이모지 금지
+[나레이션 스타일 — 2026 인플루언서 말투]
+• 반말, 1~2문장, 각 씬 duration × 5글자 이하 (여유있게 읽히도록)
+• 감정 흐름: 설렘→기대→충격→감동→여운
+• 이모지 금지, 구어체 자연스럽게 (ex: "이거 실화야", "미쳤다 진짜", "꼭 와봐")
+
+[자막 규칙 — 임팩트 극대화]
+caption1: narration 첫 임팩트 구절 4~10자 (반말, 구어체)
+caption2: narration 후반 감정 핵심 4~10자 (없으면 빈 문자열)
+subtitle_style: hook(강렬한 첫 씬) | hero(음식 클라이맥스) | cta(마지막 행동유도) | bold_drop(TikTok 스타일) | minimal(여운/감성) | elegant(에세이 스타일)
 
 [★ SNS 태그 규칙 — 반드시 준수]
 naver_clip_tags : #협찬 으로 시작, 이어서 지역·음식·분위기 태그 공백 나열, 총 300자 이내
@@ -227,7 +240,7 @@ tiktok_tags : #태그 딱 5개만 공백 구분
 
 JSON만 반환:
 {"title":"제목","hashtags":"#태그","naver_clip_tags":"#협찬 #서울맛집 #한식 #점심","youtube_shorts_tags":"#맛집투어 #한식 #shorts","instagram_caption":"소개문\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5","tiktok_tags":"#한식 #맛집 #vlog #food #korea","scenes":[
-  {"idx":0,"duration":2.5,"caption1":"이거 실화임?","caption2":"이 가격에..","subtitle_style":"hook","subtitle_position":"center","narration":"이거 실화야. 이 가격에 이게 나온다고.","effect":"zoom-out"}
+  {"idx":0,"duration":3.0,"caption1":"이거 실화임?","caption2":"이 가격에..","subtitle_style":"hook","subtitle_position":"center","narration":"이거 실화야. 이 가격에 이게 나온다고.","effect":"zoom-out"}
 ]}`;
 
   const makeReq = async url => {

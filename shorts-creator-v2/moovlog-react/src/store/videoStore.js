@@ -8,21 +8,27 @@ export const TEMPLATE_NAMES = {
   story: '📖 스토리', info: '📊 정보',
   viral_fast: '⚡ 빠른 비트', vlog_aesthetic: '☕ 감성 브이로그',
   pov: '👁 POV 몰입', reveal: '🎯 반전 공개', foreshadow: '💫 복선 회수',
+  asmr: '🎧 ASMR 슬로우', cinematic_story: '🎥 시네마틱 스토리',
+  hype: '🔥 하이프 리액션', food_essay: '✏️ 감성 에세이',
   auto: '🤖 AI 자동',
 };
 
 export const TEMPLATE_HINTS = {
-  cinematic:  '시네마틱 스타일: 슬로우 컷, 무디 색감, 영화 같은 구성',
-  viral:      '바이럴 스타일: 빠른 컷 전환, FOMO 극대화, 틱톡 트렌딩',
-  aesthetic:  '감성 스타일: 따뜻한 톤, 소프트 무드, 인스타 감성',
-  mukbang:    '먹방 스타일: 음식 클로즈업 극대화, ASMR 느낌 나레이션',
-  vlog:       '브이로그 스타일: 일상 기록, 친근한 1인칭 시점',
-  review:     '리뷰 스타일: 솔직 평가, 장단점 분석, 가성비 중심',
-  story:      '스토리 스타일: 감성 여정, 도입→전개→클라이맥스→여운',
-  info:       '정보 스타일: 핵심 정보 간결 전달, 카드뉴스 느낌',
-  pov:        'POV 몰입 스타일: 1인칭 시점, "지금 이 순간" 완전 몰입, 2026 릴스 최강 포맷',
-  reveal:     '반전 공개 스타일: 기대감 쌓기 → 충격 공개, "이게 뭐야" 반응 극대화',
-  foreshadow: '복선 회수 스타일: 첫 씬에 떡밥 → 마지막에 회수, 시청 완료율 최상위',
+  cinematic:       '시네마틱 스타일: 슬로우 컷, 무디 색감, 영화 같은 구성',
+  viral:           '바이럴 스타일: 빠른 컷 전환, FOMO 극대화, 틱톡 트렌딩',
+  aesthetic:       '감성 스타일: 따뜻한 톤, 소프트 무드, 인스타 감성',
+  mukbang:         '먹방 스타일: 음식 클로즈업 극대화, ASMR 느낌 나레이션',
+  vlog:            '브이로그 스타일: 일상 기록, 친근한 1인칭 시점',
+  review:          '리뷰 스타일: 솔직 평가, 장단점 분석, 가성비 중심',
+  story:           '스토리 스타일: 감성 여정, 도입→전개→클라이맥스→여운',
+  info:            '정보 스타일: 핵심 정보 간결 전달, 카드뉴스 느낌',
+  pov:             'POV 몰입 스타일: 1인칭 시점, "지금 이 순간" 완전 몰입, 2026 릴스 최강 포맷',
+  reveal:          '반전 공개 스타일: 기대감 쌓기 → 충격 공개, "이게 뭐야" 반응 극대화',
+  foreshadow:      '복선 회수 스타일: 첫 씬에 떡밥 → 마지막에 회수, 시청 완료율 최상위',
+  asmr:            'ASMR 슬로우 스타일: 음식 클로즈업+텍스처 감성, 느린 호흡, 수저를 듣는 듯한 감성',
+  cinematic_story: '시네마틱 스토리: 영화적 내러티브, 감동 아크, 문에서 맛의 여운까지 한 편의 영화',
+  hype:            '하이프 리액션 스타일: MZ세대 과장 리액션, 준절 컷 전환+텍스트 팝업, 릴스 공유율 최상',
+  food_essay:      '감성 에세이 스타일: 은율감 있는 나레이션, 시네마틱 색감, 맛집 인터뷰 형식',
 };
 
 export const HOOK_HINTS = {
@@ -39,34 +45,58 @@ export const HOOK_HINTS = {
 
 export const VIRAL_TRENDS = {
   viral_fast: {
-    name: '⚡ 0.5초 빠른 비트 (틱톡/릴스)',
-    durations: [1.5, 0.5, 0.5, 0.5, 0.5, 2.0],
+    name: '⚡ 빠른 비트 (틱톡/릴스)',
+    durations: [2.0, 1.0, 1.0, 1.0, 1.0, 2.5],
     transition: 'wipe', subtitle_style: 'bold_drop',
     effect: ['zoom-out', 'pan-left', 'pan-right', 'zoom-in', 'zoom-in-slow', 'drift'],
   },
   vlog_aesthetic: {
     name: '☕ 감성 브이로그 (룸투어/카페)',
-    durations: [3.0, 1.2, 1.2, 1.2, 2.5],
+    durations: [3.5, 2.5, 2.5, 2.5, 3.5],
     transition: 'fade', subtitle_style: 'minimal',
     effect: ['zoom-in-slow', 'drift', 'drift', 'drift', 'float-up'],
   },
   pov: {
     name: '👁 POV 몰입 (2026 인스타 릴스)',
-    durations: [0.8, 1.2, 2.0, 2.0, 2.5, 2.5],
+    durations: [1.5, 2.0, 3.0, 3.0, 3.5, 3.0],
     transition: 'cut', subtitle_style: 'bold_drop',
     effect: ['zoom-in', 'zoom-in', 'pan-left', 'zoom-out', 'zoom-in-slow', 'float-up'],
   },
   reveal: {
     name: '🎯 반전 공개 (릴스 저장율 1위)',
-    durations: [0.5, 0.8, 1.5, 2.5, 3.0, 2.0],
+    durations: [1.5, 2.0, 2.5, 3.5, 4.0, 2.5],
     transition: 'wipe', subtitle_style: 'hook',
     effect: ['zoom-out', 'zoom-in', 'pan-right', 'zoom-in', 'zoom-in-slow', 'float-up'],
   },
   foreshadow: {
     name: '💫 복선 회수 (시청 완료율 85%+)',
-    durations: [1.5, 2.0, 2.0, 2.0, 2.0, 3.0],
+    durations: [2.5, 3.0, 3.5, 3.5, 3.5, 4.0],
     transition: 'fade', subtitle_style: 'minimal',
     effect: ['zoom-out', 'drift', 'pan-left', 'pan-right', 'zoom-in-slow', 'zoom-out'],
+  },
+  asmr: {
+    name: '🎧 ASMR 슬로우 (먹방/감성)',
+    durations: [4.0, 4.5, 5.0, 4.5, 4.0],
+    transition: 'fade', subtitle_style: 'minimal',
+    effect: ['zoom-in-slow', 'zoom-in-slow', 'drift', 'drift', 'float-up'],
+  },
+  cinematic_story: {
+    name: '🎥 시네마틱 스토리 (감동 아크)',
+    durations: [2.5, 3.5, 4.0, 4.5, 4.0, 3.0],
+    transition: 'fade', subtitle_style: 'hero',
+    effect: ['zoom-out', 'drift', 'zoom-in-slow', 'pan-left', 'float-up', 'zoom-out'],
+  },
+  hype: {
+    name: '🔥 하이프 리액션 (MZ 공유율 최상)',
+    durations: [1.0, 1.5, 2.0, 2.5, 2.0, 2.0],
+    transition: 'wipe', subtitle_style: 'cta',
+    effect: ['zoom-in', 'pan-right', 'zoom-out', 'zoom-in', 'pan-left', 'zoom-in-slow'],
+  },
+  food_essay: {
+    name: '✏️ 감성 에세이 (맛집 인터뷰)',
+    durations: [3.0, 4.0, 4.5, 4.0, 3.5, 3.0],
+    transition: 'fade', subtitle_style: 'elegant',
+    effect: ['zoom-in-slow', 'drift', 'zoom-out', 'pan-left', 'float-up', 'zoom-in-slow'],
   },
 };
 

@@ -355,24 +355,26 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
   const pos   = sc.subtitle_position || 'lower';
   const style = sc.subtitle_style    || 'detail';
 
-  // 조선 보다 더 위로 옵겨서 yt-info 오버래퍼와 갹치지 않게
-  const baseY = pos === 'upper'  ? CH * 0.15
-              : pos === 'center' ? CH * 0.42
-              : CH * 0.68;    // lower — 기존 0.81에서 위로
+  const baseY = pos === 'upper'  ? CH * 0.16
+              : pos === 'center' ? CH * 0.44
+              : CH * 0.70;    // lower
 
-  const appear = Math.min(animProg * 4.5, 1);
-  const oy     = (1 - ease(appear)) * 16 * SCALE;
+  const appear = Math.min(animProg * 5.0, 1);
+  const oy     = (1 - ease(appear)) * 20 * SCALE;
 
   ctx.save();
   ctx.globalAlpha = appear;
   ctx.translate(0, oy);
 
-  // 스타일별 세트 — 인플루언서 TikTok 미학
+  // ── 스타일 세트 (2026 릴스/쇼츠 최신 미학) ───────────────
   const SM = {
-    hook:   { main: '#FFFFFF', hl: '#FF2D55', sz: 58 },
-    hero:   { main: '#FFE340', hl: '#FF9F0A', sz: 54 },
-    cta:    { main: '#CCFF00', hl: '#FF3B30', sz: 52 },
-    detail: { main: '#FFFFFF', hl: '#FFFFFF',  sz: 46 },
+    hook:      { main: '#FFFFFF', hl: '#FF2D55',  sz: 62, bg: 'gradient' },
+    hero:      { main: '#FFE340', hl: '#FF9F0A',  sz: 58, bg: 'gradient' },
+    cta:       { main: '#CCFF00', hl: '#FF3B30',  sz: 56, bg: 'gradient' },
+    detail:    { main: '#FFFFFF', hl: '#FFFFFF',  sz: 50, bg: 'simple'   },
+    bold_drop: { main: '#FFFFFF', hl: '#FFD60A',  sz: 66, bg: 'bold'     },
+    minimal:   { main: '#FFFFFF', hl: '#FFFFFFA0', sz: 44, bg: 'none'    },
+    elegant:   { main: '#FFE8C0', hl: '#FFC87A',  sz: 50, bg: 'elegant'  },
   };
   const S = SM[style] || SM.detail;
   const fs = Math.round(S.sz * SCALE);
@@ -381,51 +383,112 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // animProg 55% 넘으면 cap2로 전환
+  // animProg 55% 이후 cap2로 전환 (슬라이드)
   const showCap2 = !!(cap2 && animProg > 0.52);
   const text = showCap2 ? cap2 : cap1;
+  if (!text) { ctx.restore(); return; }
 
   const tw   = ctx.measureText(text).width;
-  const padX = Math.round(26 * SCALE);
-  const padY = Math.round(12 * SCALE);
-  const bw   = tw + padX * 2;
+  const padX = Math.round(30 * SCALE);
+  const padY = Math.round(14 * SCALE);
+  const bw   = Math.min(tw + padX * 2, CW * 0.92);
   const bh   = fs + padY * 2;
 
-  // 액센트 배경 피도 (hook / cta)
-  if (style === 'hook' || style === 'cta' || style === 'hero') {
+  // ── 배경 박스 ─────────────────────────────────────────────
+  if (S.bg === 'gradient' || S.bg === 'bold') {
     const bgGrad = ctx.createLinearGradient(CW/2 - bw/2, 0, CW/2 + bw/2, 0);
-    bgGrad.addColorStop(0, 'rgba(0,0,0,0.78)');
-    bgGrad.addColorStop(0.5, 'rgba(0,0,0,0.62)');
-    bgGrad.addColorStop(1, 'rgba(0,0,0,0.78)');
+    if (S.bg === 'bold') {
+      bgGrad.addColorStop(0,   'rgba(0,0,0,0.88)');
+      bgGrad.addColorStop(0.5, 'rgba(20,20,20,0.80)');
+      bgGrad.addColorStop(1,   'rgba(0,0,0,0.88)');
+    } else {
+      bgGrad.addColorStop(0,   'rgba(0,0,0,0.80)');
+      bgGrad.addColorStop(0.5, 'rgba(0,0,0,0.65)');
+      bgGrad.addColorStop(1,   'rgba(0,0,0,0.80)');
+    }
     ctx.fillStyle = bgGrad;
     ctx.beginPath();
-    ctx.roundRect(CW/2 - bw/2, baseY - bh/2, bw, bh, Math.round(bh / 2));
+    ctx.roundRect(CW/2 - bw/2, baseY - bh/2, bw, bh, Math.round(bh * 0.35));
     ctx.fill();
+
     // 왼쪽 수직 accent 라인
+    const accentH = bh - Math.round(14 * SCALE);
     ctx.fillStyle = S.hl;
-    ctx.fillRect(
+    ctx.beginPath();
+    ctx.roundRect(
       CW/2 - bw/2,
-      baseY - bh/2 + Math.round(7 * SCALE),
-      Math.round(4.5 * SCALE),
-      bh - Math.round(14 * SCALE)
+      baseY - accentH/2,
+      Math.round(5 * SCALE),
+      accentH,
+      Math.round(3 * SCALE)
     );
-  } else {
-    // detail: 간단한 반투명 둥근 박스
-    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    ctx.fill();
+
+    if (S.bg === 'bold') {
+      // bold_drop: 하단 컬러 라인 (TikTok 시그니처)
+      ctx.fillStyle = S.hl;
+      ctx.beginPath();
+      ctx.roundRect(
+        CW/2 - bw/2,
+        baseY + bh/2 - Math.round(5 * SCALE),
+        bw,
+        Math.round(5 * SCALE),
+        [0, 0, Math.round(bh * 0.35), Math.round(bh * 0.35)]
+      );
+      ctx.fill();
+    }
+
+  } else if (S.bg === 'elegant') {
+    // 에세이: 반투명 블러 느낌 + 좌측 세로 라인
+    ctx.fillStyle = 'rgba(0,0,0,0.60)';
     ctx.beginPath();
     ctx.roundRect(CW/2 - bw/2, baseY - bh/2, bw, bh, Math.round(10 * SCALE));
     ctx.fill();
+    ctx.fillStyle = S.hl;
+    ctx.fillRect(
+      CW/2 - bw/2,
+      baseY - bh/2 + Math.round(8 * SCALE),
+      Math.round(4 * SCALE),
+      bh - Math.round(16 * SCALE)
+    );
+  } else if (S.bg === 'simple') {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath();
+    ctx.roundRect(CW/2 - bw/2, baseY - bh/2, bw, bh, Math.round(12 * SCALE));
+    ctx.fill();
   }
+  // minimal: 배경 없음 (그림자만)
 
-  // 두꺼운 스트로크 (TikTok 스타일)
-  ctx.strokeStyle = 'rgba(0,0,0,0.92)';
-  ctx.lineWidth   = Math.round(7 * SCALE);
+  // ── 텍스트 렌더링 ─────────────────────────────────────────
+  const strokeW = S.bg === 'minimal' ? Math.round(9 * SCALE) : Math.round(7 * SCALE);
+  ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+  ctx.lineWidth   = strokeW;
   ctx.lineJoin    = 'round';
   ctx.strokeText(text, CW / 2, baseY);
 
-  // 메인 텍스트
-  ctx.fillStyle = showCap2 ? S.main : ((style !== 'detail' && !showCap2) ? S.hl : S.main);
+  ctx.fillStyle = showCap2 ? S.main : (style !== 'detail' && style !== 'minimal' && style !== 'elegant' ? S.hl : S.main);
   ctx.fillText(text, CW / 2, baseY);
+
+  // bold_drop: 하이라이트 단어 강조 (첫 단어 다른 색)
+  if (style === 'bold_drop' || style === 'hook') {
+    const words = text.split(' ');
+    if (words.length > 1) {
+      const firstWord = words[0];
+      const rest      = ' ' + words.slice(1).join(' ');
+      const fw   = ctx.measureText(firstWord).width;
+      const rw   = ctx.measureText(rest).width;
+      const totalW = fw + rw;
+      const startX = CW/2 - totalW/2;
+
+      ctx.strokeText(firstWord, startX + fw/2, baseY);
+      ctx.fillStyle = S.hl;
+      ctx.fillText(firstWord, startX + fw/2, baseY);
+
+      ctx.strokeText(rest, startX + fw + rw/2, baseY);
+      ctx.fillStyle = S.main;
+      ctx.fillText(rest, startX + fw + rw/2, baseY);
+    }
+  }
 
   ctx.restore();
 }
@@ -434,57 +497,73 @@ function drawChannelTop(ctx, name, CW, CH, SCALE) {
   if (!name) return;
   ctx.save();
 
-  // 상단 어둠운 그라디언트 헤더
-  const topH = Math.round(CH * 0.10);
+  // 상단 어두운 그라디언트 헤더 (높이 증가)
+  const topH = Math.round(CH * 0.13);
   const grad = ctx.createLinearGradient(0, 0, 0, topH);
-  grad.addColorStop(0, 'rgba(0,0,0,0.68)');
+  grad.addColorStop(0, 'rgba(0,0,0,0.80)');
   grad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, CW, topH);
 
   const PAD = Math.round(18 * SCALE);
-  const CY  = Math.round(CH * 0.042);
-  const AV  = Math.round(20 * SCALE);
+  const CY  = Math.round(CH * 0.048);
+  const AV  = Math.round(24 * SCALE);
 
-  // 퓜마 아바타 원
+  // 아바타 원
   ctx.fillStyle = '#7c3aed';
   ctx.beginPath();
   ctx.arc(PAD + AV, CY, AV, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-  ctx.lineWidth = Math.round(2 * SCALE);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = Math.round(2.5 * SCALE);
   ctx.stroke();
 
-  ctx.font = `700 ${Math.round(12 * SCALE)}px 'Noto Sans KR', sans-serif`;
+  ctx.font = `700 ${Math.round(14 * SCALE)}px 'Noto Sans KR', sans-serif`;
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(name[0]?.toUpperCase() || 'M', PAD + AV, CY);
 
-  // 슬러그 채널명
-  const slug = '@' + name.replace(/\s+/g, '').slice(0, 15);
-  ctx.font = `700 ${Math.round(19 * SCALE)}px 'Noto Sans KR', sans-serif`;
+  // ── 음식점 이름 (크고 선명하게) ──────────────────────────
+  const nameX = PAD + AV * 2 + Math.round(10 * SCALE);
+  const nameFontSize = Math.round(28 * SCALE);
+  ctx.font = `800 ${nameFontSize}px 'Black Han Sans', 'Noto Sans KR', sans-serif`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.9)';
-  ctx.shadowBlur  = Math.round(5 * SCALE);
-  ctx.fillStyle = '#fff';
-  ctx.fillText(slug, PAD + AV * 2 + Math.round(8 * SCALE), CY);
-  ctx.shadowBlur = 0;
 
-  // 팔로우 버튼 카치문구
-  const followX = CW - Math.round(90 * SCALE);
-  const followW = Math.round(72 * SCALE);
-  const followH = Math.round(28 * SCALE);
+  // 텍스트 그림자 (가독성)
+  ctx.shadowColor = 'rgba(0,0,0,0.95)';
+  ctx.shadowBlur  = Math.round(8 * SCALE);
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = Math.round(2 * SCALE);
+
+  // 흰색 메인 이름
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(name.slice(0, 16), nameX, CY - Math.round(7 * SCALE));
+
+  // @슬러그 (작게)
+  ctx.shadowBlur = Math.round(4 * SCALE);
+  ctx.shadowOffsetY = 0;
+  ctx.font = `500 ${Math.round(14 * SCALE)}px 'Noto Sans KR', sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText('@' + name.replace(/\s+/g, '').slice(0, 14), nameX, CY + Math.round(16 * SCALE));
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+
+  // 팔로우 버튼
+  const followX = CW - Math.round(96 * SCALE);
+  const followW = Math.round(76 * SCALE);
+  const followH = Math.round(32 * SCALE);
   const followY = CY - followH / 2;
   ctx.fillStyle = 'rgba(255,255,255,0.22)';
-  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
   ctx.lineWidth = Math.round(1.5 * SCALE);
   ctx.beginPath();
   ctx.roundRect(followX, followY, followW, followH, Math.round(followH / 2));
   ctx.fill();
   ctx.stroke();
-  ctx.font = `600 ${Math.round(11 * SCALE)}px 'Noto Sans KR', sans-serif`;
+  ctx.font = `600 ${Math.round(13 * SCALE)}px 'Noto Sans KR', sans-serif`;
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
