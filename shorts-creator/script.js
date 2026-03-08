@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v24';
+const APP_VERSION  = 'v25';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -265,7 +265,7 @@ function splitCaptions(text) {
 const S = {
   files: [], loaded: [], script: null, audioBuffers: [],
   currentAudio: null, playing: false, muted: false,
-  scene: 0, startTs: null, raf: null,
+  scene: 0, startTs: null, audioStartTs: 0, raf: null,
   exporting: false,
   subAnimProg: 0,  // 0..1, subtitle animation progress per scene
 };
@@ -1167,18 +1167,34 @@ function hideRepeatPrompt() {
   if (overlay) overlay.hidden = true;
 }
 
-/* ── Tick loop ───────────────────────────────────────────── */
+/* ── Tick loop (오디오 싱크 강화 버전) ──────────────────────────────────────────────── */
 function tick() {
   const run = now => {
     if (!S.playing) return;
+
     // ── 씬 시작 타임스탬프 초기화
-    if (S.startTs === null) S.startTs = now;
+    if (S.startTs === null) {
+      S.startTs = now;
+      S.audioStartTs = audioCtx ? audioCtx.currentTime : 0; // 오디오 컨텍스트 기준 시작 시간 저장
+    }
+
     const sc = S.script?.scenes?.[S.scene];
     if (!sc) { S.playing = false; setPlayIcon(false); return; }
+
     // dur 방어: undefined/0/NaN → 기본 3초
-    const dur  = (sc.duration > 0 && isFinite(sc.duration)) ? sc.duration : 3;
-    const el   = (now - S.startTs) / 1000;
+    const dur = (sc.duration > 0 && isFinite(sc.duration)) ? sc.duration : 3;
+
+    // 💡 핵심: 오디오가 있으면 AudioContext 시간 기준, 없으면 Date.now() 기준
+    let el;
+    const hasAudio = S.audioBuffers?.[S.scene] && S.currentAudio;
+    if (hasAudio && audioCtx) {
+      el = audioCtx.currentTime - S.audioStartTs;
+    } else {
+      el = (now - S.startTs) / 1000;
+    }
+
     const prog = Math.min(el / dur, 1);
+
     // 진행바 업데이트
     const total = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
     const done  = S.script.scenes.slice(0, S.scene).reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
@@ -1187,10 +1203,12 @@ function tick() {
     if (D.vProgText) D.vProgText.textContent = Math.floor(pct) + '%';
     const _ytFill = document.getElementById('ytProgressFill');
     if (_ytFill) _ytFill.style.width = pct + '%';
+
     const _audioBuf  = S.audioBuffers?.[S.scene];
     const _audioDur  = _audioBuf?.duration ?? null;
     const _subTarget = _audioDur ? Math.min(_audioDur / dur, 0.95) : 0.70;
     S.subAnimProg    = Math.min(prog / _subTarget, 1);
+
     // ── 렌더링 (에러가 나도 씬 전환 로직에 영향 없도록 별도 try/catch)
     const TD = Math.min(0.28, dur * 0.15);
     try {
@@ -1200,10 +1218,14 @@ function tick() {
     } catch (err) {
       console.error('[tick] 렌더링 에러:', err.message, err.stack?.split('\n')?.[1]);
     }
+
     // ── 씬 전환 (렌더링 에러와 무관하게 항상 실행)
     if (prog >= 1) {
       if (S.scene < S.script.scenes.length - 1) {
-        S.scene++; S.startTs = now; S.subAnimProg = 0; highlightScene(S.scene);
+        S.scene++;
+        S.startTs = null; // 다음 틱에서 audioStartTs도 함께 리셋
+        S.subAnimProg = 0;
+        highlightScene(S.scene);
         if (!S.muted) playSceneAudio(S.scene);
       } else {
         D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
