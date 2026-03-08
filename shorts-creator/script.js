@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v32 (20260309-1100)';
+const APP_VERSION  = 'v32.1 (20260309-1430)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -58,7 +58,8 @@ function ensureApiKey() {
 }
 
 async function apiPost(url, body) {
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  // Gemini API 응답 지연 대비 30초 제한
+  const r = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 30000);
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.error?.message || `${r.status}`); }
   return r.json();
 }
@@ -94,6 +95,8 @@ const D  = {
   selectedTplInput: g('selectedTplInput'),
   ttsPlayer: g('ttsPlayer'), captionLayer: g('captionLayer'),
 };
+// Canvas 부재 시 조기 폭단에리즈 — IDs: videoCanvas / vc
+if (!D.canvas) throw new Error('[moovlog] Canvas element (videoCanvas / vc) not found — check index.html');
 const ctx = D.canvas.getContext('2d');
 D.canvas.width = CW; D.canvas.height = CH;
 ctx.imageSmoothingEnabled = true;  // 렌더링 화질 최상으로 강제 설정 (계단 현상 방지)
@@ -793,7 +796,7 @@ async function extractVideoFramesB64(file, count = 4) {
             settled = true;
             vid.removeEventListener('seeked', onSeeked);
             try {
-              cx.drawImage(vid, 0, 0, 360, 640);
+              cx.drawImage(vid, 0, 0, 720, 1280);
               frames.push({ base64: c.toDataURL('image/jpeg', 0.75).split(',')[1], mimeType: 'image/jpeg' });
             } catch (_) { /* 프레임 추출 실패 무시 */ }
             r();
@@ -858,9 +861,9 @@ function preprocessNarration(text) {
     .replace(/\.\s+([가-힣])/g, '. $1')
     // 느낌표 강조 유지
     .replace(/!+/g, '!')
-    // 호흡 패턴 — "진짜", "와" 뒤 말을 끊어 생동감 추가
-    .replace(/진짜(?![,.\s]*\.{2,})/g, '진짜...')
-    .replace(/(?<![가-힣])와(?=[^가-힣a-zA-Z]|$)/g, '와...')
+    // 호흡 패턴 — "진짜", "와" 뒤 쉼표 pause (꺾쇠 ... 삽입은 TTS가 "점점점"으로 읽거나 .\n으로 부서져 발음 혼란 유발)
+    .replace(/진짜(?![,.])/g, '진짜, ')
+    .replace(/(?<![가-힣])와(?=[^가-힣a-zA-Z]|$)/g, '와, ')
     // 마침표 뒤 줄바꿈 (TTS 문장 단위 pause)
     .replace(/\.\s*/g, '.\n')
     // 연속 공백 정리
@@ -880,18 +883,23 @@ async function generateAllTTS(scenes) {
     if (!text) return;
     try {
       if (useTypecast) {
-        // 💡 키 풀(Pool) 로직: 타임아웃·429 등 어떤 에러든 rotateTypeCastKey()로 다음 키를 끝까지 시도
+        // 타임아웃(망한 TTS 합성)과 인증 오류(키 불량)를 구분:
+        // - 타임아웃 → 동일 키 1회 재시도 후 로테이션 (멀쩡한 키 낭비 방지)
+        // - 401/403/429 → 즉시 다음 키 로테이션
         let tcBuf = null;
         let tcErr = null;
-        for (let attempt = 0; attempt < _TYPECAST_KEYS.length; attempt++) {
+        const _maxAttempts = _TYPECAST_KEYS.length * 2; // 키당 최대 2회 시도
+        for (let attempt = 0; attempt < _maxAttempts; attempt++) {
           try {
-            tcBuf = await fetchTypeCastTTS(text); // 현재 활성 키 사용
+            tcBuf = await fetchTypeCastTTS(text, sc.duration); // 씬 길이 전달
             break; // 성공 시 탈출
           } catch (e2) {
             tcErr = e2;
-            const m2 = e2.message || e2.name || '';
-            console.warn(`[Typecast] 키 #${_tcKeyIdx + 1} 실패 (${m2}) → 다음 키 시도`);
-            rotateTypeCastKey(); // 어떤 에러든 무조건 다음 키로 전환
+            const m2 = e2.message || '';
+            const isTimeout = m2.includes('타임아웃') || m2.includes('10초') || e2.name === 'AbortError';
+            const shouldRotate = !isTimeout || (attempt % 2 === 1); // 타임아웃 1차: 재시도 / 나머지: 로테이션
+            console.warn(`[Typecast] 키 #${_tcKeyIdx + 1} 실패 (${m2}) → ${shouldRotate ? '다음 키 전환' : '동일 키 재시도'}`);
+            if (shouldRotate) rotateTypeCastKey();
           }
         }
         if (tcBuf) {
@@ -941,16 +949,22 @@ async function generateAllTTS(scenes) {
 }
 
 /* ── Typecast TTS API 호출 (강제 타임아웃 + Polling 지원) ────────── */
-async function fetchTypeCastTTS(text) {
+async function fetchTypeCastTTS(text, sceneDuration) {
   if (!text?.trim()) throw new Error('빈 텍스트');
   if (!audioCtx) ensureAudio();
-  // 💡 호출 직전 현재 인덱스에 맞는 키를 확실히 가져옴
   const apiKey = _TYPECAST_KEYS[_tcKeyIdx % _TYPECAST_KEYS.length];
   if (!apiKey) throw new Error('TYPECAST_401: 사용 가능한 API 키 없음');
-  // 템플릿별 가변 TTS 테스크: 괐성/시네마는 느리게, 바이럴/먹방은 빠르게
-  const _TEMPO_MAP = { cinematic: 1.12, aesthetic: 1.15, story: 1.15, vlog: 1.18, review: 1.20, info: 1.22, viral: 1.30, mukbang: 1.28 };
-  const _tcTempo = _TEMPO_MAP[selectedTemplate] ?? 1.22;
-  console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_TYPECAST_KEYS.length} 사용 중... tempo=${_tcTempo}`);
+  // 동적 tempo: 씬 길이 대비 나레이션 길이 기준, 템플릿 기반 최솟값과 상한 1.45 적용
+  const _TEMPO_BASE = { cinematic: 1.10, aesthetic: 1.12, story: 1.12, vlog: 1.15, review: 1.18, info: 1.18, viral: 1.25, mukbang: 1.22 };
+  const _tempoBase  = _TEMPO_BASE[selectedTemplate] ?? 1.18;
+  let _tcTempo = _tempoBase;
+  if (sceneDuration > 0 && text.length > 0) {
+    const KO_CPS   = 6.5;                    // 한국어 평균 발화 속도 (글자/초)
+    const estSecs  = text.length / KO_CPS;   // 1.0배속 기준 예상 발화 시간
+    const needed   = estSecs / sceneDuration; // 씬 안에 넣으려면 필요한 배속
+    _tcTempo = Math.min(Math.max(needed * 1.05, _tempoBase), 1.45); // 5% 여유 + 최솟값·최댓값 클램프
+  }
+  console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_TYPECAST_KEYS.length} 사용 중... tempo=${_tcTempo.toFixed(2)}`);
 
   // 1. 합성 요청 (7초 이상 대기 시 강제 중단 → 다음 키로 넘어감)
   const res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech', {
@@ -2554,7 +2568,7 @@ async function doExportWebCodecs() {
       } catch {}
     }
     if (fmt) {
-      try { const as = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 1, bitrate: AUDIO_BITRATE }); if (!as.supported) fmt = null; } catch { fmt = null; }
+      try { const as = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2, bitrate: AUDIO_BITRATE }); if (!as.supported) fmt = null; } catch { fmt = null; }
     }
   }
   // WebM (VP9) 폴백
@@ -2582,7 +2596,7 @@ async function doExportWebCodecs() {
   const muxer     = new Muxer({
     target:   muxTarget,
     video:    { codec: fmt.vc.mux, width: CW, height: CH, frameRate: FPS },
-    ...(pcm ? { audio: { codec: fmt.ac.mux, numberOfChannels: 1, sampleRate: 48000 } } : {}),
+    ...(pcm ? { audio: { codec: fmt.ac.mux, numberOfChannels: 2, sampleRate: 48000 } } : {}),
     firstTimestampBehavior: 'offset',
     ...(fmt.ext === 'mp4' ? { fastStart: 'in-memory' } : {}),
   });
@@ -2609,7 +2623,7 @@ async function doExportWebCodecs() {
         checkQ();
       });
     }
-    videoEnc.encode(vf, { keyFrame: f % (FPS * 2) === 0 });
+    videoEnc.encode(vf, { keyFrame: f % FPS === 0 }); // 1초마다 키프레임 (후편집 정밀 컷편집 대응)
     vf.close();
     if (f % 12 === 0) {
       const pct = Math.round(f / nFrames * (pcm ? 65 : 90));
@@ -2626,14 +2640,17 @@ async function doExportWebCodecs() {
       output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
       error:  err => { throw err; },
     });
-    audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 1, bitrate: 192_000 });
+    audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 2, bitrate: 192_000 });
     const CHUNK = 1920; // 40ms @48kHz
     for (let i = 0; i < pcm.length; i += CHUNK) {
       const slice = pcm.slice(i, Math.min(i + CHUNK, pcm.length));
+      // 모노 → 스테레오 인터리빙 (L+R 동일 채널 — 이어폰 입체감 확보)
+      const stereo = new Float32Array(slice.length * 2);
+      for (let j = 0; j < slice.length; j++) { stereo[j * 2] = slice[j]; stereo[j * 2 + 1] = slice[j]; }
       const ad = new AudioData({
         format: 'f32', sampleRate: 48000, numberOfFrames: slice.length,
-        numberOfChannels: 1, timestamp: Math.round(i * 1_000_000 / 48000),
-        data: slice.buffer,
+        numberOfChannels: 2, timestamp: Math.round(i * 1_000_000 / 48000),
+        data: stereo.buffer,
       });
       audioEnc.encode(ad); ad.close();
       if (i % (CHUNK * 30) === 0) await sleep(0);
