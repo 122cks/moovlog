@@ -12,16 +12,18 @@ const APP_BUILD_TS = '2026-03-09 KST';
 const _INJECTED_KEY          = '__GEMINI_KEY__';
 let geminiKey = _INJECTED_KEY.includes('__') ? (localStorage.getItem('moovlog_gemini_key') || '') : _INJECTED_KEY;
 
-// Typecast API 키 3개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / TYPECAST_API_KEY_2 / TYPECAST_API_KEY_3
+// Typecast API 키 4개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / TYPECAST_API_KEY_2 / TYPECAST_API_KEY_3 / TYPECAST_API_KEY_4
 const _TC_K1 = '__TYPECAST_API_KEY__';
 const _TC_K2 = '__TYPECAST_API_KEY_2__';
 const _TC_K3 = '__TYPECAST_API_KEY_3__';
+const _TC_K4 = '__TYPECAST_API_KEY_4__';
 const _TYPECAST_KEYS = [
   _TC_K1.includes('__') ? (localStorage.getItem('moovlog_typecast_key')   || '') : _TC_K1,
   _TC_K2.includes('__') ? (localStorage.getItem('moovlog_typecast_key2')  || '') : _TC_K2,
   _TC_K3.includes('__') ? (localStorage.getItem('moovlog_typecast_key3')  || '') : _TC_K3,
+  _TC_K4.includes('__') ? (localStorage.getItem('moovlog_typecast_key4')  || '') : _TC_K4,
 ].filter(Boolean);  // 빈 키 제외
-let _tcKeyIdx = 0;  // 라운드로빈 인덱스
+let _tcKeyIdx = 0;  // 현재 시도 중인 키 인덱스
 function getTypeCastKey() {
   if (!_TYPECAST_KEYS.length) return '';
   return _TYPECAST_KEYS[_tcKeyIdx % _TYPECAST_KEYS.length];
@@ -709,6 +711,8 @@ async function extractVideoFramesB64(file, count = 4) {
     vid.src = url;
     vid.onerror = () => { URL.revokeObjectURL(url); resolve([]); };
     vid.onloadedmetadata = async () => {
+      // iOS Safari 웹업: seeked 이벤트 실패 방지
+      vid.play().then(() => vid.pause()).catch(() => {});
       const dur = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : 0;
       if (!dur) { URL.revokeObjectURL(url); resolve([]); return; }
       const c = document.createElement('canvas'); c.width = 360; c.height = 640;
@@ -802,37 +806,43 @@ async function generateAllTTS(scenes) {
     const text = preprocessNarration(sc.narration);
     if (!text) return;
     try {
-      buffers[i] = useTypecast
-        ? await fetchTypeCastTTS(text)
-        : await fetchTTSWithRetry(text, i);
-      successCount++;
+      if (useTypecast) {
+        // 순차 폴백: 키 1 → 2 → 3 → 4 → Gemini (429/401/403 시 다음 키로 즈시 전환)
+        let tcBuf = null;
+        let tcErr = null;
+        for (let k = 0; k < _TYPECAST_KEYS.length; k++) {
+          _tcKeyIdx = k;
+          try {
+            tcBuf = await fetchTypeCastTTS(text, true); // skipRotate=true
+            break;
+          } catch (e2) {
+            tcErr = e2;
+            const m2 = e2.message || '';
+            if (m2.startsWith('TYPECAST_429') || m2.startsWith('TYPECAST_401') || m2.startsWith('TYPECAST_403')) {
+              console.warn(`[Typecast] 키 #${k + 1} 실패 (${m2.split(':')[0]}) → 키 #${k + 2}로 전환`);
+              continue; // 다음 키 시도
+            }
+            throw e2; // 권한/형식 에러는 바로 재덕지
+          }
+        }
+        if (tcBuf) {
+          buffers[i] = tcBuf; successCount++;
+        } else {
+          // 모든 Typecast 키 소진 → Gemini 폴백
+          console.warn(`[Typecast] 키 ${_TYPECAST_KEYS.length}개 모두 소진 — Gemini로 전환 (${tcErr?.message || ''})`);
+          toast(`Typecast 키 ${_TYPECAST_KEYS.length}개 모두 한도 — Gemini로 전환합니다`, 'inf');
+          buffers[i] = await fetchTTSWithRetry(text, i);
+          successCount++;
+        }
+      } else {
+        buffers[i] = await fetchTTSWithRetry(text, i);
+        successCount++;
+      }
     } catch (e) {
       const msg = e.message || '';
-      if (msg.startsWith('TYPECAST_401') || msg.startsWith('TYPECAST_403') || msg.startsWith('TYPECAST_429')) {
-        // 키 로테이션 후 재시도 (남은 키 있을 때)
-        rotateTypeCastKey();
-        if (_TYPECAST_KEYS.length > 1) {
-          try {
-            buffers[i] = await fetchTypeCastTTS(text);
-            successCount++;
-            return;
-          } catch {}
-        }
-        // 모든 Typecast 키 소진 → Gemini 폴백
-        toast(`Typecast 키 ${_TYPECAST_KEYS.length}개 모두 오류 — Gemini로 전환합니다`, 'inf');
-        try {
-          buffers[i] = await fetchTTSWithRetry(text, i);
-          successCount++;
-        } catch { failCount++; }
-      } else if (msg.includes('TTS_403')) {
+      if (msg.includes('TTS_403')) {
         fatalStop = true;
         toast('AI 보이스: API 키에 TTS 권한 없음 — 무음으로 진행합니다', 'inf');
-      } else if (msg.startsWith('Typecast HTTP')) {
-        // Typecast 요청 오류 (잘못된 voice_id 등) → Gemini Fenrir 폴백
-        try {
-          buffers[i] = await fetchTTSWithRetry(text, i);
-          successCount++;
-        } catch { failCount++; }
       } else {
         failCount++;
         console.warn(`[TTS] 씬${i + 1} 최종 실패:`, msg);
@@ -1114,8 +1124,9 @@ function playSceneAudio(si, capture = false) {
       S.audioStartTs = audioCtx.currentTime; // resume 완료 후 캡처 — BUG B 수정
     } else {
       S.audioStartTs = audioCtx ? audioCtx.currentTime : 0;
-      if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
-      console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: Web Speech 폴백`);
+      // Web Speech 폴백 비활성화 — 로봇 여자 목소리 차단, AI 오디오 없는 씬은 무음 처리
+      // if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
+      console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: 무음 써`);
     }
   };
   if (audioCtx && audioCtx.state === 'suspended') {
@@ -2462,7 +2473,7 @@ async function doExportWebCodecs() {
 
 /* ── MediaRecorder 폴백 ──────────────────────────────────── */
 async function doExportMediaRecorder() {
-  toast('WebCodecs 미지원 → 녹화 방식으로 저장합니다', 'inf');
+  toast('WebCodecs 미지원 → 녹화 방식으로 저장합니다. 저장이 끝날 때까지 탭을 닫거나 다른 화면 전환하지 마세요!', 'inf');
   const totalDur = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
 
   // captureStream 지원 체크
