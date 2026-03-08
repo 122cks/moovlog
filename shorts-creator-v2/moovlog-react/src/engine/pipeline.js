@@ -1,0 +1,163 @@
+// src/engine/pipeline.js
+// startMake() 파이프라인 — 기존 script.js startMake() 이식 + React store 연동
+
+import { useVideoStore, VIRAL_TRENDS } from '../store/videoStore.js';
+import { visionAnalysis, generateScript } from './gemini.js';
+import { generateAllTTS, ensureAudio, sleep, preprocessNarration } from './tts.js';
+import { splitCaptions } from './utils.js';
+import { firebaseUploadOriginals, firebaseSaveSession } from './firebase.js';
+
+// ─── 자막 분할 ────────────────────────────────────────────
+// (utils.js에서 임포트, 기존 splitCaptions() 동일)
+
+// ─── 파이프라인 메인 ──────────────────────────────────────
+export async function startMake() {
+  const store = useVideoStore.getState();
+  const {
+    files, restaurantName, selectedTemplate,
+    setPipeline, donePipelineStep, setScript,
+    setAudioBuffers, setLoaded, setShowResult,
+    addToast, setAutoStyleName, setTemplate, setHook,
+    hidePipeline, reset,
+  } = store;
+
+  if (!files.length) { addToast('이미지 또는 영상을 올려주세요', 'err'); return; }
+  if (!restaurantName.trim()) { addToast('음식점 이름을 입력해주세요', 'err'); return; }
+
+  const { hasGeminiKey } = await import('./gemini.js');
+  if (!hasGeminiKey()) { addToast('Gemini API 키가 필요합니다', 'err'); return; }
+
+  // AudioContext 초기화 (iOS 보안 정책 대응)
+  const { audioCtx } = ensureAudio();
+  if (audioCtx.state === 'suspended') await audioCtx.resume().catch(() => {});
+  try {
+    const _osc = audioCtx.createOscillator(), _gain = audioCtx.createGain();
+    _gain.gain.value = 0;
+    _osc.connect(_gain); _gain.connect(audioCtx.destination);
+    _osc.start(0); _osc.stop(audioCtx.currentTime + 0.05);
+  } catch (_) {}
+  if ('speechSynthesis' in window) {
+    const _u = new SpeechSynthesisUtterance(''); _u.volume = 0; speechSynthesis.speak(_u);
+  }
+
+  // 원본 파일 Firebase 백그라운드 업로드
+  firebaseUploadOriginals(files, restaurantName).catch(() => {});
+
+  try {
+    // ── STEP 1: Vision Analysis ────────────────────────────
+    setPipeline(1, 'AI 이미지 분석 + 스타일 자동 선택 중...', 'AI가 최적의 템플릿과 훅을 찾고 있습니다');
+    const analysis = await visionAnalysis(restaurantName.trim());
+
+    // AI 자동 스타일 선택
+    const curState = useVideoStore.getState();
+    const userChoseManually = curState.selectedTemplate !== 'auto';
+    if (!userChoseManually && analysis.recommended_template) {
+      setTemplate(analysis.recommended_template);
+    }
+    if (analysis.recommended_hook) setHook(analysis.recommended_hook);
+
+    const curTemplate = useVideoStore.getState().selectedTemplate;
+    const { TEMPLATE_NAMES } = await import('../store/videoStore.js');
+    setAutoStyleName(TEMPLATE_NAMES[curTemplate] || curTemplate);
+    addToast(
+      userChoseManually
+        ? `수동 선택: ${TEMPLATE_NAMES[curTemplate] || curTemplate}`
+        : `AI 추천: ${TEMPLATE_NAMES[curTemplate] || curTemplate}`,
+      'inf'
+    );
+    donePipelineStep(1);
+
+    // ── STEP 2: Script Generation ──────────────────────────
+    setPipeline(2, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');
+    const script = await generateScript(restaurantName.trim(), analysis);
+    setScript(script);
+    donePipelineStep(2);
+
+    // ── STEP 3: TTS ────────────────────────────────────────
+    setPipeline(3, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
+    let audioBuffers;
+    try {
+      audioBuffers = await generateAllTTS(script.scenes, (msg, type) => addToast(msg, type));
+    } catch (ttsErr) {
+      console.warn('[TTS] 전체 실패, 무음 진행:', ttsErr.message);
+      audioBuffers = script.scenes.map(() => null);
+      addToast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
+    }
+
+    // 오디오 길이로 씬 duration 동기화
+    const isTrend = VIRAL_TRENDS[useVideoStore.getState().selectedTemplate];
+    const finalScenes = script.scenes.map((sc, i) => {
+      const buf = audioBuffers[i];
+      let duration;
+      if (isTrend && isTrend.durations[i] !== undefined) {
+        duration = isTrend.durations[i];
+        if (!sc.effect && isTrend.effect) sc = { ...sc, effect: isTrend.effect[i % isTrend.effect.length] };
+      } else if (buf && buf.duration > 0) {
+        duration = Math.max(2.0, Math.round((buf.duration + 0.4) * 10) / 10);
+      } else {
+        duration = Math.max(2.0, sc.duration || 3.0);
+      }
+
+      // caption 분할 (AI caption 없을 때 폴백)
+      let caption1 = sc.caption1, caption2 = sc.caption2;
+      if (!caption1?.trim()) {
+        const [c1, c2] = splitCaptions(sc.narration || sc.subtitle || '');
+        caption1 = c1; caption2 = c2;
+      }
+      const subtitle = caption1 || sc.subtitle || '';
+
+      return { ...sc, duration, caption1, caption2, subtitle };
+    });
+
+    // script 업데이트
+    setScript({ ...script, scenes: finalScenes });
+    setAudioBuffers(audioBuffers);
+    donePipelineStep(3);
+
+    // ── STEP 4: 미디어 프리로드 ────────────────────────────
+    setPipeline(4, '렌더링 준비 중...', '컷 배치 · 애니메이션 · 효과 적용');
+    const loaded = await preloadMedia(files);
+    setLoaded(loaded);
+    await sleep(200);
+    donePipelineStep(4);
+
+    // Firebase 세션 저장
+    firebaseSaveSession({ ...script, scenes: finalScenes }, restaurantName).catch(() => {});
+
+    await sleep(300);
+    hidePipeline();
+    setShowResult(true);
+
+  } catch (err) {
+    hidePipeline();
+    console.error('[startMake]', err);
+    addToast('오류: ' + (err?.message || String(err) || '알 수 없는 오류'), 'err');
+  }
+}
+
+// ─── 미디어 프리로드 ──────────────────────────────────────
+async function preloadMedia(files) {
+  const loaded = [];
+  for (const m of files) {
+    if (m.type === 'image') {
+      const img = Object.assign(new Image(), { src: m.url });
+      await new Promise(r => { img.onload = r; img.onerror = r; });
+      loaded.push({ type: 'image', src: img });
+    } else {
+      const vid = Object.assign(document.createElement('video'), {
+        src: m.url, muted: true, loop: true, playsInline: true, preload: 'auto',
+      });
+      vid.play().catch(() => {});
+      await new Promise(r => {
+        if (vid.readyState >= 2) return r();
+        const t = setTimeout(r, 3000);
+        vid.oncanplay = () => { clearTimeout(t); r(); };
+        vid.onerror = () => {
+          vid._loadFailed = true; clearTimeout(t); r();
+        };
+      });
+      loaded.push({ type: 'video', src: vid, offset: 0 });
+    }
+  }
+  return loaded;
+}

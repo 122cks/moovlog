@@ -1,0 +1,10 @@
+# Vite 빌드 출력 제외
+dist/
+node_modules/
+
+# 로컬 환경변수 (Gemini/Typecast 키 등)
+.env.local
+.env.*.local
+
+# TypeScript 캐시
+*.tsbuildinfo

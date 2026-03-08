@@ -26,31 +26,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── moovlog-react Vite 빌드 ─────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: shorts-creator-v2/moovlog-react/package-lock.json
+
+      - name: Install dependencies
+        working-directory: shorts-creator-v2/moovlog-react
+        run: npm ci
+
+      - name: Build React app
+        working-directory: shorts-creator-v2/moovlog-react
+        env:
+          VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+          VITE_TYPECAST_KEY: ${{ secrets.TYPECAST_API_KEY }}
+          VITE_TYPECAST_KEY_2: ${{ secrets.TYPECAST_API_KEY_2 }}
+          VITE_TYPECAST_KEY_3: ${{ secrets.TYPECAST_API_KEY_3 }}
+          VITE_TYPECAST_KEY_4: ${{ secrets.TYPECAST_API_KEY_4 }}
+          VITE_TYPECAST_KEY_5: ${{ secrets.TYPECAST_API_KEY_5 }}
+          VITE_TYPECAST_KEY_6: ${{ secrets.TYPECAST_API_KEY_6 }}
+          VITE_TYPECAST_KEY_7: ${{ secrets.TYPECAST_API_KEY_7 }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        run: npm run build
+
+      - name: Copy build → shorts-creator/
+        run: |
+          rm -rf shorts-creator
+          cp -r shorts-creator-v2/moovlog-react/dist/. shorts-creator/
+      # ────────────────────────────────────────────────────────────
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
-
-      - name: Inject API key from secret
-        run: |
-          sed -i "s|__GEMINI_KEY__|${{ secrets.GEMINI_KEY }}|g" shorts-creator/script.js
-          sed -i "s|__GEMINI_KEY__|${{ secrets.GEMINI_KEY }}|g" shorts-creator/index2.html
-          sed -i "s|__TYPECAST_API_KEY__|${{ secrets.TYPECAST_API_KEY }}|g" shorts-creator/script.js
-          sed -i "s|__TYPECAST_API_KEY_2__|${{ secrets.TYPECAST_API_KEY_2 }}|g" shorts-creator/script.js
-          sed -i "s|__TYPECAST_API_KEY_3__|${{ secrets.TYPECAST_API_KEY_3 }}|g" shorts-creator/script.js
-          sed -i "s|__TYPECAST_API_KEY_4__|${{ secrets.TYPECAST_API_KEY_4 }}|g" shorts-creator/script.js
-          sed -i "s|__TYPECAST_API_KEY_5__|${{ secrets.TYPECAST_API_KEY_5 }}|g" shorts-creator/script.js
-          sed -i "s|__TYPECAST_API_KEY_6__|${{ secrets.TYPECAST_API_KEY_6 }}|g" shorts-creator/script.js
-          sed -i "s|__TYPECAST_API_KEY_7__|${{ secrets.TYPECAST_API_KEY_7 }}|g" shorts-creator/script.js
-          sed -i "s|__FIREBASE_API_KEY__|${{ secrets.FIREBASE_API_KEY }}|g" shorts-creator/index.html
-          sed -i "s|__FIREBASE_APP_ID__|${{ secrets.FIREBASE_APP_ID }}|g" shorts-creator/index.html
-
-          # 버전 쿼리스트링을 커밋 SHA로 대체하여 파일 변경이 있을 때마다 캐시 무효화
-          VERSION=$(echo "$GITHUB_SHA" | cut -c1-8)
-          sed -i "s|script.js?v=[^\"']*|script.js?v=$VERSION|g" shorts-creator/index.html || true
-
-      - name: Update SW cache version (배포마다 캐시 무효화)
-        run: |
-          VERSION=$(echo "$GITHUB_SHA" | cut -c1-8)
-          sed -i "s|const CACHE = 'moovlog-shorts-[^']*'|const CACHE = 'moovlog-shorts-$VERSION'|g" shorts-creator/sw.js
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

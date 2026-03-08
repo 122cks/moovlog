@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;600;700;900&display=swap');
+
+@layer base {
+  * { -webkit-tap-highlight-color: transparent; }
+  body {
+    @apply bg-brand-dark text-white antialiased;
+    font-feature-settings: 'kern' 1;
+  }
+}
