@@ -344,6 +344,24 @@
 
   <div class="toasts" id="toasts"></div>
 
+  <!-- 미니 씬 에디터 모달 -->
+  <div id="editModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;align-items:center;justify-content:center;">
+    <div style="background:#1e1e2e;border:1px solid #444;border-radius:14px;padding:24px 20px;width:min(96vw,420px);box-shadow:0 8px 40px #000a;font-family:inherit;color:#e2e8f0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <span id="editModalTitle" style="font-weight:700;font-size:1rem;color:#a78bfa;">SCENE 편집</span>
+        <button onclick="closeEditModal()" style="background:none;border:none;color:#888;font-size:1.2rem;cursor:pointer;">✕</button>
+      </div>
+      <label style="font-size:.78rem;color:#94a3b8;display:block;margin-bottom:4px;">캡션 (자막)</label>
+      <input id="editCaption" type="text" style="width:100%;box-sizing:border-box;background:#0f0f1a;border:1px solid #333;border-radius:8px;padding:8px 10px;color:#e2e8f0;font-size:.9rem;margin-bottom:12px;" placeholder="자막 텍스트">
+      <label style="font-size:.78rem;color:#94a3b8;display:block;margin-bottom:4px;">나레이션</label>
+      <textarea id="editNarration" rows="4" style="width:100%;box-sizing:border-box;background:#0f0f1a;border:1px solid #333;border-radius:8px;padding:8px 10px;color:#e2e8f0;font-size:.9rem;resize:vertical;margin-bottom:16px;" placeholder="나레이션 텍스트"></textarea>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button onclick="closeEditModal()" style="padding:8px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer;font-size:.88rem;">취소</button>
+        <button onclick="saveEditModal()" style="padding:8px 22px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;font-weight:700;cursor:pointer;font-size:.88rem;">저장</button>
+      </div>
+    </div>
+  </div>
+
   <a href="index2.html" class="blog-link-btn">
     <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
   </a>
@@ -403,6 +421,6 @@
       console.log('[Firebase] API 키 미주입 — 로컬 모드 (업로드 비활성)');
     }
   </script>
-  <script defer src="script.js?v=20260309d"></script>
+  <script defer src="script.js?v=20260310a"></script>
 </body>
 </html>

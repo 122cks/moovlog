@@ -801,10 +801,10 @@ const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_
 const TTS_CONFIG = {
   models:      ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
   voices:      ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'],
-  concurrency: 1,    // 순차 처리 (429 Rate Limit 방지)
-  retryDelay:  1500, // 재시도 간격 ms
-  maxRetry:    3,
-  sceneDelay:  600,  // 씬 간 딜레이 ms
+  concurrency: 4,    // 병렬 처리 (속도 개선)
+  retryDelay:  400,  // 재시도 간격 ms
+  maxRetry:    2,
+  sceneDelay:  0,    // 씬 간 딜레이 없음
 };
 
 /* ── 나레이션 타입캐스트 스타일 전처리 ──────────────────────
@@ -824,6 +824,11 @@ function preprocessNarration(text) {
     .replace(/\.\s+([가-힣])/g, '. $1')
     // 느낌표 강조 유지
     .replace(/!+/g, '!')
+    // 호흡 패턴 — "진짜", "와" 뒤 말을 끊어 생동감 추가
+    .replace(/진짜(?![,.\s]*\.{2,})/g, '진짜...')
+    .replace(/(?<![가-힣])와(?=[^가-힣a-zA-Z]|$)/g, '와...')
+    // 마침표 뒤 줄바꿈 (TTS 문장 단위 pause)
+    .replace(/\.\s*/g, '.\n')
     // 연속 공백 정리
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -1208,7 +1213,10 @@ async function preload() {
         toast(`비디오 로드 실패: ${m.file?.name || ''}. MP4(H.264) 형식을 권장합니다`, 'inf');
       } else {
         vid.play().catch(() => {}); // canvas drawImage는 playing 상태 필요 (모바일)
-        S.loaded.push({ type: 'video', src: vid });
+        const dur = isFinite(vid.duration) ? vid.duration : 0;
+        const maxOffset = Math.max(0, dur - 4.0);
+        const offset = maxOffset > 0 ? Math.random() * maxOffset : 0;
+        S.loaded.push({ type: 'video', src: vid, offset });
       }
     }
   }
@@ -1220,7 +1228,7 @@ function setupPlayer() {
   D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); hideRepeatPrompt();
   const _ytFill = document.getElementById('ytProgressFill');
   if (_ytFill) _ytFill.style.width = '0%';
-  S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = 0; });
+  S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = m.offset || 0; });
 }
 function togglePlay()  { S.playing ? pausePlay() : startPlay(); }
 async function startPlay() {
@@ -1235,7 +1243,7 @@ async function startPlay() {
       D.vProg.style.width = '0%';
       if (D.vProgText) D.vProgText.textContent = '0%';
       highlightScene(0);
-      S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = 0; });
+      S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = m.offset || 0; });
     }
   }
   S.playing = true; S.startTs = null; S.subAnimProg = 0;
@@ -2272,9 +2280,38 @@ function buildSceneCards() {
   S.script.scenes.forEach((s, i) => {
     const d = document.createElement('div'); d.className = 'scard'; d.id = `sc${i}`;
     const capDisplay = s.caption2 ? `${esc(s.caption1 || s.subtitle)} / ${esc(s.caption2)}` : esc(s.caption1 || s.subtitle);
-    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${s.duration}s · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}</div><div class="scard-sub">${capDisplay}</div><div class="scard-nar">${esc(s.narration)}</div>`;
+    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${s.duration}s · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}<button onclick="openMiniEditor(${i})" style="float:right;background:none;border:1px solid #555;border-radius:6px;color:#a78bfa;padding:1px 8px;font-size:.72rem;cursor:pointer;margin-top:-1px;">수정</button></div><div class="scard-sub">${capDisplay}</div><div class="scard-nar">${esc(s.narration)}</div>`;
     D.sceneList.appendChild(d);
   });
+}
+
+/* ── 미니 씬 에디터 ─────────────────────────────────────── */
+let _editIdx = -1;
+function openMiniEditor(i) {
+  if (!S.script?.scenes?.[i]) return;
+  _editIdx = i;
+  const sc = S.script.scenes[i];
+  const modal = document.getElementById('editModal');
+  document.getElementById('editModalTitle').textContent = `SCENE ${i + 1} 편집`;
+  document.getElementById('editCaption').value   = sc.caption1 || sc.subtitle || '';
+  document.getElementById('editNarration').value = sc.narration || '';
+  modal.style.display = 'flex';
+}
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+  _editIdx = -1;
+}
+function saveEditModal() {
+  if (_editIdx < 0 || !S.script?.scenes?.[_editIdx]) return;
+  const sc = S.script.scenes[_editIdx];
+  const newCap = document.getElementById('editCaption').value.trim();
+  const newNar = document.getElementById('editNarration').value.trim();
+  if (newCap) { sc.caption1 = newCap; sc.subtitle = newCap; }
+  if (newNar) sc.narration = newNar;
+  closeEditModal();
+  buildSceneCards();
+  highlightScene(S.scene);
+  toast(`SCENE ${_editIdx + 1 > 0 ? _editIdx + 1 : ''} 수정 완료 (TTS는 다시 생성 시 반영)`, 'suc');
 }
 function highlightScene(i) {
   document.querySelectorAll('.scard').forEach(c => c.classList.remove('active'));
