@@ -12,18 +12,20 @@ const APP_BUILD_TS = '2026-03-08 KST';
 const _INJECTED_KEY          = '__GEMINI_KEY__';
 let geminiKey = _INJECTED_KEY.includes('__') ? (localStorage.getItem('moovlog_gemini_key') || '') : _INJECTED_KEY;
 
-// Typecast API 키 5개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / TYPECAST_API_KEY_2 / TYPECAST_API_KEY_3 / TYPECAST_API_KEY_4 / TYPECAST_API_KEY_5
+// Typecast API 키 6개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / ..._2 / ..._3 / ..._4 / ..._5 / ..._6
 const _TC_K1 = '__TYPECAST_API_KEY__';
 const _TC_K2 = '__TYPECAST_API_KEY_2__';
 const _TC_K3 = '__TYPECAST_API_KEY_3__';
 const _TC_K4 = '__TYPECAST_API_KEY_4__';
 const _TC_K5 = '__TYPECAST_API_KEY_5__';
+const _TC_K6 = '__TYPECAST_API_KEY_6__';
 const _TYPECAST_KEYS = [
   _TC_K1.includes('__') ? (localStorage.getItem('moovlog_typecast_key')   || '') : _TC_K1,
   _TC_K2.includes('__') ? (localStorage.getItem('moovlog_typecast_key2')  || '') : _TC_K2,
   _TC_K3.includes('__') ? (localStorage.getItem('moovlog_typecast_key3')  || '') : _TC_K3,
   _TC_K4.includes('__') ? (localStorage.getItem('moovlog_typecast_key4')  || '') : _TC_K4,
   _TC_K5.includes('__') ? (localStorage.getItem('moovlog_typecast_key5')  || '') : _TC_K5,
+  _TC_K6.includes('__') ? (localStorage.getItem('moovlog_typecast_key6')  || '') : _TC_K6,
 ].filter(Boolean);  // 빈 키 제외
 let _tcKeyIdx = 0;  // 현재 시도 중인 키 인덱스
 function getTypeCastKey() {
@@ -33,6 +35,17 @@ function getTypeCastKey() {
 function rotateTypeCastKey() {
   _tcKeyIdx = (_tcKeyIdx + 1) % Math.max(_TYPECAST_KEYS.length, 1);
   console.log(`[Typecast] 키 로테이션 → #${_tcKeyIdx + 1} (${_TYPECAST_KEYS.length}개 중)`);
+}
+
+// 강제 타임아웃 방어 함수 (무한 대기 좀비 커넥션 방지)
+async function fetchWithTimeout(url, options, timeout = 7000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(id);
+  }
 }
 function getApiUrl(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
@@ -803,10 +816,10 @@ const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_
 const TTS_CONFIG = {
   models:      ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
   voices:      ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'],
-  concurrency: 4,    // 병렬 처리 (속도 개선)
-  retryDelay:  400,  // 재시도 간격 ms
+  concurrency: 1,    // 한 번에 하나씩 순서 처리 (429 에러 방지)
+  retryDelay:  1500, // 실패 시 재시도 대기 ms
   maxRetry:    2,
-  sceneDelay:  0,    // 씬 간 딜레이 없음
+  sceneDelay:  1000, // 각 씬 시작 전 1초 딜레이 (연속 요청 방지)
 };
 
 /* ── 나레이션 타입캐스트 스타일 전처리 ──────────────────────
@@ -914,66 +927,56 @@ async function generateAllTTS(scenes) {
   return buffers;
 }
 
-/* ── Typecast TTS API 호출 (키 로테이션 + Polling 지원) ───────────── */
+/* ── Typecast TTS API 호출 (강제 타임아웃 + Polling 지원) ────────── */
 async function fetchTypeCastTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
   if (!audioCtx) ensureAudio();
   const apiKey = getTypeCastKey();
   if (!apiKey) throw new Error('TYPECAST_401: 사용 가능한 API 키 없음');
 
-  // 1. 합성 요청 (POST)
-  const res = await fetch('https://api.typecast.ai/v1/text-to-speech', {
+  // 1. 합성 요청 (7초 이상 대기 시 강제 중단 → 다음 키로 넘어감)
+  const res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-KEY': apiKey,
-    },
+    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
     body: JSON.stringify({
       voice_id:  TYPECAST_VOICE_ID,
       text:      text.trim(),
       model:     'ssfm-v30',
       language:  'kor',
       prompt:    { emotion_type: 'friendly' },
-      output: {
-        volume:       100,
-        audio_pitch:  1,
-        audio_tempo:  1.27,
-        audio_format: 'wav',
-      },
+      output:    { volume: 100, audio_pitch: 1, audio_tempo: 1.27, audio_format: 'wav' },
     }),
-  });
+  }, 7000);
 
   if (res.status === 401 || res.status === 403) throw new Error(`TYPECAST_${res.status}: 인증 오류`);
   if (res.status === 429) throw new Error(`TYPECAST_429: Rate Limit 초과`);
-  if (!res.ok) {
-    const d = await res.json().catch(() => ({}));
-    throw new Error(`Typecast HTTP ${res.status}: ${d?.message || ''}`);
-  }
+  if (!res.ok) throw new Error(`Typecast HTTP ${res.status}`);
 
   const data = await res.json();
   const speakUrl = data?.result?.speak_v2_url;
-  if (!speakUrl) throw new Error('Typecast speak_v2_url을 받지 못했습니다.');
+  if (!speakUrl) throw new Error('Typecast speak_v2_url 누락');
 
-  // 2. 오디오 생성 완료까지 Polling (0.5초 간격, 최대 10초)
+  // 2. Polling (0.5초 간격, 1회당 4초 타임아웃, 최대 10초)
   let audioUrl = null;
   for (let i = 0; i < 20; i++) {
     await sleep(500);
-    const pollRes = await fetch(speakUrl, { headers: { 'X-API-KEY': apiKey } });
-    if (!pollRes.ok) continue;
-    const pollData = await pollRes.json();
-    const status = pollData?.result?.status;
-    if (status === 'DONE') {
-      audioUrl = pollData?.result?.audio_download_url;
-      break;
-    } else if (status === 'FAILED') {
-      throw new Error('Typecast 오디오 합성 실패 (FAILED)');
+    try {
+      const pollRes = await fetchWithTimeout(speakUrl, { headers: { 'X-API-KEY': apiKey } }, 4000);
+      if (!pollRes.ok) continue;
+      const pollData = await pollRes.json();
+      const status = pollData?.result?.status;
+      if (status === 'DONE') { audioUrl = pollData?.result?.audio_download_url; break; }
+      else if (status === 'FAILED') throw new Error('Typecast 오디오 합성 실패');
+    } catch (e) {
+      if (e.name === 'AbortError') { console.warn('[Typecast] Polling 지연 무시'); continue; }
+      throw e;
     }
   }
-  if (!audioUrl) throw new Error('Typecast 응답 타임아웃 (10초 초과)');
+  if (!audioUrl) throw new Error('Typecast 전체 응답 타임아웃 (10초 초과)');
 
-  // 3. 완성된 오디오 파일 다운로드
-  const audioRes = await fetch(audioUrl);
-  if (!audioRes.ok) throw new Error('Typecast 오디오 파일 다운로드 실패');
+  // 3. 완성된 오디오 다운로드 (10초 타임아웃)
+  const audioRes = await fetchWithTimeout(audioUrl, {}, 10000);
+  if (!audioRes.ok) throw new Error('Typecast 오디오 다운로드 실패');
 
   const ab = await audioRes.arrayBuffer();
   if (ab.byteLength < 100) throw new Error('Typecast 오디오 데이터 용량 너무 작음');
@@ -1238,7 +1241,8 @@ async function preload() {
         vid.play().catch(() => {}); // canvas drawImage는 playing 상태 필요 (모바일)
         const dur = isFinite(vid.duration) ? vid.duration : 0;
         const maxOffset = Math.max(0, dur - 4.0);
-        const offset = maxOffset > 0 ? Math.random() * maxOffset : 0;
+        // AI 분석 순서와 일치하도록 랜덤 offset 제거 → 시작점 0으로 고정
+        const offset = 0;
         S.loaded.push({ type: 'video', src: vid, offset });
       }
     }
@@ -1657,6 +1661,16 @@ function drawSubtitle(sc, animProg) {
   }
 
   ctx.save();
+
+  // 자막 글자 수가 많으면 화면 밖으로 나가지 않도록 자동 축소 (최소 0.6배)
+  const textLen = text.replace(/\s/g, '').length;
+  if (textLen > 10) {
+    const shrink = Math.max(0.60, 10 / textLen);
+    ctx.translate(CW / 2, CH / 2);
+    ctx.scale(shrink, shrink);
+    ctx.translate(-CW / 2, -CH / 2);
+  }
+
   let style = sc.subtitle_style || 'detail';
   const tplOverride = TEMPLATE_SUB_STYLE[selectedTemplate];
   if (tplOverride && style !== 'hero' && style !== 'cta') {
@@ -2324,17 +2338,43 @@ function closeEditModal() {
   document.getElementById('editModal').style.display = 'none';
   _editIdx = -1;
 }
-function saveEditModal() {
+async function saveEditModal() {
   if (_editIdx < 0 || !S.script?.scenes?.[_editIdx]) return;
   const sc = S.script.scenes[_editIdx];
+  const si  = _editIdx;
   const newCap = document.getElementById('editCaption').value.trim();
   const newNar = document.getElementById('editNarration').value.trim();
+
   if (newCap) { sc.caption1 = newCap; sc.subtitle = newCap; }
-  if (newNar) sc.narration = newNar;
+
+  if (newNar && newNar !== sc.narration) {
+    sc.narration = newNar;
+    const titleEl = document.getElementById('editModalTitle');
+    titleEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 음성 재합성 중...';
+    try {
+      const text = preprocessNarration(newNar);
+      let newBuf = null;
+      if (_TYPECAST_KEYS.length > 0) {
+        newBuf = await fetchTypeCastTTS(text);
+      } else {
+        newBuf = await fetchTTSWithRetry(text, si);
+      }
+      if (S.audioBuffers) S.audioBuffers[si] = newBuf;
+      if (newBuf?.duration > 0) {
+        sc.duration = Math.max(1.5, Math.round((newBuf.duration + 0.15) * 10) / 10);
+      }
+      toast(`SCENE ${si + 1} 음성 재합성 완료!`, 'suc');
+    } catch (e) {
+      toast(`음성 재생성 실패: ${e.message}`, 'err');
+    }
+  } else {
+    toast(`SCENE ${si + 1} 수정 완료`, 'suc');
+  }
+
   closeEditModal();
   buildSceneCards();
   highlightScene(S.scene);
-  toast(`SCENE ${_editIdx + 1 > 0 ? _editIdx + 1 : ''} 수정 완료 (TTS는 다시 생성 시 반영)`, 'suc');
+  renderFrame(S.scene, 0);
 }
 function highlightScene(i) {
   document.querySelectorAll('.scard').forEach(c => c.classList.remove('active'));
