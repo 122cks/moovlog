@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v31 (20260308-1600)';
+const APP_VERSION  = 'v31 (20260308-1700)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -610,6 +610,7 @@ async function visionAnalysis(restaurantName) {
 - emotional_score: 1~10 (인스타 바이럴 잠재력)
 - suggested_duration: 2~5초 (클로즈업→3~4s, 분위기→4~5s, 훅/CTA→2~3s)
 - focus: 이 이미지 핵심 포인트 1문장
+- focus_coords: {"x":0.5,"y":0.5} 형태. 핵심 피사체의 상대 좌표 (0.0=좌/상 끝, 1.0=우/하 끝, 음식 클로즈업이면 대략 {"x":0.5,"y":0.35})
 
 전체:
 - keywords: 핵심 키워드 5개
@@ -622,7 +623,7 @@ async function visionAnalysis(restaurantName) {
 - recommended_hook: 가장 어울리는 오프닝 훅 하나 선택: "question"|"shock"|"challenge"|"secret"|"ranking"|"pov"
 
 JSON만 반환:
-{"keywords":["k1","k2","k3","k4","k5"],"mood":"감성","menu":["메뉴"],"visual_hook":"훅","recommended_order":[0,1,2],"recommended_template":"aesthetic","recommended_hook":"question","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":3,"focus":"설명"}]}`;
+{"keywords":["k1","k2","k3","k4","k5"],"mood":"감성","menu":["메뉴"],"visual_hook":"훅","recommended_order":[0,1,2],"recommended_template":"aesthetic","recommended_hook":"question","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":3,"focus":"설명","focus_coords":{"x":0.5,"y":0.45}}]}`;
 
   const data = await geminiWithFallback({ contents: [{ parts: [...parts, { text: prompt }] }], generationConfig: { temperature: 0.6, responseMimeType: 'application/json' } });
   const raw  = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
@@ -1409,7 +1410,7 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
   const sc = S.script.scenes[si], media = getMedia(sc);
   const sap = subAnimOverride !== undefined ? subAnimOverride : S.subAnimProg;
   if (!skipClear) ctx.clearRect(0, 0, CW, CH);
-  drawMedia(media, sc.effect, prog);
+  drawMedia(media, sc.effect, prog, sc.focus_coords);
   drawVignetteGrad();
   drawColorGrade(prog);
   drawMoodOverlay(sc.subtitle_style, Math.min(prog * 3, 1));
@@ -1502,7 +1503,7 @@ function renderFrameAtTime(t) {
       S.subAnimProg = subAnimProg;
       const media       = getMedia(sc[i]);
       ctx.clearRect(0, 0, CW, CH);
-      drawMedia(media, sc[i].effect, prog);
+      drawMedia(media, sc[i].effect, prog, sc[i].focus_coords);
       drawVignetteGrad();
       drawColorGrade(prog);
       drawMoodOverlay(sc[i].subtitle_style, Math.min(prog * 3, 1));
