@@ -39,8 +39,13 @@ jobs:
           sed -i "s|__TYPECAST_API_KEY_4__|${{ secrets.TYPECAST_API_KEY_4 }}|g" shorts-creator/script.js
           sed -i "s|__TYPECAST_API_KEY_5__|${{ secrets.TYPECAST_API_KEY_5 }}|g" shorts-creator/script.js
           sed -i "s|__TYPECAST_API_KEY_6__|${{ secrets.TYPECAST_API_KEY_6 }}|g" shorts-creator/script.js
+          sed -i "s|__TYPECAST_API_KEY_7__|${{ secrets.TYPECAST_API_KEY_7 }}|g" shorts-creator/script.js
           sed -i "s|__FIREBASE_API_KEY__|${{ secrets.FIREBASE_API_KEY }}|g" shorts-creator/index.html
           sed -i "s|__FIREBASE_APP_ID__|${{ secrets.FIREBASE_APP_ID }}|g" shorts-creator/index.html
+
+          # 버전 쿼리스트링을 커밋 SHA로 대체하여 파일 변경이 있을 때마다 캐시 무효화
+          VERSION=$(echo "$GITHUB_SHA" | cut -c1-8)
+          sed -i "s|script.js?v=[^\"']*|script.js?v=$VERSION|g" shorts-creator/index.html || true
 
       - name: Update SW cache version (배포마다 캐시 무효화)
         run: |

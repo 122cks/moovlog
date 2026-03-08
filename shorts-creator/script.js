@@ -12,13 +12,14 @@ const APP_BUILD_TS = '2026-03-08 KST';
 const _INJECTED_KEY          = '__GEMINI_KEY__';
 let geminiKey = _INJECTED_KEY.includes('__') ? (localStorage.getItem('moovlog_gemini_key') || '') : _INJECTED_KEY;
 
-// Typecast API 키 6개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / ..._2 / ..._3 / ..._4 / ..._5 / ..._6
+// Typecast API 키 7개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / ..._2 ~ ..._7
 const _TC_K1 = '__TYPECAST_API_KEY__';
 const _TC_K2 = '__TYPECAST_API_KEY_2__';
 const _TC_K3 = '__TYPECAST_API_KEY_3__';
 const _TC_K4 = '__TYPECAST_API_KEY_4__';
 const _TC_K5 = '__TYPECAST_API_KEY_5__';
 const _TC_K6 = '__TYPECAST_API_KEY_6__';
+const _TC_K7 = '__TYPECAST_API_KEY_7__';
 const _TYPECAST_KEYS = [
   _TC_K1.includes('__') ? (localStorage.getItem('moovlog_typecast_key')   || '') : _TC_K1,
   _TC_K2.includes('__') ? (localStorage.getItem('moovlog_typecast_key2')  || '') : _TC_K2,
@@ -26,6 +27,7 @@ const _TYPECAST_KEYS = [
   _TC_K4.includes('__') ? (localStorage.getItem('moovlog_typecast_key4')  || '') : _TC_K4,
   _TC_K5.includes('__') ? (localStorage.getItem('moovlog_typecast_key5')  || '') : _TC_K5,
   _TC_K6.includes('__') ? (localStorage.getItem('moovlog_typecast_key6')  || '') : _TC_K6,
+  _TC_K7.includes('__') ? (localStorage.getItem('moovlog_typecast_key7')  || '') : _TC_K7,
 ].filter(Boolean);  // 빈 키 제외
 let _tcKeyIdx = 0;  // 현재 시도 중인 키 인덱스
 function getTypeCastKey() {
@@ -450,8 +452,20 @@ async function startMake() {
   D.makeBtn.disabled = true;
   if (D.snsWrap) D.snsWrap.hidden = true;
   updateStepUI(2); showLoad(); ensureAudio();
-  // 모바일 브라우저 오디오 차단 방어: 버튼 클릭 직후 AudioContext를 즉시 resume
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+  // 💡 iOS/Android 오디오 차단 완벽 방어: Oscillator 무음 재생으로 AudioContext 즉시 활성화
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    try {
+      const _osc = audioCtx.createOscillator(), _gain = audioCtx.createGain();
+      _gain.gain.value = 0;
+      _osc.connect(_gain); _gain.connect(audioCtx.destination);
+      _osc.start(0); _osc.stop(audioCtx.currentTime + 0.05);
+    } catch(_) {}
+  }
+  // Web Speech 권한도 미리 뚫어두기 (폴백 보장)
+  if ('speechSynthesis' in window) {
+    const _u = new SpeechSynthesisUtterance(''); _u.volume = 0; speechSynthesis.speak(_u);
+  }
   // 원본 파일을 Firebase Storage에 백그라운드 업로드 (블로킹 없음)
   uploadOriginalsInBackground();
   try {
@@ -767,8 +781,8 @@ async function extractVideoFramesB64(file, count = 4) {
       if (!dur) { URL.revokeObjectURL(url); resolve([]); return; }
       const c = document.createElement('canvas'); c.width = 360; c.height = 640;
       const cx = c.getContext('2d');
-      // 영상 재생 구간과 AI 대본 일치: 처음 2초 내에서만 프레임 추출
-      const sampleDur = Math.min(dur, 2.0);
+      // 💡 영상 전체 구간에서 고르게 프레임 추출 → AI가 영상 흐름 전체를 파악
+      const sampleDur = dur;
       const frames = [], times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * sampleDur);
       for (const t of times) {
         await new Promise(r => {
@@ -865,24 +879,18 @@ async function generateAllTTS(scenes) {
     if (!text) return;
     try {
       if (useTypecast) {
-        // 순차 폴백: 키 1 → 2 → 3 → 4 → Gemini (429/401/403 시 다음 키로 즈시 전환)
+        // 💡 키 풀(Pool) 로직: 타임아웃·429 등 어떤 에러든 rotateTypeCastKey()로 다음 키를 끝까지 시도
         let tcBuf = null;
         let tcErr = null;
-        for (let k = 0; k < _TYPECAST_KEYS.length; k++) {
-          _tcKeyIdx = k;
+        for (let attempt = 0; attempt < _TYPECAST_KEYS.length; attempt++) {
           try {
-            tcBuf = await fetchTypeCastTTS(text, true); // skipRotate=true
-            break;
+            tcBuf = await fetchTypeCastTTS(text); // 현재 활성 키 사용
+            break; // 성공 시 탈출
           } catch (e2) {
             tcErr = e2;
-            const m2 = e2.message || '';
-            if (m2.startsWith('TYPECAST_429') || m2.startsWith('TYPECAST_401') || m2.startsWith('TYPECAST_403')) {
-              console.warn(`[Typecast] 키 #${k + 1} 실패 (${m2.split(':')[0]}) → 키 #${k + 2}로 전환`);
-              continue; // 다음 키 시도
-            }
-            // 에러 발생 시 멈추지 않고 Gemini로 폴백
-            console.warn(`[Typecast] 처리 오류 (${m2}) → Gemini AI로 폴백합니다.`);
-            break;
+            const m2 = e2.message || e2.name || '';
+            console.warn(`[Typecast] 키 #${_tcKeyIdx + 1} 실패 (${m2}) → 다음 키 시도`);
+            rotateTypeCastKey(); // 어떤 에러든 무조건 다음 키로 전환
           }
         }
         if (tcBuf) {
@@ -1356,14 +1364,17 @@ function tick() {
     // ── 씬 전환 (렌더링 에러와 무관하게 항상 실행)
     if (prog >= 1) {
       if (S.scene < S.script.scenes.length - 1) {
+        const _prevMedia = getMedia(S.script.scenes[S.scene]); // 전환 전 클립
         S.scene++;
         S.startTs = null;
         // S.audioStartTs 리셋 제거 — doStart() 내부에서 resume 완료 후 직접 설정됨 (BUG C 수정)
         S.subAnimProg = 0;
         highlightScene(S.scene);
-        // 씬 전환 시 비디오를 0초로 되감아 재생 시작점 고정
+        // 💡 클립이 바뀔 때만 0초 리셋 — 단일 긴 영상은 이어서 재생 (자막 타이밍 일치)
         const _nextMedia = getMedia(S.script.scenes[S.scene]);
-        if (_nextMedia?.type === 'video' && _nextMedia.src) _nextMedia.src.currentTime = 0;
+        if (_nextMedia?.type === 'video' && _nextMedia.src && S.files.length > 1 && _prevMedia !== _nextMedia) {
+          _nextMedia.src.currentTime = 0;
+        }
         if (!S.muted) playSceneAudio(S.scene);
       } else {
         D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
