@@ -18,7 +18,7 @@ export default function VideoPlayer() {
 
   const {
     script, loaded, audioBuffers, playing, muted, scene,
-    aspectRatio, subAnimProg,
+    aspectRatio, subAnimProg, restaurantName,
     setPlaying, setScene, setSubAnimProg, addToast,
   } = useVideoStore();
 
@@ -80,6 +80,7 @@ export default function VideoPlayer() {
     ctx.clearRect(0, 0, CW, CH);
     drawMedia(ctx, media, sc.effect, prog, CW, CH, SCALE);
     drawVignetteGrad(ctx, CW, CH);
+    drawChannelTop(ctx, restaurantName, CW, CH, SCALE);
     drawSubtitle(ctx, sc, subAnim ?? subAnimProg, CW, CH, SCALE);
 
     // 씬 진입 flash burst
@@ -88,7 +89,7 @@ export default function VideoPlayer() {
       ctx.fillStyle = `rgba(255,255,255,${flashT * 0.45})`;
       ctx.fillRect(0, 0, CW, CH);
     }
-  }, [script, loaded, aspectRatio, subAnimProg]);
+  }, [script, loaded, aspectRatio, subAnimProg, restaurantName]);
 
   // ── tick 루프 ─────────────────────────────────────────────
   useEffect(() => {
@@ -289,15 +290,13 @@ function YtInfoOverlay({ script }) {
   const name = restaurantName || 'MOOVLOG';
   return (
     <div className="yt-info">
-      <div className="yt-info-channel">
-        <span className="yt-channel-name">@{name.replace(/\s+/g, '').toLowerCase().slice(0, 18)}</span>
-        <button className="yt-follow-btn">팔로우</button>
-      </div>
+      {/* 제목 (script.title) */}
       <p className="yt-info-title">{script.title || name}</p>
+      {/* 오디오가 있을 때만 Original Sound 표시 */}
       {hasAudio && (
         <div className="yt-music-row">
           <i className="fas fa-music yt-music-icon" />
-          <span>Original Sound · {name}</span>
+          <span className="yt-music-ticker">Original Sound · {name}</span>
         </div>
       )}
     </div>
@@ -353,85 +352,143 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
   const cap2 = sc.caption2 || '';
   if (!cap1 && !cap2) return;
 
-  const pos    = sc.subtitle_position || 'lower';
-  const style  = sc.subtitle_style    || 'detail';
+  const pos   = sc.subtitle_position || 'lower';
+  const style = sc.subtitle_style    || 'detail';
 
-  // 졼츠/릴스 스엠리: 하단 1/4 영역에 자막 비치
-  const baseY = pos === 'upper'  ? CH * 0.17
-              : pos === 'center' ? CH * 0.46
-              : CH * 0.81;                   // lower (default)
+  // 조선 보다 더 위로 옵겨서 yt-info 오버래퍼와 갹치지 않게
+  const baseY = pos === 'upper'  ? CH * 0.15
+              : pos === 'center' ? CH * 0.42
+              : CH * 0.68;    // lower — 기존 0.81에서 위로
 
-  // 멀티라인 지원: cap1 위에 cap2 표시
-  const hasBoth = cap1 && cap2;
-  const lineGap = Math.round(60 * SCALE);
-
-  // 등장 애니메이션 — 쉽새릅에 사라짐
-  const appear = Math.min(animProg * 3.5, 1);
-  const oy     = (1 - ease(appear)) * 28 * SCALE;
+  const appear = Math.min(animProg * 4.5, 1);
+  const oy     = (1 - ease(appear)) * 16 * SCALE;
 
   ctx.save();
   ctx.globalAlpha = appear;
   ctx.translate(0, oy);
 
-  // 스타일별 반응형 세트
-  const styleMap = {
-    hook:   { fill: '#FFFFFF', accent: '#FF2D55', fontSize: 58 },  // 선명한 효크
-    hero:   { fill: '#FFD60A', accent: '#FF9F0A', fontSize: 54 },  // 권덕 골든
-    cta:    { fill: '#D2FF00', accent: '#FF2D55', fontSize: 52 },  // CTA 라이마
-    detail: { fill: '#FFFFFF', accent: '#0A84FF', fontSize: 50 },  // 세밀한
+  // 스타일별 세트 — 인플루언서 TikTok 미학
+  const SM = {
+    hook:   { main: '#FFFFFF', hl: '#FF2D55', sz: 58 },
+    hero:   { main: '#FFE340', hl: '#FF9F0A', sz: 54 },
+    cta:    { main: '#CCFF00', hl: '#FF3B30', sz: 52 },
+    detail: { main: '#FFFFFF', hl: '#FFFFFF',  sz: 46 },
   };
-  const c = styleMap[style] || styleMap.detail;
-  const fontSize = Math.round(c.fontSize * SCALE);
+  const S = SM[style] || SM.detail;
+  const fs = Math.round(S.sz * SCALE);
 
-  ctx.font = `900 ${fontSize}px 'Black Han Sans', 'Noto Sans KR', sans-serif`;
+  ctx.font = `900 ${fs}px 'Black Han Sans', 'Noto Sans KR', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  const drawOneLine = (text, yPos, isAccent) => {
-    if (!text) return;
-    const tw  = ctx.measureText(text).width;
-    const pad = 22 * SCALE;
-    const bh  = fontSize * 1.22;
-    const rx  = CW / 2 - tw / 2 - pad;
-    const ry  = yPos - bh / 2;
-    const rw  = tw + pad * 2;
+  // animProg 55% 넘으면 cap2로 전환
+  const showCap2 = !!(cap2 && animProg > 0.52);
+  const text = showCap2 ? cap2 : cap1;
 
-    // 소프트 백그라운드 (릴스 스타일 얼룩한 섬도)
-    ctx.fillStyle = isAccent
-      ? `rgba(0,0,0,0.65)`
-      : `rgba(0,0,0,0.45)`;
+  const tw   = ctx.measureText(text).width;
+  const padX = Math.round(26 * SCALE);
+  const padY = Math.round(12 * SCALE);
+  const bw   = tw + padX * 2;
+  const bh   = fs + padY * 2;
+
+  // 액센트 배경 피도 (hook / cta)
+  if (style === 'hook' || style === 'cta' || style === 'hero') {
+    const bgGrad = ctx.createLinearGradient(CW/2 - bw/2, 0, CW/2 + bw/2, 0);
+    bgGrad.addColorStop(0, 'rgba(0,0,0,0.78)');
+    bgGrad.addColorStop(0.5, 'rgba(0,0,0,0.62)');
+    bgGrad.addColorStop(1, 'rgba(0,0,0,0.78)');
+    ctx.fillStyle = bgGrad;
     ctx.beginPath();
-    ctx.roundRect(rx, ry, rw, bh, Math.round(10 * SCALE));
+    ctx.roundRect(CW/2 - bw/2, baseY - bh/2, bw, bh, Math.round(bh / 2));
     ctx.fill();
-
-    // Accent 일려있으면 왼쪽 수직선
-    if (isAccent) {
-      ctx.strokeStyle = c.accent;
-      ctx.lineWidth   = Math.round(5 * SCALE);
-      ctx.beginPath();
-      ctx.moveTo(rx + Math.round(8 * SCALE), ry + Math.round(6 * SCALE));
-      ctx.lineTo(rx + Math.round(8 * SCALE), ry + bh - Math.round(6 * SCALE));
-      ctx.stroke();
-    }
-
-    // 텍스트 아웃라인
-    ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-    ctx.lineWidth   = Math.round(6 * SCALE);
-    ctx.lineJoin    = 'round';
-    ctx.strokeText(text, CW / 2, yPos);
-
-    // 텍스트 본체
-    ctx.fillStyle = isAccent ? c.accent : c.fill;
-    ctx.fillText(text, CW / 2, yPos);
-  };
-
-  if (hasBoth) {
-    // cap1 (accent) + cap2 동시 표시
-    drawOneLine(cap1, baseY - lineGap / 2, true);
-    drawOneLine(cap2, baseY + lineGap / 2, false);
+    // 왼쪽 수직 accent 라인
+    ctx.fillStyle = S.hl;
+    ctx.fillRect(
+      CW/2 - bw/2,
+      baseY - bh/2 + Math.round(7 * SCALE),
+      Math.round(4.5 * SCALE),
+      bh - Math.round(14 * SCALE)
+    );
   } else {
-    drawOneLine(cap1 || cap2, baseY, animProg > 0.5 && cap2 ? false : true);
+    // detail: 간단한 반투명 둥근 박스
+    ctx.fillStyle = 'rgba(0,0,0,0.52)';
+    ctx.beginPath();
+    ctx.roundRect(CW/2 - bw/2, baseY - bh/2, bw, bh, Math.round(10 * SCALE));
+    ctx.fill();
   }
+
+  // 두꺼운 스트로크 (TikTok 스타일)
+  ctx.strokeStyle = 'rgba(0,0,0,0.92)';
+  ctx.lineWidth   = Math.round(7 * SCALE);
+  ctx.lineJoin    = 'round';
+  ctx.strokeText(text, CW / 2, baseY);
+
+  // 메인 텍스트
+  ctx.fillStyle = showCap2 ? S.main : ((style !== 'detail' && !showCap2) ? S.hl : S.main);
+  ctx.fillText(text, CW / 2, baseY);
+
+  ctx.restore();
+}
+
+function drawChannelTop(ctx, name, CW, CH, SCALE) {
+  if (!name) return;
+  ctx.save();
+
+  // 상단 어둠운 그라디언트 헤더
+  const topH = Math.round(CH * 0.10);
+  const grad = ctx.createLinearGradient(0, 0, 0, topH);
+  grad.addColorStop(0, 'rgba(0,0,0,0.68)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CW, topH);
+
+  const PAD = Math.round(18 * SCALE);
+  const CY  = Math.round(CH * 0.042);
+  const AV  = Math.round(20 * SCALE);
+
+  // 퓜마 아바타 원
+  ctx.fillStyle = '#7c3aed';
+  ctx.beginPath();
+  ctx.arc(PAD + AV, CY, AV, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = Math.round(2 * SCALE);
+  ctx.stroke();
+
+  ctx.font = `700 ${Math.round(12 * SCALE)}px 'Noto Sans KR', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(name[0]?.toUpperCase() || 'M', PAD + AV, CY);
+
+  // 슬러그 채널명
+  const slug = '@' + name.replace(/\s+/g, '').slice(0, 15);
+  ctx.font = `700 ${Math.round(19 * SCALE)}px 'Noto Sans KR', sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)';
+  ctx.shadowBlur  = Math.round(5 * SCALE);
+  ctx.fillStyle = '#fff';
+  ctx.fillText(slug, PAD + AV * 2 + Math.round(8 * SCALE), CY);
+  ctx.shadowBlur = 0;
+
+  // 팔로우 버튼 카치문구
+  const followX = CW - Math.round(90 * SCALE);
+  const followW = Math.round(72 * SCALE);
+  const followH = Math.round(28 * SCALE);
+  const followY = CY - followH / 2;
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = Math.round(1.5 * SCALE);
+  ctx.beginPath();
+  ctx.roundRect(followX, followY, followW, followH, Math.round(followH / 2));
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = `600 ${Math.round(11 * SCALE)}px 'Noto Sans KR', sans-serif`;
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('팔로우', followX + followW / 2, CY);
 
   ctx.restore();
 }

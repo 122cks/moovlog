@@ -41,7 +41,7 @@ export let TYPECAST_VOICE_ID =
 // ─── 유틸 ────────────────────────────────────────────────
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function fetchWithTimeout(url, options, timeout = 7000) {
+async function fetchWithTimeout(url, options, timeout = 15000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {
@@ -77,22 +77,30 @@ export async function fetchTypeCastTTS(text) {
 
   console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_typeCastKeys.length}`);
 
-  const res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      actor_id: TYPECAST_VOICE_ID,
-      text: text.trim(),
-      lang: 'auto',
-      xapi_hd: true,
-      model_version: 'latest',
-      xapi_audio_format: 'wav',
-      tempo: 1.25,
-      volume: 100,
-      pitch: 0,
-      emotion_tone_preset: 'normal-1',
-    }),
-  }, 10000);
+  const tcBody = JSON.stringify({
+    actor_id: TYPECAST_VOICE_ID,
+    text: text.trim(),
+    lang: 'auto',
+    xapi_hd: true,
+    model_version: 'latest',
+    xapi_audio_format: 'mp3',
+    tempo: 1.25,
+    volume: 100,
+    pitch: 0,
+  });
+  const tcHeaders = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
+
+  // 엔드포인트: 실제 typecast.ai API 도메인 우선 최신 RFC7231 시도
+  let res;
+  try {
+    res = await fetchWithTimeout('https://typecast.ai/api/speak',
+      { method: 'POST', headers: tcHeaders, body: tcBody }, 14000);
+  } catch (_firstErr) {
+    // 폴백: 이전 엔드포인트
+    console.warn('[Typecast] 신규 엔드포인트 실패 → 구 엔드포인트 시도');
+    res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech',
+      { method: 'POST', headers: tcHeaders, body: tcBody }, 14000);
+  }
 
   if (!res.ok) {
     const _errData = await res.json().catch(() => ({}));

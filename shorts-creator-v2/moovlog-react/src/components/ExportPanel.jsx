@@ -176,7 +176,7 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
   const muxer = new Muxer({
     target: muxTarget,
     video: { codec: fmt.vc.mux, width: CW, height: CH, frameRate: FPS },
-    ...(pcm ? { audio: { codec: fmt.ac.mux, numberOfChannels: 2, sampleRate: 48000 } } : {}),
+    ...(pcm ? { audio: { codec: fmt.ac.mux, numberOfChannels: 1, sampleRate: 48000 } } : {}),
     firstTimestampBehavior: 'offset',
     ...(fmt.ext === 'mp4' ? { fastStart: 'in-memory' } : {}),
   });
@@ -188,10 +188,14 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
   });
   videoEnc.configure({ codec: fmt.vc.enc, width: CW, height: CH, bitrate: VBR, framerate: FPS, latencyMode: 'quality', bitrateMode: 'variable' });
 
-  // 프레임 인코딩 (현재 canvas 상태를 그대로 캡처 — 실시간 재생 없이 오프스크린 필요)
+  // 프레임 인코딩 — GPU 가속 캔버스 대응을 위해 OffscreenCanvas 중간단계 사용
+  const snapCanvas = new OffscreenCanvas(CW, CH);
+  const snapCtx    = snapCanvas.getContext('2d', { willReadFrequently: true });
+
   for (let f = 0; f < nFrames; f++) {
-    // 현재 canvas 그대로 캡처 (실제 프로덕션에서는 오프스크린 렌더링 권장)
-    const vf = new VideoFrame(canvas, {
+    snapCtx.clearRect(0, 0, CW, CH);
+    snapCtx.drawImage(canvas, 0, 0);
+    const vf = new VideoFrame(snapCanvas, {
       timestamp: Math.round(f * 1_000_000 / FPS),
       duration:  Math.round(1_000_000 / FPS),
     });
@@ -218,13 +222,11 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
       output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
       error: err => { throw new Error(err?.message || String(err) || 'AudioEncoder 오류'); },
     });
-    audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 2, bitrate: ABR });
+    audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 1, bitrate: ABR });
     const CHUNK = 1920;
     for (let i = 0; i < pcm.length; i += CHUNK) {
-      const slice  = pcm.slice(i, Math.min(i + CHUNK, pcm.length));
-      const stereo = new Float32Array(slice.length * 2);
-      for (let j = 0; j < slice.length; j++) { stereo[j*2] = slice[j]; stereo[j*2+1] = slice[j]; }
-      const ad = new AudioData({ format: 'f32', sampleRate: 48000, numberOfFrames: slice.length, numberOfChannels: 2, timestamp: Math.round(i * 1_000_000 / 48000), data: stereo.buffer });
+      const slice = pcm.slice(i, Math.min(i + CHUNK, pcm.length));
+      const ad = new AudioData({ format: 'f32', sampleRate: 48000, numberOfFrames: slice.length, numberOfChannels: 1, timestamp: Math.round(i * 1_000_000 / 48000), data: slice.buffer });
       audioEnc.encode(ad); ad.close();
       if (i % (CHUNK * 30) === 0) await new Promise(r => setTimeout(r, 0));
     }

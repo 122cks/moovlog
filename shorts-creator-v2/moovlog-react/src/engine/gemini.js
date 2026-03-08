@@ -217,8 +217,14 @@ caption1: narration 첫 임팩트 구절 4~8자, 반말 구어체
 caption2: narration 후반 핵심 4~8자 (없으면 빈 문자열)
 narration: 반말, 1~2문장, 해당 씬 duration × 7글자 이하, 이모지 금지
 
+[★ SNS 태그 규칙 — 반드시 준수]
+naver_clip_tags : #협찬 으로 시작, 이어서 지역·음식·분위기 태그 공백 나열, 총 300자 이내
+youtube_shorts_tags : 핵심 태그 5~8개 100자 이내
+instagram_caption : 감성 소개 2~3줄\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5 (5개 딱 맞기)
+tiktok_tags : #태그 딱 5개만 공백 구분
+
 JSON만 반환:
-{"title":"제목","hashtags":"#태그","naver_clip_tags":"...","youtube_shorts_tags":"...","instagram_caption":"...","tiktok_tags":"...","scenes":[
+{"title":"제목","hashtags":"#태그","naver_clip_tags":"#협찬 #서울맛집 #한식 #점심","youtube_shorts_tags":"#맛집투어 #한식 #shorts","instagram_caption":"소개문\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5","tiktok_tags":"#한식 #맛집 #vlog #food #korea","scenes":[
   {"idx":0,"duration":2.5,"caption1":"이거 실화임?","caption2":"이 가격에..","subtitle_style":"hook","subtitle_position":"center","narration":"이거 실화야. 이 가격에 이게 나온다고.","effect":"zoom-out"}
 ]}`;
 
