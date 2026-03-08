@@ -943,8 +943,10 @@ async function generateAllTTS(scenes) {
 async function fetchTypeCastTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
   if (!audioCtx) ensureAudio();
-  const apiKey = getTypeCastKey();
+  // 💡 호출 직전 현재 인덱스에 맞는 키를 확실히 가져옴
+  const apiKey = _TYPECAST_KEYS[_tcKeyIdx % _TYPECAST_KEYS.length];
   if (!apiKey) throw new Error('TYPECAST_401: 사용 가능한 API 키 없음');
+  console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_TYPECAST_KEYS.length} 사용 중...`);
 
   // 1. 합성 요청 (7초 이상 대기 시 강제 중단 → 다음 키로 넘어감)
   const res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech', {
@@ -960,9 +962,12 @@ async function fetchTypeCastTTS(text) {
     }),
   }, 7000);
 
-  if (res.status === 401 || res.status === 403) throw new Error(`TYPECAST_${res.status}: 인증 오류`);
-  if (res.status === 429) throw new Error(`TYPECAST_429: Rate Limit 초과`);
-  if (!res.ok) throw new Error(`Typecast HTTP ${res.status}`);
+  // 💡 에러 상태를 caller에게 정확히 전달 → 즉시 다음 키로 로테이션 유도
+  if (!res.ok) {
+    const _errData = await res.json().catch(() => ({}));
+    const _errMsg  = _errData?.result?.message || `HTTP ${res.status}`;
+    throw new Error(`TYPECAST_ERR_${res.status}: ${_errMsg}`);
+  }
 
   const data = await res.json();
   const speakUrl = data?.result?.speak_v2_url;
@@ -1376,8 +1381,11 @@ function tick() {
         const _nextMedia = getMedia(S.script.scenes[S.scene]);
         if (_nextMedia?.type === 'video' && _nextMedia.src) {
           if (S.files.length === 1) {
+            // 🚀 Proportional Sync: 각 씬의 duration 합계 기반 정확한 비율 점프
+            const _totalDur = S.script.scenes.reduce((a, sc) => a + (sc.duration > 0 ? sc.duration : 3), 0);
+            const _elapsed  = S.script.scenes.slice(0, S.scene).reduce((a, sc) => a + (sc.duration > 0 ? sc.duration : 3), 0);
             const _vidDur = isFinite(_nextMedia.src.duration) ? _nextMedia.src.duration : 0;
-            if (_vidDur > 0) _nextMedia.src.currentTime = (_vidDur / S.script.scenes.length) * S.scene;
+            if (_vidDur > 0 && _totalDur > 0) _nextMedia.src.currentTime = (_elapsed / _totalDur) * _vidDur;
           } else if (_prevMedia !== _nextMedia) {
             _nextMedia.src.currentTime = 0;
           }
@@ -1412,10 +1420,10 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
   }
   drawSubtitle(sc, sap);
   if (si === 0) drawTopBadge();
-  // ── [캡컷] 씬 진입 flash burst (새 씬 첫 0.12초 동안 흰 섬광 → 역동적 컷 느낌)
-  if (!skipClear && prog < 0.12) {
-    const flashT = 1 - prog / 0.12;
-    ctx.fillStyle = `rgba(255,255,255,${flashT * 0.28})`;
+  // ── [캡컷] 씬 진입 flash burst (0.10초, 더 강렬한 섬광 → 컷 타격감↑)
+  if (!skipClear && prog < 0.10) {
+    const flashT = 1 - prog / 0.10;
+    ctx.fillStyle = `rgba(255,255,255,${flashT * 0.45})`;
     ctx.fillRect(0, 0, CW, CH);
   }
 }
@@ -1522,22 +1530,21 @@ function drawMedia(media, effect, prog) {
     }
     if (vid.paused) vid.play().catch(() => {});
   }
-  // easeInOut — 시작·끝 부드럽게 (캡컷 특유의 가속감)
-  const e  = ease(prog);
-  const e2 = e * e * (3 - 2 * e);   // smoothstep — 더 부드러운 곡선
+  // 큐빅 이즈인아웃 — 가속감 극대화 (캡컷 특유의 탱글한 움직임)
+  const e = prog < 0.5 ? 4 * prog * prog * prog : 1 - Math.pow(-2 * prog + 2, 3) / 2;
   let sc = 1, ox = 0, oy = 0, rot = 0;
   switch (effect) {
-    case 'zoom-in':        sc = 1.0  + e2 * 0.18; break;        // 확대 (강)
-    case 'zoom-in-slow':   sc = 1.0  + e2 * 0.08; break;        // 확대 (약)
-    case 'zoom-out':       sc = 1.18 - e2 * 0.18; break;        // 축소
-    case 'zoom-out-slow':  sc = 1.08 - e2 * 0.08; break;
-    case 'pan-left':       sc = 1.12; ox =  (1 - e2) * CW * 0.10; break;
-    case 'pan-right':      sc = 1.12; ox = -(1 - e2) * CW * 0.10; break;
-    case 'float-up':       sc = 1.08; oy =  (1 - e2) * CH * 0.07; break;
-    case 'pan-up':         sc = 1.10; oy =  (1 - e2) * CH * 0.08; break;
-    case 'zoom-pan':       sc = 1.0 + e2 * 0.12; ox = (0.5 - e2) * CW * 0.08; break;
-    case 'drift':          sc = 1.06; ox = Math.sin(e2 * Math.PI) * CW * 0.04; break; // 부유
-    default:               sc = 1.05 + e2 * 0.06;
+    case 'zoom-in':        sc = 1.0  + e * 0.25; break;         // 확대 (강)
+    case 'zoom-in-slow':   sc = 1.0  + e * 0.10; break;         // 확대 (약)
+    case 'zoom-out':       sc = 1.25 - e * 0.25; break;         // 축소
+    case 'zoom-out-slow':  sc = 1.10 - e * 0.10; break;
+    case 'pan-left':       sc = 1.15; ox =  (1 - e) * CW * 0.15; break;
+    case 'pan-right':      sc = 1.15; ox = -(1 - e) * CW * 0.15; break;
+    case 'float-up':       sc = 1.10; oy =  (1 - e) * CH * 0.08; break;
+    case 'pan-up':         sc = 1.12; oy =  (1 - e) * CH * 0.10; break;
+    case 'zoom-pan':       sc = 1.0 + e * 0.15; ox = (0.5 - e) * CW * 0.10; break;
+    case 'drift':          sc = 1.08; ox = Math.sin(e * Math.PI) * CW * 0.06; break; // 부유
+    default:               sc = 1.06 + e * 0.08;
   }
   const el = media.src;
   const sw = media.type === 'video' ? (el.videoWidth  || CW) : el.naturalWidth;
@@ -1766,7 +1773,7 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     let scl, rot = 0;
     if (wProg < 0.45) {
       scl = (wProg / 0.45) * 1.55;          // 빠르게 1.55x까지 확대
-      rot = (1 - wProg / 0.45) * -0.10;     // 진입 시 미세 기울기
+      rot = Math.sin(i * 2) * 0.12 * (1 - wProg / 0.45); // 단어별 방향이 다른 시차 기울기
     } else if (wProg < 0.72) {
       scl = 1.55 - ((wProg - 0.45) / 0.27) * 0.55;  // 1.55 → 1.0으로 복귀
     } else {
@@ -2685,8 +2692,11 @@ async function exportRenderLoop() {
           const _nextEx = getMedia(sc[si]);
           if (_nextEx?.type === 'video' && _nextEx.src) {
             if (S.files.length === 1) {
+              // 🚀 Proportional Sync (export용)
+              const _totalDurEx = sc.reduce((a, s) => a + (s.duration > 0 ? s.duration : 3), 0);
+              const _elapsedEx  = sc.slice(0, si).reduce((a, s) => a + (s.duration > 0 ? s.duration : 3), 0);
               const _vd = isFinite(_nextEx.src.duration) ? _nextEx.src.duration : 0;
-              if (_vd > 0) _nextEx.src.currentTime = (_vd / sc.length) * si;
+              if (_vd > 0 && _totalDurEx > 0) _nextEx.src.currentTime = (_elapsedEx / _totalDurEx) * _vd;
             } else if (_prevEx !== _nextEx) {
               _nextEx.src.currentTime = 0;
             }
