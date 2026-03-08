@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v32.3 (20260309-2000)';
+const APP_VERSION  = 'v32.4 (20260309-2200)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -972,7 +972,7 @@ async function fetchTypeCastTTS(text, sceneDuration) {
   // 1. 합성 요청 (8초 이상 대기 시 강제 중단 → 다음 키로 넘어감)
   const res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
     body: JSON.stringify({
       voice_id:  TYPECAST_VOICE_ID,
       text:      text.trim(),
@@ -991,15 +991,15 @@ async function fetchTypeCastTTS(text, sceneDuration) {
   }
 
   const data = await res.json();
-  const speakUrl = data?.result?.speak_v2_url;
-  if (!speakUrl) throw new Error('Typecast speak_v2_url 누락');
+  const speakUrl = data?.result?.speak_v2_url || data?.result?.speak_url;
+  if (!speakUrl) throw new Error(`Typecast URL 누락 (응답: ${JSON.stringify(data?.result || {})})`);
 
   // 2. Polling (0.5초 간격, 1회당 4초 타임아웃, 최대 10초)
   let audioUrl = null;
   for (let i = 0; i < 20; i++) {
     await sleep(500);
     try {
-      const pollRes = await fetchWithTimeout(speakUrl, { headers: { 'X-API-KEY': apiKey } }, 4000);
+      const pollRes = await fetchWithTimeout(speakUrl, { headers: { 'Authorization': `Bearer ${apiKey}` } }, 4000);
       if (!pollRes.ok) continue;
       const pollData = await pollRes.json();
       const status = pollData?.result?.status;
@@ -1511,8 +1511,8 @@ function renderFrameAtTime(t) {
       const prog        = Math.max(0, Math.min((t - elapsed) / dur, 1));
       const _ab = S.audioBuffers?.[i]; const _ad = _ab?.duration ?? null;
       // [FIX] tick()과 동일 계산: 오디오가 씬보다 짧을 때만 오디오 비율 적용
-      const _stTarget = (_ad && _ad < dur) ? Math.max(_ad / dur, 0.20) : 1.0; // 0.40→0.20: 짧은 오디오에서도 자막 강제 정지 방지
-      const subAnimProg = Math.min(prog / _stTarget, 1);
+      const _stTarget = 1.0; // tick()와 동일: 상시 씬 전체(0→1.0) 구간 사용
+      const subAnimProg = Math.min(prog, 1);
       const prevSubAnim = S.subAnimProg;
       S.subAnimProg = subAnimProg;
       const media       = getMedia(sc[i]);
@@ -2478,14 +2478,14 @@ async function saveEditModal() {
       }
       if (S.audioBuffers) S.audioBuffers[si] = newBuf;
       if (newBuf?.duration > 0) {
-        sc.duration = Math.max(1.5, Math.round((newBuf.duration + 0.15) * 10) / 10);
+        sc.duration = Math.max(2.0, Math.round((newBuf.duration + 0.4) * 10) / 10);
       }
-      toast(`SCENE ${si + 1} 음성 재합성 완료!`, 'suc');
+      toast(`SCENE ${si + 1} 음성 재합성 완료!`, 'ok');
     } catch (e) {
       toast(`음성 재생성 실패: ${e.message}`, 'err');
     }
   } else {
-    toast(`SCENE ${si + 1} 수정 완료`, 'suc');
+    toast(`SCENE ${si + 1} 수정 완료`, 'ok');
   }
 
   closeEditModal();
@@ -2606,7 +2606,7 @@ async function doExportWebCodecs() {
   // 3. VideoEncoder
   const videoEnc = new VideoEncoder({
     output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-    error:  err => { throw err; },
+    error:  err => { throw new Error(err?.message || String(err) || 'VideoEncoder 오류'); },
   });
   videoEnc.configure({ codec: fmt.vc.enc, width: CW, height: CH, bitrate: VIDEO_BITRATE, framerate: FPS,
     latencyMode: 'quality', bitrateMode: 'variable' }); // VBR: 화질/용량 최적화
@@ -2640,7 +2640,7 @@ async function doExportWebCodecs() {
     D.dlBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 음성 인코딩 중... 70%';
     const audioEnc = new AudioEncoder({
       output: (chunk, meta) => muxer.addAudioChunk(chunk, meta),
-      error:  err => { throw err; },
+      error:  err => { throw new Error(err?.message || String(err) || 'AudioEncoder 오류'); },
     });
     audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 2, bitrate: 192_000 });
     const CHUNK = 1920; // 40ms @48kHz
@@ -2733,8 +2733,8 @@ async function exportRenderLoop() {
       const dur  = (sc[si].duration > 0 && isFinite(sc[si].duration)) ? sc[si].duration : 3;
       const el   = (now - ts) / 1000, prog = Math.min(el / dur, 1);
       const _abuf = S.audioBuffers?.[si]; const _adur = _abuf?.duration ?? null;
-      const _stgt = (_adur && _adur < dur) ? Math.max(_adur / dur, 0.20) : 1.0; // 0.40→0.20: 짧은 오디오에서도 자막 강제 정지 방지
-      S.subAnimProg = Math.min(prog / _stgt, 1);
+      const _stgt = 1.0; // tick()와 동일: 상시 씬 전체(0→1.0) 구간 사용
+      S.subAnimProg = Math.min(prog, 1);
       const TD = Math.min(0.28, dur * 0.15);
       try {
         if (el >= dur - TD && si < sc.length - 1) drawTransition(si, Math.min((el - (dur - TD)) / TD, 1));
