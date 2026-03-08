@@ -32,6 +32,10 @@ jobs:
           VITE_TYPECAST_KEY: ${{ secrets.VITE_TYPECAST_KEY }}
           VITE_TYPECAST_KEY_2: ${{ secrets.VITE_TYPECAST_KEY_2 }}
           VITE_TYPECAST_KEY_3: ${{ secrets.VITE_TYPECAST_KEY_3 }}
+          VITE_TYPECAST_KEY_4: ${{ secrets.VITE_TYPECAST_KEY_4 }}
+          VITE_TYPECAST_KEY_5: ${{ secrets.VITE_TYPECAST_KEY_5 }}
+          VITE_TYPECAST_KEY_6: ${{ secrets.VITE_TYPECAST_KEY_6 }}
+          VITE_TYPECAST_KEY_7: ${{ secrets.VITE_TYPECAST_KEY_7 }}
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
         run: npm run build
