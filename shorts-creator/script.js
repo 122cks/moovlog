@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v21';
+const APP_VERSION  = 'v22';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -471,6 +471,19 @@ async function startMake() {
     buildSceneDots();
     buildSNSTags(script);
     saveSession(script).catch(() => {});  // Firestore sessions 컬렉션에 저장
+    // 유튜브 숏츠 UI — 채널명/제목/음악 정보 업데이트
+    (function updateYtInfo() {
+      const ytInfo    = document.getElementById('ytInfo');
+      const ytChannel = document.getElementById('ytChannelName');
+      const ytTitle   = document.getElementById('ytTitle');
+      const ytMusic   = document.getElementById('ytMusicText');
+      if (!ytInfo) return;
+      ytInfo.hidden = false;
+      const rawName = D.restName?.value?.trim() || 'MOOVLOG';
+      if (ytChannel) ytChannel.textContent = '@' + rawName.replace(/\s+/g, '').toLowerCase().slice(0, 18);
+      if (ytTitle)   ytTitle.textContent   = script.scenes[0]?.subtitle || rawName;
+      if (ytMusic)   ytMusic.textContent   = `Original Sound · ${rawName}`;
+    })();
     await sleep(300);
     updateStepUI(3); hideLoad(); D.resultWrap.hidden = false;
     // BGM 배지: 현재 선택 템플릿 표시
@@ -1074,12 +1087,26 @@ async function preload() {
 }
 
 /* ── Player ──────────────────────────────────────────────── */
-function setupPlayer() { S.playing = false; S.scene = 0; S.startTs = null; S.subAnimProg = 0; D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); hideRepeatPrompt(); }
+function setupPlayer() {
+  S.playing = false; S.scene = 0; S.startTs = null; S.subAnimProg = 0;
+  D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); hideRepeatPrompt();
+  const _ytFill = document.getElementById('ytProgressFill');
+  if (_ytFill) _ytFill.style.width = '0%';
+}
 function togglePlay()  { S.playing ? pausePlay() : startPlay(); }
 async function startPlay() {
-  // [Bug Fix] AudioContext suspended 상태에서 resume을 await해야 모바일/iOS에서 오디오 재생 보장
   if (audioCtx?.state === 'suspended') {
     try { await audioCtx.resume(); } catch (_) {}
+  }
+  // 마지막 씬에서 종료된 상태로 재클릭 시 → 처음부터 재시작 (첫 컷 즉시 종료 버그 수정)
+  if (S.script && !S.playing) {
+    const lastIdx = S.script.scenes.length - 1;
+    if (S.scene >= lastIdx) {
+      S.scene = 0; S.startTs = null; S.subAnimProg = 0;
+      D.vProg.style.width = '0%';
+      if (D.vProgText) D.vProgText.textContent = '0%';
+      highlightScene(0);
+    }
   }
   S.playing = true; S.startTs = null; S.subAnimProg = 0;
   setPlayIcon(true); if (!S.muted) playSceneAudio(S.scene); tick();
@@ -1108,31 +1135,44 @@ function hideRepeatPrompt() {
 function tick() {
   const run = now => {
     if (!S.playing) return;
-    if (S.startTs === null) S.startTs = now;  // [Bug Fix] async resume 이후 첫 프레임에서 타이머 시작 → 오디오 싱크
-    const sc = S.script.scenes[S.scene];
-    const dur = sc.duration, el = (now - S.startTs) / 1000, prog = Math.min(el / dur, 1);
-    const total = S.script.scenes.reduce((a, s) => a + s.duration, 0);
-    const done  = S.script.scenes.slice(0, S.scene).reduce((a, s) => a + s.duration, 0);
-    const pct   = (done + el) / total * 100;
-    D.vProg.style.width = pct + '%';
-    if (D.vProgText) D.vProgText.textContent = Math.floor(pct) + '%';
-    const _audioBuf  = S.audioBuffers?.[S.scene];
-    const _audioDur  = _audioBuf?.duration ?? null;
-    const _subTarget = _audioDur ? Math.min(_audioDur / dur, 0.95) : 0.70;
-    S.subAnimProg    = Math.min(prog / _subTarget, 1);
-    const TD = 0.28;
-    if (el >= dur - TD && S.scene < S.script.scenes.length - 1)
-      drawTransition(S.scene, (el - (dur - TD)) / TD);
-    else renderFrame(S.scene, prog);
-    if (prog >= 1) {
-      if (S.scene < S.script.scenes.length - 1) {
-        S.scene++; S.startTs = now; S.subAnimProg = 0; highlightScene(S.scene);
-        if (!S.muted) playSceneAudio(S.scene);
-      } else {
-        D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
-        showRepeatPrompt();
-        return;
+    try {
+      if (S.startTs === null) S.startTs = now;
+      const sc = S.script?.scenes?.[S.scene];
+      if (!sc) { S.playing = false; setPlayIcon(false); return; }
+      // dur 방어: undefined/0/NaN → 기본 3초 (첫 컷 멈춤 버그 근본 원인)
+      const dur  = (sc.duration > 0 && isFinite(sc.duration)) ? sc.duration : 3;
+      const el   = (now - S.startTs) / 1000;
+      const prog = Math.min(el / dur, 1);
+      const total = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
+      const done  = S.script.scenes.slice(0, S.scene).reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
+      const pct   = Math.min((done + el) / total * 100, 100);
+      D.vProg.style.width = pct + '%';
+      if (D.vProgText) D.vProgText.textContent = Math.floor(pct) + '%';
+      // 유튜브 숏츠 인라인 진행바 동기화
+      const _ytFill = document.getElementById('ytProgressFill');
+      if (_ytFill) _ytFill.style.width = pct + '%';
+      const _audioBuf  = S.audioBuffers?.[S.scene];
+      const _audioDur  = _audioBuf?.duration ?? null;
+      const _subTarget = _audioDur ? Math.min(_audioDur / dur, 0.95) : 0.70;
+      S.subAnimProg    = Math.min(prog / _subTarget, 1);
+      // TD: dur이 짧을 때 비율 조정 (0.28s 고정 제거)
+      const TD = Math.min(0.28, dur * 0.15);
+      if (el >= dur - TD && S.scene < S.script.scenes.length - 1)
+        drawTransition(S.scene, Math.min((el - (dur - TD)) / TD, 1));
+      else renderFrame(S.scene, prog);
+      if (prog >= 1) {
+        if (S.scene < S.script.scenes.length - 1) {
+          S.scene++; S.startTs = now; S.subAnimProg = 0; highlightScene(S.scene);
+          if (!S.muted) playSceneAudio(S.scene);
+        } else {
+          D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
+          showRepeatPrompt();
+          return;
+        }
       }
+    } catch (err) {
+      // 렌더링 에러가 RAF 루프를 죽이지 않도록 catch
+      console.error('[tick] 렌더링 에러:', err.message, err.stack?.split('\n')?.[1]);
     }
     S.raf = requestAnimationFrame(run);
   };
@@ -1149,9 +1189,7 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
   drawMedia(media, sc.effect, prog);
   drawVignetteGrad();
   drawColorGrade(prog);
-  // [강화1] 씬 분위기 색상 오버레이
   drawMoodOverlay(sc.subtitle_style, Math.min(prog * 3, 1));
-  // 시네마틱 레터박스: cinematic 템플릿 또는 hero 씬
   const _tplStyle = getTplStyle();
   if (_tplStyle.letterbox || sc.subtitle_style === 'hero') {
     drawLetterbox(Math.min(prog * 4, 1));
@@ -1159,41 +1197,70 @@ function renderFrame(si, prog, subAnimOverride, skipClear) {
   }
   drawSubtitle(sc, sap);
   if (si === 0) drawTopBadge();
+  // ── [캡컷] 씬 진입 flash burst (새 씬 첫 0.12초 동안 흰 섬광 → 역동적 컷 느낌)
+  if (!skipClear && prog < 0.12) {
+    const flashT = 1 - prog / 0.12;
+    ctx.fillStyle = `rgba(255,255,255,${flashT * 0.28})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
 }
 function drawTransition(fi, t) {
   const e = ease(t);
   const nextStyle = S.script.scenes[fi + 1]?.subtitle_style || 'detail';
   const tplMode   = getTplStyle().transition || 'fade';
   if (nextStyle === 'hero') {
+    // [캡컷] Zoom Burst: 이전 씬을 빠르게 줌아웃하며 다음 씬으로
     renderFrame(fi, 1);
     ctx.save();
     ctx.globalAlpha = e;
+    // 줌인 시작 (0.92x) → 정상(1.0x)으로 → hero 에너제틱 진입
+    const zScale = 0.92 + e * 0.08;
     ctx.translate(CW / 2, CH / 2);
-    ctx.scale(0.88 + e * 0.12, 0.88 + e * 0.12);
+    ctx.scale(zScale, zScale);
     ctx.translate(-CW / 2, -CH / 2);
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
+    // 흰 flash 오버레이 (피크 때 최대)
+    const flashPeak = Math.sin(e * Math.PI);
+    ctx.fillStyle = `rgba(255,255,255,${flashPeak * 0.22})`;
+    ctx.fillRect(0, 0, CW, CH);
   } else if (nextStyle === 'hook' || tplMode === 'wipe') {
-    // wipe (세로 슬라이드)
+    // [캡컷] Whip Pan Up: 빠른 위아래 슬라이드 컷 (easeInOut 가속)
     renderFrame(fi, 1);
+    const eStrong = e < 0.5 ? 4 * e * e * e : 1 - Math.pow(-2 * e + 2, 3) / 2;
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, CH * (1 - e), CW, CH * e); ctx.clip();
+    ctx.beginPath();
+    ctx.rect(0, CH * (1 - eStrong), CW, CH * eStrong);
+    ctx.clip();
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
+    // 경계선 흰빛
+    const lineY = CH * (1 - eStrong);
+    ctx.fillStyle = `rgba(255,255,255,${(1 - e) * 0.5})`;
+    ctx.fillRect(0, lineY - 4 * SCALE, CW, 4 * SCALE);
   } else if (nextStyle === 'cta' || tplMode === 'zoom') {
-    // zoom crossfade
+    // [캡컷] Push Zoom: 강한 줌 버스트 전환
     renderFrame(fi, 1);
+    const zOut = 1 + e * 0.18;   // 이전 씬 빠르게 확대
+    ctx.save();
+    ctx.globalAlpha = 1 - e * 0.6;
+    ctx.translate(CW / 2, CH / 2); ctx.scale(zOut, zOut); ctx.translate(-CW / 2, -CH / 2);
+    renderFrame(fi, 1, 1, true);
+    ctx.restore();
     ctx.save();
     ctx.globalAlpha = e;
-    ctx.translate(CW / 2, CH / 2);
-    ctx.scale(1.0 + e * 0.05, 1.0 + e * 0.05);
-    ctx.translate(-CW / 2, -CH / 2);
+    ctx.translate(CW / 2, CH / 2); ctx.scale(0.88 + e * 0.12, 0.88 + e * 0.12); ctx.translate(-CW / 2, -CH / 2);
     renderFrame(fi + 1, 0, 0, true);
     ctx.restore();
   } else {
-    // 기본 crossfade (fade)
+    // [캡컷] Smart Fade: 크로스페이드 + 미세 스케일
     renderFrame(fi, 1);
-    ctx.save(); ctx.globalAlpha = e; renderFrame(fi + 1, 0, 0, true); ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = e;
+    const sc = 0.97 + e * 0.03;
+    ctx.translate(CW / 2, CH / 2); ctx.scale(sc, sc); ctx.translate(-CW / 2, -CH / 2);
+    renderFrame(fi + 1, 0, 0, true);
+    ctx.restore();
   }
 }
 // 특정 시간 t(초)에 해당하는 프레임 렌더링 (export용, 실시간 불필요)
@@ -1229,29 +1296,32 @@ function renderFrameAtTime(t) {
 }
 function getMedia(sc) { return S.loaded.length ? S.loaded[(sc.idx ?? 0) % S.loaded.length] : null; }
 
-/* ── Ken Burns (6종) ─────────────────────────────────────── */
+/* ── Ken Burns (캡컷급 10종 + easeInOut 강화) ────────────── */
 function drawMedia(media, effect, prog) {
   if (!media) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, CW, CH); return; }
   if (media.type === 'video') {
     const vid = media.src;
-    // 비디오가 재생 가능 상태가 아니면 블랙 프레임으로 대체
     if (vid._loadFailed || vid.readyState < 2) {
       ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, CW, CH); return;
     }
     if (vid.paused) vid.play().catch(() => {});
   }
-  const e = ease(prog); let sc = 1, ox = 0, oy = 0;
-  // [강화4] Ken Burns 8종으로 확장
+  // easeInOut — 시작·끝 부드럽게 (캡컷 특유의 가속감)
+  const e  = ease(prog);
+  const e2 = e * e * (3 - 2 * e);   // smoothstep — 더 부드러운 곡선
+  let sc = 1, ox = 0, oy = 0, rot = 0;
   switch (effect) {
-    case 'zoom-in':       sc = 1.0 + e * 0.12; break;
-    case 'zoom-in-slow':  sc = 1.0 + e * 0.06; break;
-    case 'zoom-out':      sc = 1.12 - e * 0.12; break;
-    case 'pan-left':      sc = 1.09; ox = (1 - e) * CW * 0.08; break;
-    case 'pan-right':     sc = 1.09; ox = -(1 - e) * CW * 0.08; break;
-    case 'float-up':      sc = 1.06; oy = (1 - e) * CH * 0.05; break;
-    case 'pan-up':        sc = 1.08; oy = (1 - e) * CH * 0.06; break;  // 새로 추가
-    case 'zoom-pan':      sc = 1.0 + e * 0.08; ox = (0.5 - e) * CW * 0.06; break; // 새로 추가
-    default:              sc = 1.04 + e * 0.04;
+    case 'zoom-in':        sc = 1.0  + e2 * 0.18; break;        // 확대 (강)
+    case 'zoom-in-slow':   sc = 1.0  + e2 * 0.08; break;        // 확대 (약)
+    case 'zoom-out':       sc = 1.18 - e2 * 0.18; break;        // 축소
+    case 'zoom-out-slow':  sc = 1.08 - e2 * 0.08; break;
+    case 'pan-left':       sc = 1.12; ox =  (1 - e2) * CW * 0.10; break;
+    case 'pan-right':      sc = 1.12; ox = -(1 - e2) * CW * 0.10; break;
+    case 'float-up':       sc = 1.08; oy =  (1 - e2) * CH * 0.07; break;
+    case 'pan-up':         sc = 1.10; oy =  (1 - e2) * CH * 0.08; break;
+    case 'zoom-pan':       sc = 1.0 + e2 * 0.12; ox = (0.5 - e2) * CW * 0.08; break;
+    case 'drift':          sc = 1.06; ox = Math.sin(e2 * Math.PI) * CW * 0.04; break; // 부유
+    default:               sc = 1.05 + e2 * 0.06;
   }
   const el = media.src;
   const sw = media.type === 'video' ? (el.videoWidth  || CW) : el.naturalWidth;
@@ -1261,8 +1331,8 @@ function drawMedia(media, effect, prog) {
   ctx.translate(CW / 2 + ox, CH / 2 + oy); ctx.scale(sc, sc);
   try {
     ctx.drawImage(el, -dw / 2, -dh / 2, dw, dh);
-  } catch (e) {
-    console.warn('[drawMedia] drawImage 실패:', e.message);
+  } catch (err) {
+    console.warn('[drawMedia] drawImage 실패:', err.message);
     ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
   }
@@ -1399,56 +1469,75 @@ function getTplHL()        { return getTplStyle().subtitle?.hlColor || '#FFE033'
 function getTplColor()     { return getTplStyle().subtitle?.color   || '#FFFFFF'; }
 function getTplFontSz(base){ return base * SCALE * (getTplStyle().subtitle?.fontSize || 1.0); }
 
-/* ── CapCut 스타일 공통 렌더러 ────────────────────────────────
-   hlIdx: 강조할 단어 인덱스 (null = 없음)
-   단어별 순차 팝인 + 오버슛 바운스 + 두꺼운 검은 스트로크
+/* ── CapCut 스타일 공통 렌더러 (v2 — 캡컷급 업그레이드)
+   · 단어별 초고속 팝인 (0.08s 간격)
+   · 오버슛 1.42x → 1.0x 강한 스프링 바운스
+   · 강조 단어: 풀사이즈 배경 박스 + 두꺼운 그림자
+   · 비강조: 두꺼운 검은 스트로크 윤곽 + 미세 그림자
    ──────────────────────────────────────────────────────────── */
 function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   const words = text.split(/\s+/).filter(Boolean);
   if (!words.length) return;
   ctx.save();
   const hlColor = getTplHL();
-  let sz = maxSz;  // 호출측에서 getTplFontSz() 적용 완료
+  let sz = maxSz;
   ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   let wM = words.map(w => ctx.measureText(w).width);
-  const sp = () => sz * 0.28;
+  const sp = () => sz * 0.26;
   const tot = () => wM.reduce((a, b) => a + b, 0) + sp() * (words.length - 1);
-  // 캔버스 폭 초과 시 자동 축소
-  if (tot() > CW - SCALE * 56) {
-    sz = Math.max(SCALE * 34, Math.floor(sz * (CW - SCALE * 56) / tot()));
+  if (tot() > CW - SCALE * 50) {
+    sz = Math.max(SCALE * 32, Math.floor(sz * (CW - SCALE * 50) / tot()));
     ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
     wM = words.map(w => ctx.measureText(w).width);
   }
   const N    = words.length;
-  const step = 0.55 / N;
-  const sw   = Math.max(sz * 0.11, SCALE * 6);
+  const step = 0.48 / Math.max(N, 1);   // 더 빠른 팝인 (0.55 → 0.48)
+  const sw   = Math.max(sz * 0.13, SCALE * 7);
   let x = cx - tot() / 2;
   words.forEach((word, i) => {
-    const wProg = Math.max(0, Math.min(1, (ap - i * step) / (step * 1.65)));
+    const wProg = Math.max(0, Math.min(1, (ap - i * step) / (step * 1.5)));
     const drawX = x;
     x += wM[i] + sp();
     if (wProg <= 0) return;
-    const scl   = wProg < 0.6 ? (wProg / 0.6) * 1.18 : 1.18 - ((wProg - 0.6) / 0.4) * 0.18;
-    const alpha = Math.min(wProg * 4, 1);
+    // 스프링 바운스: 0→1.42(오버슛)→1.0 (캡컷 특유의 팡!)
+    let scl;
+    if (wProg < 0.45) {
+      scl = (wProg / 0.45) * 1.42;          // 빠르게 1.42x까지 확대
+    } else if (wProg < 0.72) {
+      scl = 1.42 - ((wProg - 0.45) / 0.27) * 0.42;  // 1.42 → 1.0으로 복귀
+    } else {
+      // 미세 진동 (2회 리바운드)
+      const vibT = (wProg - 0.72) / 0.28;
+      scl = 1.0 + Math.sin(vibT * Math.PI * 2) * 0.04 * (1 - vibT);
+    }
+    const alpha = Math.min(wProg * 5, 1);
     const wx    = drawX + wM[i] / 2;
     const isHL  = (i === hlIdx);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(wx, cy); ctx.scale(scl, scl);
     if (isHL) {
-      const pad = 9;
+      // [캡컷] 강조 단어: 노란(또는 템플릿 컬러) 배경 + 검은 텍스트 + 그림자
+      const padX = sz * 0.18, padY = sz * 0.14;
+      const bw = wM[i] + padX * 2, bh = sz * 1.15;
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = sz * 0.25;
       ctx.fillStyle = hlColor;
-      roundRect(ctx, -wM[i] / 2 - pad, -sz * 0.58, wM[i] + pad * 2, sz * 1.16, 7); ctx.fill();
-      ctx.lineWidth = sw * 0.35; ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-      ctx.strokeText(word, -wM[i] / 2, 0);
-      ctx.fillStyle = '#111'; ctx.fillText(word, -wM[i] / 2, 0);
+      roundRect(ctx, -wM[i] / 2 - padX, -bh / 2, bw, bh, Math.min(bh * 0.28, 16 * SCALE));
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillText(word, -wM[i] / 2, 0);
     } else {
+      // [캡컷] 일반 단어: 굵은 검은 스트로크 + 드롭 섀도우
+      ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = sz * 0.15;
+      ctx.shadowOffsetY = sz * 0.05;
       ctx.lineWidth = sw; ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(0,0,0,0.97)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.98)';
       ctx.strokeText(word, -wM[i] / 2, 0);
-      ctx.fillStyle = color; ctx.fillText(word, -wM[i] / 2, 0);
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      ctx.fillStyle = color;
+      ctx.fillText(word, -wM[i] / 2, 0);
     }
     ctx.restore();
   });

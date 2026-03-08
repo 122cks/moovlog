@@ -208,6 +208,20 @@
             <canvas id="videoCanvas" width="1080" height="1920"></canvas>
             <audio id="ttsPlayer" preload="auto" hidden></audio>
             <div id="captionLayer" class="caption-layer"></div>
+        <!-- 유튜브 숏츠 하단 정보 오버레이 -->
+            <div class="yt-info" id="ytInfo" hidden>
+              <div class="yt-info-channel">
+                <span class="yt-channel-name" id="ytChannelName">@moovlog</span>
+                <button class="yt-follow-btn" id="ytFollowBtn">팔로우</button>
+              </div>
+              <p class="yt-info-title" id="ytTitle">AI 자동 숏폼 영상</p>
+              <div class="yt-music-row">
+                <i class="fas fa-music yt-music-icon"></i>
+                <div class="yt-music-ticker-wrap"><span class="yt-music-ticker" id="ytMusicText">Original Sound · MOOVLOG</span></div>
+              </div>
+            </div>
+            <!-- 화면 내 진행바 (유튜브 숏츠 스타일) -->
+            <div class="yt-progress-bar" id="ytProgressBar"><div class="yt-progress-fill" id="ytProgressFill"></div></div>
             <div class="scene-dots" id="sceneDots"></div>
             <!-- 재생 종료 한번 더 하시겠습니까? 오버레이 -->
             <div id="repeatOverlay" class="repeat-overlay" hidden>
@@ -226,11 +240,37 @@
           </div>
           <div class="phone-bar"></div>
         </div>
-        <div class="reel-side">
-          <button type="button" class="rsb rsb-like" aria-label="좋아요"><i class="fas fa-heart"></i></button>
-          <button type="button" class="rsb rsb-comment" aria-label="댓글"><i class="fas fa-comment"></i></button>
-          <button type="button" class="rsb rsb-share" aria-label="공유"><i class="fas fa-share"></i></button>
-          <button type="button" class="rsb rsb-save" aria-label="저장"><i class="fas fa-bookmark"></i></button>
+        <div class="reel-side yt-side">
+          <!-- 채널 아바타 + 구독 -->
+          <div class="yt-avatar-wrap">
+            <div class="yt-avatar"><span>M</span></div>
+            <div class="yt-sub-plus"><i class="fas fa-plus"></i></div>
+          </div>
+          <!-- 좋아요 -->
+          <div class="yt-btn-item">
+            <button type="button" class="rsb rsb-like" id="ytLikeBtn" aria-label="좋아요"><i class="fas fa-thumbs-up"></i></button>
+            <span class="yt-btn-label">1.2만</span>
+          </div>
+          <!-- 싫어요 -->
+          <div class="yt-btn-item">
+            <button type="button" class="rsb rsb-dislike" aria-label="싫어요"><i class="fas fa-thumbs-down"></i></button>
+            <span class="yt-btn-label">싫어요</span>
+          </div>
+          <!-- 댓글 -->
+          <div class="yt-btn-item">
+            <button type="button" class="rsb rsb-comment" aria-label="댓글"><i class="fas fa-comment-dots"></i></button>
+            <span class="yt-btn-label">48</span>
+          </div>
+          <!-- 공유 -->
+          <div class="yt-btn-item">
+            <button type="button" class="rsb rsb-share" aria-label="공유"><i class="fas fa-share"></i></button>
+            <span class="yt-btn-label">공유</span>
+          </div>
+          <!-- 더보기 -->
+          <div class="yt-btn-item">
+            <button type="button" class="rsb rsb-more" aria-label="더보기"><i class="fas fa-ellipsis-vertical"></i></button>
+            <span class="yt-btn-label">더보기</span>
+          </div>
         </div>
       </div>
 
