@@ -1104,18 +1104,24 @@ async function prerenderAudio(totalDur) {
 function playSceneAudio(si, capture = false) {
   stopAudio();
   const buf = S.audioBuffers?.[si];
-  if (buf && audioCtx) {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const src = audioCtx.createBufferSource();
-    src.buffer = buf; src.playbackRate.value = 1.0; // 자막 타이머와 1:1 싱크 — 속도는 Typecast tempo로 제어
-    src.connect(audioCtx.destination);
-    if (capture && audioMixDest) src.connect(audioMixDest);
-    src.start(); S.currentAudio = src;
-    S.audioStartTs = audioCtx.currentTime; // 오디오 src.start() 직후 즉시 캡처 — rAF 딜레이 없이 정확한 싱크
+  const doStart = () => {
+    if (buf && audioCtx) {
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf; src.playbackRate.value = 1.0; // 자막 타이머와 1:1 싱크 — 속도는 Typecast tempo로 제어
+      src.connect(audioCtx.destination);
+      if (capture && audioMixDest) src.connect(audioMixDest);
+      src.start(); S.currentAudio = src;
+      S.audioStartTs = audioCtx.currentTime; // resume 완료 후 캡처 — BUG B 수정
+    } else {
+      S.audioStartTs = audioCtx ? audioCtx.currentTime : 0;
+      if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
+      console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: Web Speech 폴백`);
+    }
+  };
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().then(doStart).catch(doStart); // resume 완료 후 start — BUG B 수정
   } else {
-    S.audioStartTs = audioCtx ? audioCtx.currentTime : 0; // 무음 씬도 기준 시간 설정
-    if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
-    console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: Web Speech 폴백`);
+    doStart();
   }
 }
 // Web Speech 폴백 — AI TTS 실패 시 자동 호출, 남성 없어도 한국어 음성 사용
@@ -1216,6 +1222,7 @@ function setupPlayer() {
   D.vProg.style.width = '0%'; renderFrame(0, 0); setPlayIcon(false); hideRepeatPrompt();
   const _ytFill = document.getElementById('ytProgressFill');
   if (_ytFill) _ytFill.style.width = '0%';
+  stopBGM(); // 초기화 시 BGM 정지
 }
 function togglePlay()  { S.playing ? pausePlay() : startPlay(); }
 async function startPlay() {
@@ -1230,12 +1237,15 @@ async function startPlay() {
       D.vProg.style.width = '0%';
       if (D.vProgText) D.vProgText.textContent = '0%';
       highlightScene(0);
+      if (!S.muted) playBGM(); // 처음부터 다시 시작할 때 BGM 켜기
+    } else if (!_bgmSrc && !S.muted) {
+      playBGM(); // 일시정지 후 이어서 재생할 때 BGM 켜기
     }
   }
-  S.playing = true; S.startTs = null; S.audioStartTs = 0; S.subAnimProg = 0;
+  S.playing = true; S.startTs = null; S.subAnimProg = 0;
   setPlayIcon(true); if (!S.muted) playSceneAudio(S.scene); tick();
 }
-function pausePlay()  { S.playing = false; if (S.raf) cancelAnimationFrame(S.raf); stopAudio(); setPlayIcon(false); }
+function pausePlay()  { S.playing = false; if (S.raf) cancelAnimationFrame(S.raf); stopAudio(); stopBGM(); setPlayIcon(false); }
 function doReplay()   { pausePlay(); S.scene = 0; S.startTs = null; S.subAnimProg = 0; D.vProg.style.width = '0%'; renderFrame(0, 0); highlightScene(0); setTimeout(startPlay, 80); }
 function toggleMute() {
   S.muted = !S.muted;
@@ -1313,7 +1323,7 @@ function tick() {
       if (S.scene < S.script.scenes.length - 1) {
         S.scene++;
         S.startTs = null;
-        S.audioStartTs = 0; // 씬 전환 시 명시적 리셋 — playSceneAudio에서 즉시 재설정됨
+        // S.audioStartTs 리셋 제거 — doStart() 내부에서 resume 완료 후 직접 설정됨 (BUG C 수정)
         S.subAnimProg = 0;
         highlightScene(S.scene);
         if (!S.muted) playSceneAudio(S.scene);
@@ -2762,7 +2772,6 @@ function updateAudioStatus(mode) {
   D.audioStatus.style.color = mode === 'google-tts' ? '#4ade80' : '#888';
   if (D.audioBadgeText) D.audioBadgeText.textContent = mode === 'google-tts' ? 'AI 보이스' : '웹 음성';
   if (D.audioBadge) D.audioBadge.style.background = mode === 'google-tts' ? 'rgba(74,222,128,0.15)' : 'rgba(100,100,100,0.2)';
-  if (D.bgmBadge) D.bgmBadge.hidden = true; // BGM 기능 추가 전까지 숨김
 }
 function toast(msg, type = 'inf') {
   const icons = { ok: 'fa-check-circle', err: 'fa-exclamation-circle', inf: 'fa-info-circle' };
