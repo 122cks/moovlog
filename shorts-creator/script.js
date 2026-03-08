@@ -1500,8 +1500,11 @@ function drawSubtitle(sc, animProg) {
   // 렌더러가 sc.subtitle을 읽으므로 표시할 텍스트로 임시 교체 후 복원
   const _orig = sc.subtitle;
   sc.subtitle = text;
-  (SUBTITLE_RENDERERS[style] || SUBTITLE_RENDERERS.detail)(sc, localAp);
-  sc.subtitle = _orig;
+  try {
+    (SUBTITLE_RENDERERS[style] || SUBTITLE_RENDERERS.detail)(sc, localAp);
+  } finally {
+    sc.subtitle = _orig; // 에러 발생 시에도 반드시 복원
+  }
   ctx.restore();
 }
 
