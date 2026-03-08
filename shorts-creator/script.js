@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v25';
+const APP_VERSION  = 'v26';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -755,11 +755,12 @@ function buildSNSTags(script) {
    ════════════════════════════════════════════════════════════ */
 
 // Typecast API 설정
-const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_672c5f5ce59fac2a48faeaee';
+// 한국어 남성 보이스 ID — Typecast 콘솔(app.typecast.ai)에서 배우 선택 후 localStorage.setItem('moovlog_typecast_voice', 'tc_...') 으로 변경 가능
+const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_5d654ea6b5ce05000143e79b';
 
 const TTS_CONFIG = {
   models:      ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
-  voices:      ['Kore', 'Charon', 'Fenrir', 'Orus', 'Aoede'],
+  voices:      ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'], // 남성 우선: Fenrir(남), Orus(남), Charon(남)
   concurrency: 3,    // 동시 처리 씬 수 (Rate Limit 방지)
   retryDelay:  700,  // 재시도 간격 ms
   maxRetry:    2,
@@ -821,6 +822,12 @@ async function generateAllTTS(scenes) {
       } else if (msg.includes('TTS_403')) {
         fatalStop = true;
         toast('AI 보이스: API 키에 TTS 권한 없음 — 무음으로 진행합니다', 'inf');
+      } else if (msg.startsWith('Typecast HTTP')) {
+        // Typecast 요청 오류 (잘못된 voice_id 등) → Gemini Fenrir 폴백
+        try {
+          buffers[i] = await fetchTTSWithRetry(text, i);
+          successCount++;
+        } catch { failCount++; }
       } else {
         failCount++;
         console.warn(`[TTS] 씬${i + 1} 최종 실패:`, msg);
@@ -1030,17 +1037,31 @@ async function decodePCMAudio(b64, mimeType) {
 
 // OfflineAudioContext로 전체 오디오 사전 렌더링 (추후 export용)
 async function prerenderAudio(totalDur) {
-  const SR  = 48000;
-  const off = new OfflineAudioContext(1, Math.ceil(SR * totalDur), SR);
-  let offset = 0;
+  const SR = 48000;
+  // [FIX] 오디오가 씬 duration보다 길 수 있으므로 실제 최대 끝 시간으로 총 길이 결정
+  let offset = 0, maxEnd = totalDur;
   for (let i = 0; i < S.script.scenes.length; i++) {
+    const scDur = (S.script.scenes[i].duration > 0 && isFinite(S.script.scenes[i].duration))
+      ? S.script.scenes[i].duration : 3;
+    const buf = S.audioBuffers[i];
+    if (buf) {
+      const end = offset + buf.duration;
+      if (end > maxEnd) maxEnd = end;
+    }
+    offset += scDur;
+  }
+  const off = new OfflineAudioContext(1, Math.ceil(SR * (maxEnd + 0.1)), SR);
+  offset = 0;
+  for (let i = 0; i < S.script.scenes.length; i++) {
+    const scDur = (S.script.scenes[i].duration > 0 && isFinite(S.script.scenes[i].duration))
+      ? S.script.scenes[i].duration : 3;
     const buf = S.audioBuffers[i];
     if (buf) {
       const src = off.createBufferSource();
-      src.buffer = buf; // OfflineAudioCtx가 SR 자동 변환
+      src.buffer = buf;
       src.connect(off.destination); src.start(offset);
     }
-    offset += S.script.scenes[i].duration;
+    offset += scDur;
   }
   const rendered = await off.startRendering();
   return rendered.getChannelData(0); // Float32Array@48kHz
@@ -1056,8 +1077,9 @@ function playSceneAudio(si, capture = false) {
     src.connect(audioCtx.destination);
     if (capture && audioMixDest) src.connect(audioMixDest);
     src.start(); S.currentAudio = src;
+    S.audioStartTs = audioCtx.currentTime; // 오디오 src.start() 직후 즉시 캡처 — rAF 딜레이 없이 정확한 싱크
   } else {
-    // AI TTS 없음 → Web Speech 자동 폴백 (재생 중단 없음)
+    S.audioStartTs = audioCtx ? audioCtx.currentTime : 0; // 무음 씬도 기준 시간 설정
     if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
     console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: Web Speech 폴백`);
   }
@@ -1175,7 +1197,7 @@ function tick() {
     // ── 씬 시작 타임스탬프 초기화
     if (S.startTs === null) {
       S.startTs = now;
-      S.audioStartTs = audioCtx ? audioCtx.currentTime : 0; // 오디오 컨텍스트 기준 시작 시간 저장
+      // S.audioStartTs는 playSceneAudio() 내 src.start() 직후 이미 정확히 캡처됨 — 여기서 덮어쓰지 않음
     }
 
     const sc = S.script?.scenes?.[S.scene];
@@ -1206,7 +1228,8 @@ function tick() {
 
     const _audioBuf  = S.audioBuffers?.[S.scene];
     const _audioDur  = _audioBuf?.duration ?? null;
-    const _subTarget = _audioDur ? Math.min(_audioDur / dur, 0.95) : 0.70;
+    // [FIX] 오디오가 씬보다 짧을 때만 오디오 비율 적용, 아니면 씬 끝까지 자막 유지
+    const _subTarget = (_audioDur && _audioDur < dur) ? Math.max(_audioDur / dur, 0.40) : 1.0;
     S.subAnimProg    = Math.min(prog / _subTarget, 1);
 
     // ── 렌더링 (에러가 나도 씬 전환 로직에 영향 없도록 별도 try/catch)
@@ -1331,7 +1354,8 @@ function renderFrameAtTime(t) {
     if (t < elapsed + dur || i === sc.length - 1) {
       const prog        = Math.max(0, Math.min((t - elapsed) / dur, 1));
       const _ab = S.audioBuffers?.[i]; const _ad = _ab?.duration ?? null;
-      const _stTarget = _ad ? Math.min(_ad / dur, 0.95) : 0.70;
+      // [FIX] tick()과 동일 계산: 오디오가 씬보다 짧을 때만 오디오 비율 적용
+      const _stTarget = (_ad && _ad < dur) ? Math.max(_ad / dur, 0.40) : 1.0;
       const subAnimProg = Math.min(prog / _stTarget, 1);
       const prevSubAnim = S.subAnimProg;
       S.subAnimProg = subAnimProg;
@@ -1511,14 +1535,21 @@ function drawSubtitle(sc, animProg) {
   const cap2 = sc.caption2?.trim() ? sc.caption2 : '';
   if (!cap1) return;
 
-  // caption2가 있으면 50% 지점에서 전환 — 각각 0→1 fresh pop-in
+  // [FIX] caption2 전환점: 고정 0.50 → cap1/cap2 글자 수 비율로 동적 계산
+  // 예: cap1="육즙 터진다"(6자) + cap2="단골 됩니다"(5자) → 전환점 54.5%
+  let switchPt = 0.50;
+  if (cap2) {
+    const len1 = cap1.replace(/\s/g, '').length || 1;
+    const len2 = cap2.replace(/\s/g, '').length || 1;
+    switchPt = Math.min(Math.max(len1 / (len1 + len2), 0.35), 0.65);
+  }
   let text, localAp;
-  if (cap2 && animProg >= 0.50) {
+  if (cap2 && animProg >= switchPt) {
     text    = cap2;
-    localAp = Math.min((animProg - 0.50) / 0.50, 1);  // 후반: 새로 0→1
+    localAp = Math.min((animProg - switchPt) / (1.0 - switchPt), 1);
   } else {
     text    = cap1;
-    localAp = cap2 ? Math.min(animProg / 0.50, 1) : animProg;  // 전반: 0→1 정규화
+    localAp = cap2 ? Math.min(animProg / switchPt, 1) : animProg;
   }
 
   ctx.save();
