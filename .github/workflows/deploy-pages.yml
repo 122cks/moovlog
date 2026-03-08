@@ -37,6 +37,7 @@ jobs:
           sed -i "s|__TYPECAST_API_KEY_2__|${{ secrets.TYPECAST_API_KEY_2 }}|g" shorts-creator/script.js
           sed -i "s|__TYPECAST_API_KEY_3__|${{ secrets.TYPECAST_API_KEY_3 }}|g" shorts-creator/script.js
           sed -i "s|__TYPECAST_API_KEY_4__|${{ secrets.TYPECAST_API_KEY_4 }}|g" shorts-creator/script.js
+          sed -i "s|__TYPECAST_API_KEY_5__|${{ secrets.TYPECAST_API_KEY_5 }}|g" shorts-creator/script.js
           sed -i "s|__FIREBASE_API_KEY__|${{ secrets.FIREBASE_API_KEY }}|g" shorts-creator/index.html
           sed -i "s|__FIREBASE_APP_ID__|${{ secrets.FIREBASE_APP_ID }}|g" shorts-creator/index.html
 

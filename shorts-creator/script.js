@@ -12,16 +12,18 @@ const APP_BUILD_TS = '2026-03-08 KST';
 const _INJECTED_KEY          = '__GEMINI_KEY__';
 let geminiKey = _INJECTED_KEY.includes('__') ? (localStorage.getItem('moovlog_gemini_key') || '') : _INJECTED_KEY;
 
-// Typecast API 키 4개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / TYPECAST_API_KEY_2 / TYPECAST_API_KEY_3 / TYPECAST_API_KEY_4
+// Typecast API 키 5개 주입 패턴 — GitHub Secrets: TYPECAST_API_KEY / TYPECAST_API_KEY_2 / TYPECAST_API_KEY_3 / TYPECAST_API_KEY_4 / TYPECAST_API_KEY_5
 const _TC_K1 = '__TYPECAST_API_KEY__';
 const _TC_K2 = '__TYPECAST_API_KEY_2__';
 const _TC_K3 = '__TYPECAST_API_KEY_3__';
 const _TC_K4 = '__TYPECAST_API_KEY_4__';
+const _TC_K5 = '__TYPECAST_API_KEY_5__';
 const _TYPECAST_KEYS = [
   _TC_K1.includes('__') ? (localStorage.getItem('moovlog_typecast_key')   || '') : _TC_K1,
   _TC_K2.includes('__') ? (localStorage.getItem('moovlog_typecast_key2')  || '') : _TC_K2,
   _TC_K3.includes('__') ? (localStorage.getItem('moovlog_typecast_key3')  || '') : _TC_K3,
   _TC_K4.includes('__') ? (localStorage.getItem('moovlog_typecast_key4')  || '') : _TC_K4,
+  _TC_K5.includes('__') ? (localStorage.getItem('moovlog_typecast_key5')  || '') : _TC_K5,
 ].filter(Boolean);  // 빈 키 제외
 let _tcKeyIdx = 0;  // 현재 시도 중인 키 인덱스
 function getTypeCastKey() {
@@ -861,7 +863,9 @@ async function generateAllTTS(scenes) {
               console.warn(`[Typecast] 키 #${k + 1} 실패 (${m2.split(':')[0]}) → 키 #${k + 2}로 전환`);
               continue; // 다음 키 시도
             }
-            throw e2; // 권한/형식 에러는 바로 재덕지
+            // 에러 발생 시 멈추지 않고 Gemini로 폴백
+            console.warn(`[Typecast] 처리 오류 (${m2}) → Gemini AI로 폴백합니다.`);
+            break;
           }
         }
         if (tcBuf) {
@@ -910,16 +914,14 @@ async function generateAllTTS(scenes) {
   return buffers;
 }
 
-/* ── Typecast TTS API 호출 (키 로테이션 지원) ───────────── */
+/* ── Typecast TTS API 호출 (키 로테이션 + Polling 지원) ───────────── */
 async function fetchTypeCastTTS(text) {
   if (!text?.trim()) throw new Error('빈 텍스트');
   if (!audioCtx) ensureAudio();
   const apiKey = getTypeCastKey();
   if (!apiKey) throw new Error('TYPECAST_401: 사용 가능한 API 키 없음');
 
-  // 씬마다 다음 키로 라운드로빈 (키 3개 골고루 소비)
-  rotateTypeCastKey();
-
+  // 1. 합성 요청 (POST)
   const res = await fetch('https://api.typecast.ai/v1/text-to-speech', {
     method: 'POST',
     headers: {
@@ -935,25 +937,46 @@ async function fetchTypeCastTTS(text) {
       output: {
         volume:       100,
         audio_pitch:  1,
-        audio_tempo:  1.27, // playbackRate 제거 보상 — TTS 생성 단계에서 직접 속도 제어
+        audio_tempo:  1.27,
         audio_format: 'wav',
       },
     }),
   });
 
-  if (res.status === 401 || res.status === 403) {
-    throw new Error(`TYPECAST_${res.status}: 인증 오류 — API 키 #${_tcKeyIdx}`);
-  }
-  if (res.status === 429) {
-    throw new Error(`TYPECAST_429: Rate Limit 초과 — 키 #${_tcKeyIdx}`);
-  }
+  if (res.status === 401 || res.status === 403) throw new Error(`TYPECAST_${res.status}: 인증 오류`);
+  if (res.status === 429) throw new Error(`TYPECAST_429: Rate Limit 초과`);
   if (!res.ok) {
     const d = await res.json().catch(() => ({}));
     throw new Error(`Typecast HTTP ${res.status}: ${d?.message || ''}`);
   }
 
-  const ab = await res.arrayBuffer();
-  if (ab.byteLength < 100) throw new Error('Typecast 오디오 데이터 없음');
+  const data = await res.json();
+  const speakUrl = data?.result?.speak_v2_url;
+  if (!speakUrl) throw new Error('Typecast speak_v2_url을 받지 못했습니다.');
+
+  // 2. 오디오 생성 완료까지 Polling (0.5초 간격, 최대 10초)
+  let audioUrl = null;
+  for (let i = 0; i < 20; i++) {
+    await sleep(500);
+    const pollRes = await fetch(speakUrl, { headers: { 'X-API-KEY': apiKey } });
+    if (!pollRes.ok) continue;
+    const pollData = await pollRes.json();
+    const status = pollData?.result?.status;
+    if (status === 'DONE') {
+      audioUrl = pollData?.result?.audio_download_url;
+      break;
+    } else if (status === 'FAILED') {
+      throw new Error('Typecast 오디오 합성 실패 (FAILED)');
+    }
+  }
+  if (!audioUrl) throw new Error('Typecast 응답 타임아웃 (10초 초과)');
+
+  // 3. 완성된 오디오 파일 다운로드
+  const audioRes = await fetch(audioUrl);
+  if (!audioRes.ok) throw new Error('Typecast 오디오 파일 다운로드 실패');
+
+  const ab = await audioRes.arrayBuffer();
+  if (ab.byteLength < 100) throw new Error('Typecast 오디오 데이터 용량 너무 작음');
 
   const buf = await audioCtx.decodeAudioData(ab.slice(0));
   if (!buf || buf.duration < 0.05) throw new Error('Typecast 빈 오디오');
