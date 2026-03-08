@@ -4,6 +4,7 @@ import { useVideoStore } from '../store/videoStore.js';
 import { getAudioCtx } from '../engine/tts.js';
 import { downloadBlob, sanitizeName } from '../engine/utils.js';
 import { firebaseUploadVideo } from '../engine/firebase.js';
+import { renderFrameToCtx, ASPECT_MAP_EX } from './VideoPlayer.jsx';
 import * as Mp4Muxer  from 'mp4-muxer';
 import * as WebmMuxer from 'webm-muxer';
 
@@ -103,12 +104,12 @@ function encodeWav(f32, SR) {
 
 // WebCodecs 내보내기
 async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnText, addToast) {
-  const canvas   = document.querySelector('canvas');
-  if (!canvas) throw new Error('캔버스 없음');
-  const CW = canvas.width, CH = canvas.height;
+  const { loaded, aspectRatio } = useVideoStore.getState();
+  const { CW, CH } = ASPECT_MAP_EX[aspectRatio] || ASPECT_MAP_EX['9:16'];
   const FPS = 30;
-  const totalDur = script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
-  const nFrames  = Math.ceil(totalDur * FPS);
+  const sceneDurs = script.scenes.map(s => (s.duration > 0 && isFinite(s.duration)) ? s.duration : 3);
+  const totalDur  = sceneDurs.reduce((a, b) => a + b, 0);
+  const nFrames   = Math.ceil(totalDur * FPS);
   const VBR = 16_000_000, ABR = 192_000;
 
   setBtnText('코덱 확인 중...');
@@ -188,29 +189,56 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
   });
   videoEnc.configure({ codec: fmt.vc.enc, width: CW, height: CH, bitrate: VBR, framerate: FPS, latencyMode: 'quality', bitrateMode: 'variable' });
 
-  // 프레임 인코딩 — GPU 가속 캔버스 대응을 위해 OffscreenCanvas 중간단계 사용
+  // 프레임 인코딩 — scene별 renderFrameToCtx로 정확한 프레임 렌더
   const snapCanvas = new OffscreenCanvas(CW, CH);
   const snapCtx    = snapCanvas.getContext('2d', { willReadFrequently: true });
+  const renderCtx  = { script, loaded, aspectRatio, restaurantName };
 
-  for (let f = 0; f < nFrames; f++) {
-    snapCtx.clearRect(0, 0, CW, CH);
-    snapCtx.drawImage(canvas, 0, 0);
-    const vf = new VideoFrame(snapCanvas, {
-      timestamp: Math.round(f * 1_000_000 / FPS),
-      duration:  Math.round(1_000_000 / FPS),
-    });
-    if (videoEnc.encodeQueueSize > 30) {
-      await new Promise(resolve => {
-        const checkQ = () => videoEnc.encodeQueueSize <= 10 ? resolve() : setTimeout(checkQ, 10);
-        checkQ();
-      });
+  let globalFrame = 0;
+  for (let si = 0; si < script.scenes.length; si++) {
+    const dur          = sceneDurs[si];
+    const nSceneFrames = Math.ceil(dur * FPS);
+    const media        = loaded?.[(script.scenes[si].idx ?? 0) % Math.max(loaded?.length || 1, 1)] || null;
+
+    // 비디오는 씨렐 시작 위치로 seek
+    if (media?.type === 'video' && media.src && !media.src._loadFailed) {
+      media.src.pause();
+      media.src.currentTime = 0;
+      await new Promise(r => { media.src.onseeked = r; setTimeout(r, 200); });
     }
-    videoEnc.encode(vf, { keyFrame: f % FPS === 0 });
-    vf.close();
-    if (f % 12 === 0) {
-      const pct = Math.round(f / nFrames * (pcm ? 65 : 90));
-      setBtnText(`인코딩 중... ${pct}%`);
-      await new Promise(r => setTimeout(r, 0));
+
+    for (let f = 0; f < nSceneFrames; f++) {
+      const prog = nSceneFrames > 1 ? f / (nSceneFrames - 1) : 0;
+
+      // 비디오 프레임 seek (비율 기준)
+      if (media?.type === 'video' && media.src && !media.src._loadFailed) {
+        const targetTime = (media.src.duration || dur) * Math.min(prog, 0.99);
+        if (Math.abs(media.src.currentTime - targetTime) > 0.08) {
+          await new Promise(r => { media.src.currentTime = targetTime; media.src.onseeked = r; setTimeout(r, 120); });
+        }
+      }
+
+      renderFrameToCtx(snapCtx, renderCtx, si, prog, Math.min(prog, 1));
+
+      const vf = new VideoFrame(snapCanvas, {
+        timestamp: Math.round(globalFrame * 1_000_000 / FPS),
+        duration:  Math.round(1_000_000 / FPS),
+      });
+      if (videoEnc.encodeQueueSize > 30) {
+        await new Promise(resolve => {
+          const checkQ = () => videoEnc.encodeQueueSize <= 10 ? resolve() : setTimeout(checkQ, 10);
+          checkQ();
+        });
+      }
+      videoEnc.encode(vf, { keyFrame: globalFrame % FPS === 0 });
+      vf.close();
+
+      if (globalFrame % 15 === 0) {
+        const pct = Math.round(globalFrame / nFrames * (pcm ? 65 : 90));
+        setBtnText(`인코딩 중... ${pct}%`);
+        await new Promise(r => setTimeout(r, 0));
+      }
+      globalFrame++;
     }
   }
   await videoEnc.flush(); videoEnc.close();

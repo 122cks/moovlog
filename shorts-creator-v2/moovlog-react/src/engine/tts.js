@@ -157,19 +157,17 @@ export async function fetchTypeCastTTS(text) {
 }
 
 // ─── Gemini TTS 재시도 래퍼 ──────────────────────────────
-// 오디오 출력을 지원하는 모델만 사용 (2.5-pro/flash는 텍스트 전용)
+// AUDIO 모달리티를 지원하는 실제 TTS 전용 모델만 사용
+// gemini-2.0-flash-exp / gemini-2.5-flash-exp / gemini-2.0-flash 는 audio 미지원 (404/400)
 const TTS_CONFIG = {
   models: [
-    'gemini-2.5-flash-preview-tts',         // 1순위: TTS 전용 최신 모델
-    'gemini-2.0-flash-exp',                  // 2순위: 실험적 오디오 지원
-    'gemini-2.0-flash-preview-audio-generation', // 3순위
-    'gemini-2.5-flash-exp',                  // 4순위: 실험적 플래시
-    'gemini-2.0-flash',                      // 5순위
+    'gemini-2.5-flash-preview-tts',   // 1순위: TTS 전용 100/day 무료
+    'gemini-2.5-pro-preview-tts',     // 2순위: Pro TTS 폴백
   ],
   voices:     ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'],
-  maxRetry:   5,
-  retryDelay: 2000,
-  sceneDelay: 2500,
+  maxRetry:   2,
+  retryDelay: 4000,
+  sceneDelay: 3000,
 };
 
 export async function fetchTTSWithRetry(text, sceneIdx) {

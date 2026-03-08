@@ -9,9 +9,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 );
 
-// Service Worker 등록
+// Service Worker 등록 — 상대 경로로 올바른 scope 사용
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js', { scope: '/moovlog/shorts-creator/' }).catch(() => {});
   });
 }

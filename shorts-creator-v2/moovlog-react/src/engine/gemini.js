@@ -3,9 +3,11 @@
 
 import { useVideoStore, TEMPLATE_HINTS, HOOK_HINTS, VIRAL_TRENDS } from '../store/videoStore.js';
 
-let geminiKey = '';
+// 고정 API 키 (미리터닝 없이도 동작 보장)
+const BUILT_IN_KEY = 'AIzaSyDzYoTeyFdOO8LuSeVYD-iF5_27Cxok_nc';
+let geminiKey = BUILT_IN_KEY;
 
-export function setGeminiKey(key) { geminiKey = key; }
+export function setGeminiKey(key) { geminiKey = key || BUILT_IN_KEY; }
 export function getGeminiKey() { return geminiKey; }
 export function hasGeminiKey() { return !!geminiKey; }
 

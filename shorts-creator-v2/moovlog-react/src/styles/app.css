@@ -307,3 +307,36 @@ html, body {
 /* Tag wrap in blog SNS tab */
 .blog-tag-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
 .blog-tag { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1); border-radius: 50px; padding: 3px 10px; font-size: .72rem; color: var(--text2); }
+
+/* ── Galaxy S25+ / 모바일 최적화 (≤ 520px) ─────────────── */
+@media (max-width: 520px) {
+  /* 헤더 */
+  .header-inner { padding: 0 4px; }
+  .logo-title { font-size: .92rem; }
+
+  /* 카드 패딩 줄이기 */
+  .app-main { padding: 0 10px 100px; }
+  .card { padding: 16px 12px; }
+  .card-label h2 { font-size: .88rem; }
+
+  /* 폰 모킹업 — 전체 너비 사용 */
+  .phone-wrap { flex-direction: column; align-items: center; gap: 10px; }
+  .phone { width: 100%; max-width: 340px; }
+  /* 사이드 버튼 — 폰 아래 가로 나열 */
+  .reel-side { display: flex; flex-direction: row; gap: 14px; justify-content: center; margin-top: 4px; }
+  .yt-btn-item { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .yt-avatar-wrap { display: none; } /* 모바일에서 아바타 숨김 */
+
+  /* 버튼/탭 터치 영역 확대 */
+  .dl-btn { padding: 16px; font-size: .96rem; }
+  .app-tab-btn { padding: 14px 4px; font-size: .84rem; }
+  .tpl-chip { padding: 8px 14px; font-size: .78rem; }
+  .ratio-btn { padding: 11px 4px; font-size: .86rem; }
+
+  /* SNS 카드 */
+  .sns-text { font-size: .75rem; }
+
+  /* 씬 카드 */
+  .scard { padding: 10px; }
+  .scard-sub { font-size: .84rem; }
+}

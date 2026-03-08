@@ -510,3 +510,30 @@ function drawTransition(ctx, store, fi, t, loaded, aspectRatio, CW, CH, SCALE, s
   drawMedia(ctx, m2, sc2?.effect, 0, CW, CH, SCALE);
   ctx.restore();
 }
+
+// ── 외부 렌더 API (ExportPanel에서 씬별 프레임 렌더에 사용) ──
+export const ASPECT_MAP_EX = {
+  '9:16':  { CW: 1080, CH: 1920 },
+  '1:1':   { CW: 1080, CH: 1080 },
+  '16:9':  { CW: 1920, CH: 1080 },
+};
+
+export function renderFrameToCtx(ctx, { script, loaded, aspectRatio, restaurantName }, si, prog, subAnim) {
+  const { CW, CH } = ASPECT_MAP_EX[aspectRatio] || ASPECT_MAP_EX['9:16'];
+  const SCALE = Math.min(CW, CH) / 720;
+  const sc = script?.scenes?.[si];
+  if (!sc) return;
+  const media = loaded?.[(sc.idx ?? 0) % Math.max(loaded?.length || 1, 1)] || null;
+
+  ctx.clearRect(0, 0, CW, CH);
+  drawMedia(ctx, media, sc.effect, prog, CW, CH, SCALE);
+  drawVignetteGrad(ctx, CW, CH);
+  drawChannelTop(ctx, restaurantName, CW, CH, SCALE);
+  drawSubtitle(ctx, sc, subAnim, CW, CH, SCALE);
+
+  if (prog < 0.10) {
+    const flashT = 1 - prog / 0.10;
+    ctx.fillStyle = `rgba(255,255,255,${flashT * 0.45})`;
+    ctx.fillRect(0, 0, CW, CH);
+  }
+}

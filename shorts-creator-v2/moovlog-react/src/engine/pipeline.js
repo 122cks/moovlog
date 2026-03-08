@@ -43,6 +43,15 @@ export async function startMake() {
   // 원본 파일 Firebase 백그라운드 업로드
   firebaseUploadOriginals(files, restaurantName).catch(() => {});
 
+  // 화면 꺼짐 방지 (Wake Lock API) — 생성 중 휴대폰 꺼져도 계속 진행
+  let _wakeLock = null;
+  try {
+    if ('wakeLock' in navigator) {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      console.log('[WakeLock] 화면 잠금 방지 활성화');
+    }
+  } catch (_wlErr) { /* 지원 안 해도 계속 진행 */ }
+
   try {
     // ── STEP 1: Vision Analysis ────────────────────────────
     setPipeline(1, 'AI 이미지 분석 + 스타일 자동 선택 중...', 'AI가 최적의 템플릿과 훅을 찾고 있습니다');
@@ -132,6 +141,9 @@ export async function startMake() {
     hidePipeline();
     console.error('[startMake]', err);
     addToast('오류: ' + (err?.message || String(err) || '알 수 없는 오류'), 'err');
+  } finally {
+    // Wake Lock 해제
+    if (_wakeLock) { _wakeLock.release().catch(() => {}); _wakeLock = null; }
   }
 }
 

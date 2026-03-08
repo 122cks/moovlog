@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "postbuild": "node -e \"const fs=require('fs');['manifest.json','icon-192.png','icon-512.png'].forEach(f=>{try{fs.copyFileSync('public/'+f,'dist/'+f);console.log('copied',f)}catch(e){console.warn('copy skip:',f,e.message)}})\"",
+    "postbuild": "node -e \"const fs=require('fs');['manifest.json','icon-192.png','icon-512.png','sw.js'].forEach(f=>{try{fs.copyFileSync('public/'+f,'dist/'+f);console.log('copied',f)}catch(e){console.warn('copy skip:',f,e.message)}})\"",
     "preview": "vite preview",
     "deploy": "npm run build && gh-pages -d dist"
   },
