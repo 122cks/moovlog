@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v32.1 (20260309-1430)';
+const APP_VERSION  = 'v32.2 (20260309-1800)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -232,11 +232,11 @@ function getTplStyle() {
    JSON 템플릿과 연동, drawTrendyText()에서 참조
    ════════════════════════════════════════════════════════════ */
 const videoTemplates = {
-  cinematic:  { font: `900 ${Math.round(72*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#E8E0D0', stroke: '#C8A96E', strokeWidth: 10, shadow: 'rgba(0,0,0,0.7)', highlightColor: '#C8A96E' },
-  viral:      { font: `900 ${Math.round(88*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#D2FF00',  stroke: '#000000', strokeWidth: 14, shadow: 'rgba(0,0,0,0.95)', shadowOffsetY: 8, highlightColor: '#FF2D55' },
-  aesthetic:  { font: `800 ${Math.round(76*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFF5E4', stroke: 'transparent', strokeWidth: 0, shadow: 'rgba(0,0,0,0.5)', highlightColor: '#FFB347', bgColor: 'rgba(0,0,0,0.42)' },
-  mukbang:    { font: `900 ${Math.round(86*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 13, shadow: 'rgba(255,107,53,0.6)', highlightColor: '#FFE033' },
-  vlog:       { font: `700 ${Math.round(72*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 10, shadow: 'rgba(0,0,0,0.6)', highlightColor: '#7FDBFF', bgColor: 'rgba(0,0,0,0.32)' },
+  cinematic:  { font: `900 ${Math.round(64*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#E8E0D0', stroke: '#C8A96E', strokeWidth: 10, shadow: 'rgba(0,0,0,0.7)', highlightColor: '#C8A96E' },
+  viral:      { font: `900 ${Math.round(78*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#D2FF00',  stroke: '#000000', strokeWidth: 16, shadow: 'rgba(0,0,0,0.95)', shadowOffsetY: 10, highlightColor: '#FF2D55' },
+  aesthetic:  { font: `800 ${Math.round(68*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFF5E4', stroke: 'transparent', strokeWidth: 0, shadow: 'rgba(0,0,0,0.5)', highlightColor: '#FFB347', bgColor: 'rgba(0,0,0,0.42)' },
+  mukbang:    { font: `900 ${Math.round(74*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 13, shadow: 'rgba(255,107,53,0.6)', highlightColor: '#FFE033' },
+  vlog:       { font: `700 ${Math.round(62*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 10, shadow: 'rgba(0,0,0,0.6)', highlightColor: '#7FDBFF', bgColor: 'rgba(0,0,0,0.32)' },
   review:     { font: `900 ${Math.round(80*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFFFFF',  stroke: '#000000', strokeWidth: 12, shadow: 'rgba(0,0,0,0.8)', highlightColor: '#FFD700' },
   story:      { font: `800 ${Math.round(76*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#FFF9F0', stroke: '#000000', strokeWidth: 11, shadow: 'rgba(0,0,0,0.7)', highlightColor: '#FF9F7F' },
   info:       { font: `900 ${Math.round(72*SCALE)}px 'Black Han Sans', 'Noto Sans KR'`,  color: '#E0F0FF', stroke: '#000000', strokeWidth: 12, shadow: 'rgba(0,0,0,0.8)', highlightColor: '#00E5FF', bgColor: 'rgba(0,10,30,0.50)' },
@@ -523,12 +523,20 @@ async function startMake() {
         sc.duration = isTrend.durations[i];
         if (!sc.effect && isTrend.effect) sc.effect = isTrend.effect[i % isTrend.effect.length];
       } else if (buf && buf.duration > 0) {
-        const minDur = (i === 0) ? 1.0 : 1.5; // 첫 씬 (i=0): 1초, 나머지: 1.5초 최소값
-        sc.duration = Math.max(minDur, Math.round((buf.duration + 0.15) * 10) / 10);
+        // [싱크 개선] 오디오 끝난 후 0.4초 여유 + 최소 2.0초 보장 (자막이 사라지기 전에 씬 넘어가는 버그 수정)
+        const minDur = (i === 0) ? 2.0 : 2.0;
+        const audioPad = buf.duration + 0.4; // 오디오 길이 + 0.4초 여유
+        sc.duration = Math.max(minDur, Math.round(audioPad * 10) / 10);
+      } else {
+        // 오디오 없는 씬: AI가 준 duration 유지, 없으면 3초 기본값
+        sc.duration = Math.max(2.0, sc.duration || 3.0);
       }
-      // caption = narration 텍스트 직접 분할 (AI 자막 무시)
-      const [c1, c2] = splitCaptions(sc.narration || sc.subtitle || '');
-      sc.caption1 = c1; sc.caption2 = c2;
+      // [자막 싱크 개선] caption1/caption2는 AI가 생성한 것 우선 사용
+      // narration 분할은 AI caption이 없을 때만 폴백
+      if (!sc.caption1?.trim()) {
+        const [c1, c2] = splitCaptions(sc.narration || sc.subtitle || '');
+        sc.caption1 = c1; sc.caption2 = c2;
+      }
       // subtitle fallback (씬 카드·레거시 표시용)
       if (!sc.subtitle) sc.subtitle = sc.caption1 || '';
     }
@@ -952,21 +960,11 @@ async function generateAllTTS(scenes) {
 async function fetchTypeCastTTS(text, sceneDuration) {
   if (!text?.trim()) throw new Error('빈 텍스트');
   if (!audioCtx) ensureAudio();
-  const apiKey = _TYPECAST_KEYS[_tcKeyIdx % _TYPECAST_KEYS.length];
+  const apiKey = _TYPECAST_KEYS[_tcKeyIdx];
   if (!apiKey) throw new Error('TYPECAST_401: 사용 가능한 API 키 없음');
-  // 동적 tempo: 씬 길이 대비 나레이션 길이 기준, 템플릿 기반 최솟값과 상한 1.45 적용
-  const _TEMPO_BASE = { cinematic: 1.10, aesthetic: 1.12, story: 1.12, vlog: 1.15, review: 1.18, info: 1.18, viral: 1.25, mukbang: 1.22 };
-  const _tempoBase  = _TEMPO_BASE[selectedTemplate] ?? 1.18;
-  let _tcTempo = _tempoBase;
-  if (sceneDuration > 0 && text.length > 0) {
-    const KO_CPS   = 6.5;                    // 한국어 평균 발화 속도 (글자/초)
-    const estSecs  = text.length / KO_CPS;   // 1.0배속 기준 예상 발화 시간
-    const needed   = estSecs / sceneDuration; // 씬 안에 넣으려면 필요한 배속
-    _tcTempo = Math.min(Math.max(needed * 1.05, _tempoBase), 1.45); // 5% 여유 + 최솟값·최댓값 클램프
-  }
-  console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_TYPECAST_KEYS.length} 사용 중... tempo=${_tcTempo.toFixed(2)}`);
+  console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_TYPECAST_KEYS.length} 사용 중...`);
 
-  // 1. 합성 요청 (7초 이상 대기 시 강제 중단 → 다음 키로 넘어감)
+  // 1. 합성 요청 (8초 이상 대기 시 강제 중단 → 다음 키로 넘어감)
   const res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
@@ -976,15 +974,15 @@ async function fetchTypeCastTTS(text, sceneDuration) {
       model:     'ssfm-v30',
       language:  'kor',
       prompt:    { emotion_type: 'friendly' },
-      output:    { volume: 100, audio_pitch: 1, audio_tempo: _tcTempo, audio_format: 'wav' },
+      output:    { volume: 100, audio_pitch: 1, audio_tempo: 1.25, audio_format: 'wav' },
     }),
-  }, 7000);
+  }, 8000);
 
   // 💡 에러 상태를 caller에게 정확히 전달 → 즉시 다음 키로 로테이션 유도
   if (!res.ok) {
     const _errData = await res.json().catch(() => ({}));
     const _errMsg  = _errData?.result?.message || `HTTP ${res.status}`;
-    throw new Error(`TYPECAST_ERR_${res.status}: ${_errMsg}`);
+    throw new Error(`TYPECAST_FAIL_${res.status}: ${_errMsg}`);
   }
 
   const data = await res.json();
@@ -1370,11 +1368,9 @@ function tick() {
     const _ytFill = document.getElementById('ytProgressFill');
     if (_ytFill) _ytFill.style.width = pct + '%';
 
-    const _audioBuf  = S.audioBuffers?.[S.scene];
-    const _audioDur  = _audioBuf?.duration ?? null;
-    // [FIX] 오디오가 씬보다 짧을 때만 오디오 비율 적용, 아니면 씬 끝까지 자막 유지
-    const _subTarget = (_audioDur && _audioDur < dur) ? Math.max(_audioDur / dur, 0.40) : 1.0;
-    S.subAnimProg    = Math.min(prog / _subTarget, 1);
+    // [FIX] 자막은 씬 전체(1.0)에 걸쳐 표시 — 오디오가 짧아도 자막은 씬 끝까지 유지
+    // cap1→cap2 전환은 drawSubtitle() 내부의 switchPt로 제어
+    S.subAnimProg    = Math.min(prog, 1);
 
     // ── 렌더링 (에러가 나도 씬 전환 로직에 영향 없도록 별도 try/catch)
     const TD = Math.min(0.28, dur * 0.15);
@@ -1398,15 +1394,11 @@ function tick() {
         // � 스마트 씬 점프: 단일 영상은 씬 비율 타임스탬프로 강제 점프, 멀티 클립은 교체 시 0초
         const _nextMedia = getMedia(S.script.scenes[S.scene]);
         if (_nextMedia?.type === 'video' && _nextMedia.src) {
-          if (S.files.length === 1) {
-            // 🚀 Proportional Sync: 각 씬의 duration 합계 기반 정확한 비율 점프
-            const _totalDur = S.script.scenes.reduce((a, sc) => a + (sc.duration > 0 ? sc.duration : 3), 0);
-            const _elapsed  = S.script.scenes.slice(0, S.scene).reduce((a, sc) => a + (sc.duration > 0 ? sc.duration : 3), 0);
-            const _vidDur = isFinite(_nextMedia.src.duration) ? _nextMedia.src.duration : 0;
-            if (_vidDur > 0 && _totalDur > 0) _nextMedia.src.currentTime = (_elapsed / _totalDur) * _vidDur;
-          } else if (_prevMedia !== _nextMedia) {
-            _nextMedia.src.currentTime = 0;
-          }
+          // 🚀 Proportional Sync: 모든 영상에 씬 비율 타임스탬프로 강제 점프
+          const _totalDur = S.script.scenes.reduce((a, sc) => a + (sc.duration > 0 ? sc.duration : 3), 0);
+          const _elapsed  = S.script.scenes.slice(0, S.scene).reduce((a, sc) => a + (sc.duration > 0 ? sc.duration : 3), 0);
+          const _vidDur = isFinite(_nextMedia.src.duration) ? _nextMedia.src.duration : 0;
+          if (_vidDur > 0 && _totalDur > 0) _nextMedia.src.currentTime = (_elapsed / _totalDur) * _vidDur;
         }
         if (!S.muted) playSceneAudio(S.scene);
       } else {
@@ -1716,18 +1708,20 @@ function drawSubtitle(sc, animProg) {
   let text, localAp;
   if (cap2 && animProg >= switchPt) {
     text    = cap2;
-    localAp = Math.min((animProg - switchPt) / (1.0 - switchPt), 1);
+    // cap2 구간: switchPt~1.0 → 0~1 정규화 (빠른 팝인)
+    localAp = Math.min((animProg - switchPt) / Math.max(1.0 - switchPt, 0.1), 1);
   } else {
     text    = cap1;
-    localAp = cap2 ? Math.min(animProg / switchPt, 1) : animProg;
+    // cap1 구간: 0~switchPt → 0~1 정규화
+    localAp = cap2 ? Math.min(animProg / Math.max(switchPt, 0.1), 1) : animProg;
   }
 
   ctx.save();
 
-  // 자막 글자 수가 많으면 화면 밖으로 나가지 않도록 자동 축소 (최소 0.6배)
+  // 자막 글자 수가 많으면 화면 밖으로 나가지 않도록 자동 축소 (최소 0.55배)
   const textLen = text.replace(/\s/g, '').length;
-  if (textLen > 10) {
-    const shrink = Math.max(0.60, 10 / textLen);
+  if (textLen > 8) {
+    const shrink = Math.max(0.55, 8 / textLen);
     ctx.translate(CW / 2, CH / 2);
     ctx.scale(shrink, shrink);
     ctx.translate(-CW / 2, -CH / 2);
@@ -1787,8 +1781,8 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
   let wM = words.map(w => ctx.measureText(w).width);
   const sp = () => sz * 0.26;
   const tot = () => wM.reduce((a, b) => a + b, 0) + sp() * (words.length - 1);
-  if (tot() > CW - SCALE * 50) {
-    sz = Math.max(SCALE * 32, Math.floor(sz * (CW - SCALE * 50) / tot()));
+  if (tot() > CW - SCALE * 120) {
+    sz = Math.max(SCALE * 28, Math.floor(sz * (CW - SCALE * 120) / tot()));
     ctx.font = `900 ${sz}px "Noto Sans KR", Impact, sans-serif`;
     wM = words.map(w => ctx.measureText(w).width);
   }
