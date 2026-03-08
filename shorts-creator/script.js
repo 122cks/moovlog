@@ -94,6 +94,23 @@ function ensureAudio() {
 /* ── Template / Hook 전역 상태 (Instagram/TikTok 스타일) ── */
 let selectedTemplate = 'auto';
 let selectedHook     = 'question';
+
+/* ── 바이럴 트렌드 보반 템플릿 (Beat-Sync) ───────────────── */
+const VIRAL_TRENDS = {
+  viral_fast: {
+    name: '⚡ 0.5초 빠른 비트 (틱톡/릴스)',
+    durations: [1.5, 0.5, 0.5, 0.5, 0.5, 2.0],
+    transition: 'wipe', subtitle_style: 'bold_drop',
+    effect: ['zoom-out', 'pan-left', 'pan-right', 'zoom-in', 'zoom-in-slow', 'drift']
+  },
+  vlog_aesthetic: {
+    name: '☕ 감성 브이로그 (룸투어/카페)',
+    durations: [3.0, 1.2, 1.2, 1.2, 2.5],
+    transition: 'fade', subtitle_style: 'minimal',
+    effect: ['zoom-in-slow', 'drift', 'drift', 'drift', 'float-up']
+  },
+};
+
 const TEMPLATE_HINTS = {
   cinematic:  '시네마틱 스타일: 슬로우 컷, 무디 색감, 영화 같은 구성, 감성 BGM 느낌',
   viral:      '바이럴 스타일: 빠른 컷 전환, FOMO 극대화, "저장 필수" 포맷, 틱톡 트렌딩',
@@ -108,6 +125,7 @@ const TEMPLATE_NAMES = {
   cinematic: '🎬 시네마틱', viral: '🔥 바이럴', aesthetic: '✨ 감성',
   mukbang: '🍜 먹방', vlog: '📹 브이로그', review: '⭐ 리뷰',
   story: '📖 스토리', info: '📊 정보',
+  viral_fast: '⚡ 빠른 비트', vlog_aesthetic: '☕ 감성 브이로그',
 };
 const HOOK_HINTS = {
   question:  '질문형 훅: "이거 진짜야?", "이 가격 실화?", "여기 가봤어?"',
@@ -460,12 +478,18 @@ async function startMake() {
       S.audioBuffers = script.scenes.map(() => null);
       toast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
     }
-    // 오디오 실제 길이로 씬 duration 완전 동기화 (항상 적용)
+    // 오디오 실제 길이로 씬 duration 동기화 + 바이럴 트렌드 보반 강제
+    const isTrend = VIRAL_TRENDS[selectedTemplate];
+
     for (let i = 0; i < script.scenes.length; i++) {
       const sc  = script.scenes[i];
       const buf = S.audioBuffers[i];
-      if (buf && buf.duration > 0) {
-        const minDur = (i === 0) ? 1.0 : 1.5; // 쪵 시 (i=0): 1초, 나머지: 1.5초 최소값
+      if (isTrend && isTrend.durations[i] !== undefined) {
+        // 트렌드 템플릿: 나레이션 길이 무시하고 정해진 박자(초수) 강제
+        sc.duration = isTrend.durations[i];
+        if (!sc.effect && isTrend.effect) sc.effect = isTrend.effect[i % isTrend.effect.length];
+      } else if (buf && buf.duration > 0) {
+        const minDur = (i === 0) ? 1.0 : 1.5; // 첫 씬 (i=0): 1초, 나머지: 1.5초 최소값
         sc.duration = Math.max(minDur, Math.round((buf.duration + 0.15) * 10) / 10);
       }
       // caption = narration 텍스트 직접 분할 (AI 자막 무시)
@@ -583,7 +607,10 @@ async function generateScript(restaurantName, analysis) {
   const pi       = analysis.per_image || [];
   const order    = analysis.recommended_order?.length ? analysis.recommended_order : S.files.map((_, i) => i);
   const imgSummary = pi.map(p => `이미지${p.idx}(${p.type}/감성${p.emotional_score}점): 효과=${p.best_effect}, ${p.suggested_duration}s, "${p.focus}"`).join('\n');
-  const totalTarget = Math.min(Math.max(S.files.length * 3 + 6, 22), 42);
+  const isTrend = VIRAL_TRENDS[selectedTemplate];
+  const totalTarget = isTrend
+    ? isTrend.durations.reduce((a, v) => a + v, 0)
+    : Math.min(Math.max(S.files.length * 3 + 6, 22), 42);
 
   const imgParts = [];
   // 업로드 순서대로 최대 8개 처리 (이미지 + 영상 프레임 혼용)
@@ -600,9 +627,17 @@ async function generateScript(restaurantName, analysis) {
     }
   }
 
+  const trendInstruction = isTrend ? `
+[🚨 바이럴 트렌드 템플릿 강제 규칙 🚨]
+당신은 현재 "${isTrend.name}" 포맷으로 영상을 만들어야 합니다.
+- 무조건 정확히 **${isTrend.durations.length}개의 씬(scenes)**만 생성하세요!
+- 각 씬의 duration은 다음 배열과 정확히 일치해야 합니다: [${isTrend.durations.join(', ')}]
+- duration이 1초 미만인 씬은 말할 시간이 없으므로 narration을 비우거나("") 단어 1개만 넣으세요.
+` : '';
+
   const prompt = `당신은 팔로워 50만+ 한국 맛집 인스타그램·유튜브 Shorts 전문 감독 "무브먼트(MOOVLOG)"입니다.
 인천·서울·부천·경기 맛집 채널 / 매 영상 조회수 10만+ 달성하는 최상위 크리에이터.
-
+${trendInstruction}
 [음식점 정보]
 이름: ${restaurantName}
 분위기: ${analysis.mood || '감성적인'}
