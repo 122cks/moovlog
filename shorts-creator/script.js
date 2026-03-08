@@ -1,12 +1,12 @@
 'use strict';
 /* ============================================================
-   무브먼트 Shorts Creator v7 — script.js
-   Build: 2026-03-07T00:00:00+09:00
+   무브먼트 Shorts Creator v8 — script.js
+   Build: 2026-03-09T00:00:00+09:00
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v26';
-const APP_BUILD_TS = '2026-03-08 KST';
+const APP_VERSION  = 'v27';
+const APP_BUILD_TS = '2026-03-09 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
 const _INJECTED_KEY          = '__GEMINI_KEY__';
@@ -652,7 +652,7 @@ ${imgSummary || '분석 없음'}
 - subtitle_position: "center"|"lower"|"upper"
 - narration: 아래 규칙 엄격 준수
   • 반드시 해당 이미지에서 실제로 보이는 것을 묘사할 것 (메뉴명, 색감, 식감, 굽기, 윤기 등)
-  • 짧고 호흡 있는 구어체. 한 문장 최대 15글자. 문장 2~3개 이내.
+  • 틱톡 호흡: 한 씬 나레이션 총합 15글자 이하 필수. 1~2문장만. 글자 수 초과 금지.
   • 인스타 릴스 느낌: 반말, 감탄, 의성어, 구체적 맛·식감 묘사
   • 이미지 focus 값을 narration에 반드시 반영할 것
   • ✅ 예시(Hook): "이거 실화야. 이 가격에 이게 나온다고."
@@ -1166,7 +1166,7 @@ async function startPlay() {
       highlightScene(0);
     }
   }
-  S.playing = true; S.startTs = null; S.subAnimProg = 0;
+  S.playing = true; S.startTs = null; S.audioStartTs = 0; S.subAnimProg = 0;
   setPlayIcon(true); if (!S.muted) playSceneAudio(S.scene); tick();
 }
 function pausePlay()  { S.playing = false; if (S.raf) cancelAnimationFrame(S.raf); stopAudio(); setPlayIcon(false); }
@@ -1246,7 +1246,8 @@ function tick() {
     if (prog >= 1) {
       if (S.scene < S.script.scenes.length - 1) {
         S.scene++;
-        S.startTs = null; // 다음 틱에서 audioStartTs도 함께 리셋
+        S.startTs = null;
+        S.audioStartTs = 0; // 씬 전환 시 명시적 리셋 — playSceneAudio에서 즉시 재설정됨
         S.subAnimProg = 0;
         highlightScene(S.scene);
         if (!S.muted) playSceneAudio(S.scene);
@@ -1350,7 +1351,7 @@ function renderFrameAtTime(t) {
   let elapsed = 0;
   const sc = S.script.scenes;
   for (let i = 0; i < sc.length; i++) {
-    const dur = sc[i].duration;
+    const dur = (sc[i].duration > 0 && isFinite(sc[i].duration)) ? sc[i].duration : 3;
     if (t < elapsed + dur || i === sc.length - 1) {
       const prog        = Math.max(0, Math.min((t - elapsed) / dur, 1));
       const _ab = S.audioBuffers?.[i]; const _ad = _ab?.duration ?? null;
@@ -2348,7 +2349,7 @@ async function doExportWebCodecs() {
     audioEnc.configure({ codec: fmt.ac.enc, sampleRate: 48000, numberOfChannels: 1, bitrate: 192_000 });
     const CHUNK = 1920; // 40ms @48kHz
     for (let i = 0; i < pcm.length; i += CHUNK) {
-      const slice = new Float32Array(pcm.subarray(i, Math.min(i + CHUNK, pcm.length)));
+      const slice = pcm.slice(i, Math.min(i + CHUNK, pcm.length));
       const ad = new AudioData({
         format: 'f32', sampleRate: 48000, numberOfFrames: slice.length,
         numberOfChannels: 1, timestamp: Math.round(i * 1_000_000 / 48000),
@@ -2433,7 +2434,7 @@ async function exportRenderLoop() {
       const dur  = (sc[si].duration > 0 && isFinite(sc[si].duration)) ? sc[si].duration : 3;
       const el   = (now - ts) / 1000, prog = Math.min(el / dur, 1);
       const _abuf = S.audioBuffers?.[si]; const _adur = _abuf?.duration ?? null;
-      const _stgt = _adur ? Math.min(_adur / dur, 0.95) : 0.70;
+      const _stgt = (_adur && _adur < dur) ? Math.max(_adur / dur, 0.40) : 1.0;
       S.subAnimProg = Math.min(prog / _stgt, 1);
       const TD = Math.min(0.28, dur * 0.15);
       try {
