@@ -450,6 +450,8 @@ async function startMake() {
   D.makeBtn.disabled = true;
   if (D.snsWrap) D.snsWrap.hidden = true;
   updateStepUI(2); showLoad(); ensureAudio();
+  // 모바일 브라우저 오디오 차단 방어: 버튼 클릭 직후 AudioContext를 즉시 resume
+  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
   // 원본 파일을 Firebase Storage에 백그라운드 업로드 (블로킹 없음)
   uploadOriginalsInBackground();
   try {
@@ -765,7 +767,9 @@ async function extractVideoFramesB64(file, count = 4) {
       if (!dur) { URL.revokeObjectURL(url); resolve([]); return; }
       const c = document.createElement('canvas'); c.width = 360; c.height = 640;
       const cx = c.getContext('2d');
-      const frames = [], times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * dur);
+      // 영상 재생 구간과 AI 대본 일치: 처음 2초 내에서만 프레임 추출
+      const sampleDur = Math.min(dur, 2.0);
+      const frames = [], times = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * sampleDur);
       for (const t of times) {
         await new Promise(r => {
           let settled = false;
@@ -1169,9 +1173,9 @@ function playSceneAudio(si, capture = false) {
       S.audioStartTs = audioCtx.currentTime; // resume 완료 후 캡처 — BUG B 수정
     } else {
       S.audioStartTs = audioCtx ? audioCtx.currentTime : 0;
-      // Web Speech 폴백 비활성화 — 로봇 여자 목소리 차단, AI 오디오 없는 씬은 무음 처리
-      // if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
-      console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: 무음 써`);
+      // Web Speech 폴백 — API 실패 시 완전 무음 방지
+      if (!capture && S.script?.scenes?.[si]) playWebSpeech(S.script.scenes[si]);
+      console.warn(`[Audio] 씬 ${si + 1} AI 오디오 없음: Web Speech 폴백 사용`);
     }
   };
   if (audioCtx && audioCtx.state === 'suspended') {
@@ -1357,6 +1361,9 @@ function tick() {
         // S.audioStartTs 리셋 제거 — doStart() 내부에서 resume 완료 후 직접 설정됨 (BUG C 수정)
         S.subAnimProg = 0;
         highlightScene(S.scene);
+        // 씬 전환 시 비디오를 0초로 되감아 재생 시작점 고정
+        const _nextMedia = getMedia(S.script.scenes[S.scene]);
+        if (_nextMedia?.type === 'video' && _nextMedia.src) _nextMedia.src.currentTime = 0;
         if (!S.muted) playSceneAudio(S.scene);
       } else {
         D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
@@ -2312,12 +2319,22 @@ function roundRect(c, x, y, w, h, r) {
 /* ────────────────────────────────────────────────────────────
    씬 카드
    ──────────────────────────────────────────────────────────── */
+// 시간 형식화: 초 -> HH:MM:SS
+function pad2(n) { return String(n).padStart(2, '0'); }
+function formatDuration(sec) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return `${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
+}
 function buildSceneCards() {
   D.sceneList.innerHTML = '';
   S.script.scenes.forEach((s, i) => {
     const d = document.createElement('div'); d.className = 'scard'; d.id = `sc${i}`;
     const capDisplay = s.caption2 ? `${esc(s.caption1 || s.subtitle)} / ${esc(s.caption2)}` : esc(s.caption1 || s.subtitle);
-    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${s.duration}s · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}<button onclick="openMiniEditor(${i})" style="float:right;background:none;border:1px solid #555;border-radius:6px;color:#a78bfa;padding:1px 8px;font-size:.72rem;cursor:pointer;margin-top:-1px;">수정</button></div><div class="scard-sub">${capDisplay}</div><div class="scard-nar">${esc(s.narration)}</div>`;
+    const durText = formatDuration(Math.round(s.duration || 0));
+    d.innerHTML = `<div class="scard-num">SCENE ${i + 1} · ${durText} · #${(s.idx ?? 0) + 1} · ${s.subtitle_style || 'detail'}<button onclick="openMiniEditor(${i})" style="float:right;background:none;border:1px solid #555;border-radius:6px;color:#a78bfa;padding:1px 8px;font-size:.72rem;cursor:pointer;margin-top:-1px;">수정</button></div><div class="scard-sub">${capDisplay}</div><div class="scard-nar">${esc(s.narration)}</div>`;
     D.sceneList.appendChild(d);
   });
 }
