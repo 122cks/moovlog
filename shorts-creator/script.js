@@ -885,7 +885,7 @@ async function fetchTypeCastTTS(text) {
       output: {
         volume:       100,
         audio_pitch:  1,
-        audio_tempo:  1.18,
+        audio_tempo:  1.27, // playbackRate 제거 보상 — TTS 생성 단계에서 직접 속도 제어
         audio_format: 'wav',
       },
     }),
@@ -1107,7 +1107,7 @@ function playSceneAudio(si, capture = false) {
   if (buf && audioCtx) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const src = audioCtx.createBufferSource();
-    src.buffer = buf; src.playbackRate.value = 1.08;
+    src.buffer = buf; src.playbackRate.value = 1.0; // 자막 타이머와 1:1 싱크 — 속도는 Typecast tempo로 제어
     src.connect(audioCtx.destination);
     if (capture && audioMixDest) src.connect(audioMixDest);
     src.start(); S.currentAudio = src;
