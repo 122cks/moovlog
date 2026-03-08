@@ -132,9 +132,19 @@
         <i class="fas fa-store name-icon"></i>
         <input type="text" id="restName" class="name-input" placeholder="예: 을지로 돈부리집" maxlength="40" autocomplete="off" />
       </div>
-      <div class="name-row">
+      <div class="name-row" style="margin-bottom:10px;">
         <i class="fas fa-map-marker-alt name-icon"></i>
         <input type="text" id="location" class="name-input" placeholder="예: 서울 중구 을지로" maxlength="60" autocomplete="off" />
+      </div>
+      <div class="name-row" style="margin-bottom:10px;">
+        <i class="fas fa-key name-icon" style="color:var(--acc2)"></i>
+        <input type="text" id="keywords" class="name-input" placeholder="본문에 넣을 키워드 (예: 인천 맛집, 산곡동 고기집, 점심특선)" maxlength="120" autocomplete="off" />
+      </div>
+      <div style="margin-top:4px;">
+        <textarea id="extraPrompt" rows="3" class="name-input"
+          style="resize:vertical;min-height:72px;padding:12px 14px;line-height:1.7;font-size:14px;"
+          placeholder="추가 지시사항 (선택) — 예: 3인 방문, 웨이팅 30분, 직화 구이 강조, 혼밥 가능 등"
+          maxlength="400"></textarea>
       </div>
     </section>
 
@@ -190,6 +200,7 @@
             본문 (네이버 스마트에디터에 붙여넣기)
             <button class="blog-copy-btn" data-target="blogBody"><i class="fas fa-copy"></i> 복사</button>
           </div>
+          <p style="font-size:12px;color:var(--acc2);margin-bottom:8px;"><i class="fas fa-info-circle"></i> [사진 N] · [영상 N] 표시 위치에 해당 파일을 에디터에 직접 삽입하세요</p>
           <div class="blog-text" id="blogBody" style="min-height:300px;"></div>
         </div>
         <button class="blog-full-copy-btn" id="fullCopyBtn">
@@ -270,6 +281,7 @@
     const D2 = {
       dropArea: g('dropArea'), fileInput: g('fileInput'), thumbGrid: g('thumbGrid'),
       restName: g('restName'), location:  g('location'),
+      keywords: g('keywords'), extraPrompt: g('extraPrompt'),
       makeBtn:  g('makeBtn'),  loadWrap:  g('loadingWrap'),
       loadTitle:g('loadTitle'),loadSub:   g('loadSub'),
       ls1:g('ls1'),ls2:g('ls2'),ls3:g('ls3'),
@@ -328,11 +340,13 @@
 
     async function startBlog() {
       const name = D2.restName.value.trim(), loc = D2.location.value.trim();
+      const kw   = D2.keywords?.value.trim()    || '';
+      const extra= D2.extraPrompt?.value.trim() || '';
       if(!name){toast('음식점 이름을 입력해주세요','err');D2.restName.focus();return;}
       D2.makeBtn.disabled=true;
       D2.loadWrap.hidden=false;
       try {
-        setStep2(1,'이미지 분석 중...','Gemini 2.0 Flash가 사진을 읽습니다');
+        setStep2(1,'이미지 분석 중...','Gemini 2.5 Flash가 사진을 읽습니다');
         const images = files2.filter(f=>f.type==='image').slice(0,6);
         const imgParts=[];
         for(const img of images){
@@ -342,7 +356,7 @@
         doneStep2(1);
 
         setStep2(2,'블로그 포스팅 작성 중...','무브먼트 스타일로 리뷰를 작성합니다');
-        const result = await generateBlog(name,loc,imgParts);
+        const result = await generateBlog(name,loc,imgParts,kw,extra);
         D2.blogTitle.textContent  = result.title    ||'';
         D2.blogBody.textContent   = result.body      ||'';
         D2.snsNaver.textContent   = result.naver_clip_tags    ||'';
@@ -363,24 +377,39 @@
       }
     }
 
-    async function generateBlog(name, loc, imgParts) {
-      const prompt = `당신은 한국의 인기 맛집 블로거 "무브먼트(moovlog)"입니다.
+    async function generateBlog(name, loc, imgParts, kw='', extra='') {
+      // 업로드한 파일 목록(사진/영상 구분) → 본문 삽입 위치 안내
+      const mediaList = files2.map((m,i)=>m.type==='image'?`[사진 ${i+1}]`:`[영상 ${i+1}]`).join(', ');
+      const mediaCount = files2.length;
+      const prompt = `당신은 한국에서 가장 인기 있는 맛집 블로거 "무브먼트(moovlog)"입니다.
 다음 정보와 이미지를 바탕으로 네이버 블로그 포스팅을 작성해주세요.
 
 음식점: ${name}
 위치: ${loc||'(이미지에서 파악)'}
+첨부 파일: ${mediaList||'없음'}  (총 ${mediaCount}개)
+${kw ? `본문에 자연스럽게 녹여야 할 키워드: ${kw}` : ''}
+${extra ? `추가 지시사항: ${extra}` : ''}
 
-[무브먼트 블로그 스타일 가이드]
-- 도입부: 방문 동기·기대감 표현 (친근한 구어체)
-- 음식 묘사: 구체적 맛 표현, 식감, 비주얼 설명
-- 가격·접근성 언급 (이미지에서 파악되면)
-- 솔직한 추천 의견
-- 재방문 의사 표현으로 마무리
-- 이모지 적절히 활용
-- 단락 구분 명확히
+[무브먼트 블로그 스타일 가이드 — 참고 구조]
+① 도입: 방문 동기·설레는 기대감 (친근한 구어체, 이모지 활용)
+② 외관·입구 소개 → [사진 1] 슬롯
+③ 대표 메뉴 소개·메뉴판 → [사진/영상 2] 슬롯
+④ 음식 디테일 묘사 (구체적 맛·식감·비주얼) → [사진/영상 3] 슬롯
+⑤ 가격 정보 + 솔직한 주관적 평가
+⑥ 분위기·서비스 언급 + 추가 사진 (있다면)
+⑦ 재방문 의사 + 결론 + 위치·영업시간 정보
+⑧ 해시태그 (지역명 키워드 2~3개 포함)
+
+[중요 규칙]
+- 첨부 파일이 있으면 본문의 적절한 위치에 [사진 N] 또는 [영상 N] 마커를 반드시 삽입 (파일 목록 순서대로)
+  예) 외관 소개 다음 줄에 [사진 1], 음식 묘사 다음 줄에 [사진 2] 형식
+- 키워드는 한 문장에 하나씩 자연스럽게 (광고성 나열 금지)
+- 단락 구분은 \\n\\n, 촛불 명조 문체 기피
+- 이모지 적당히 (과도하면 안 됨)
+- 네이버 태그: 지역+음식 위주, #${name.replace(/\s/g,'')} 포함${kw?`, (${kw}) 관련 태그 포함`:''}
 
 [플랫폼별 태그]
-- naver_clip_tags: 300자 이내, #맛집 #${name.replace(/\s/g,'')} 등 지역·음식 위주
+- naver_clip_tags: 300자 이내
 - youtube_shorts_tags: 100자 이내
 - instagram_caption: 소개 2~3줄 + 해시태그 10개
 - tiktok_tags: 핵심 5개
@@ -388,7 +417,7 @@
 JSON만 반환:
 {
   "title": "블로그 제목 (클릭률 높은 제목)",
-  "body": "블로그 본문 전체\\n\\n단락은 \\n\\n으로 구분",
+  "body": "블로그 본문 전체\\n\\n[사진 1]\\n\\n다음 단락...\\n\\n[사진 2]\\n\\n...",
   "naver_clip_tags": "#태그들",
   "youtube_shorts_tags": "#태그들",
   "instagram_caption": "캡션\\n\\n#태그들",

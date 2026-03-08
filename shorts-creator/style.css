@@ -512,7 +512,7 @@ html, body {
   font-size: 13px; font-weight: 700; color: #f0f0f0;
   line-height: 1.45; margin-bottom: 7px;
   text-shadow: 0 1px 6px rgba(0,0,0,0.8);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .yt-music-row {
   display: flex; align-items: center; gap: 6px; overflow: hidden;

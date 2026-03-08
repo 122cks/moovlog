@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v22';
+const APP_VERSION  = 'v23';
 const APP_BUILD_TS = '2026-03-07 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -1135,44 +1135,45 @@ function hideRepeatPrompt() {
 function tick() {
   const run = now => {
     if (!S.playing) return;
+    // ── 씬 시작 타임스탬프 초기화
+    if (S.startTs === null) S.startTs = now;
+    const sc = S.script?.scenes?.[S.scene];
+    if (!sc) { S.playing = false; setPlayIcon(false); return; }
+    // dur 방어: undefined/0/NaN → 기본 3초
+    const dur  = (sc.duration > 0 && isFinite(sc.duration)) ? sc.duration : 3;
+    const el   = (now - S.startTs) / 1000;
+    const prog = Math.min(el / dur, 1);
+    // 진행바 업데이트
+    const total = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
+    const done  = S.script.scenes.slice(0, S.scene).reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
+    const pct   = Math.min((done + el) / total * 100, 100);
+    D.vProg.style.width = pct + '%';
+    if (D.vProgText) D.vProgText.textContent = Math.floor(pct) + '%';
+    const _ytFill = document.getElementById('ytProgressFill');
+    if (_ytFill) _ytFill.style.width = pct + '%';
+    const _audioBuf  = S.audioBuffers?.[S.scene];
+    const _audioDur  = _audioBuf?.duration ?? null;
+    const _subTarget = _audioDur ? Math.min(_audioDur / dur, 0.95) : 0.70;
+    S.subAnimProg    = Math.min(prog / _subTarget, 1);
+    // ── 렌더링 (에러가 나도 씬 전환 로직에 영향 없도록 별도 try/catch)
+    const TD = Math.min(0.28, dur * 0.15);
     try {
-      if (S.startTs === null) S.startTs = now;
-      const sc = S.script?.scenes?.[S.scene];
-      if (!sc) { S.playing = false; setPlayIcon(false); return; }
-      // dur 방어: undefined/0/NaN → 기본 3초 (첫 컷 멈춤 버그 근본 원인)
-      const dur  = (sc.duration > 0 && isFinite(sc.duration)) ? sc.duration : 3;
-      const el   = (now - S.startTs) / 1000;
-      const prog = Math.min(el / dur, 1);
-      const total = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
-      const done  = S.script.scenes.slice(0, S.scene).reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
-      const pct   = Math.min((done + el) / total * 100, 100);
-      D.vProg.style.width = pct + '%';
-      if (D.vProgText) D.vProgText.textContent = Math.floor(pct) + '%';
-      // 유튜브 숏츠 인라인 진행바 동기화
-      const _ytFill = document.getElementById('ytProgressFill');
-      if (_ytFill) _ytFill.style.width = pct + '%';
-      const _audioBuf  = S.audioBuffers?.[S.scene];
-      const _audioDur  = _audioBuf?.duration ?? null;
-      const _subTarget = _audioDur ? Math.min(_audioDur / dur, 0.95) : 0.70;
-      S.subAnimProg    = Math.min(prog / _subTarget, 1);
-      // TD: dur이 짧을 때 비율 조정 (0.28s 고정 제거)
-      const TD = Math.min(0.28, dur * 0.15);
       if (el >= dur - TD && S.scene < S.script.scenes.length - 1)
         drawTransition(S.scene, Math.min((el - (dur - TD)) / TD, 1));
       else renderFrame(S.scene, prog);
-      if (prog >= 1) {
-        if (S.scene < S.script.scenes.length - 1) {
-          S.scene++; S.startTs = now; S.subAnimProg = 0; highlightScene(S.scene);
-          if (!S.muted) playSceneAudio(S.scene);
-        } else {
-          D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
-          showRepeatPrompt();
-          return;
-        }
-      }
     } catch (err) {
-      // 렌더링 에러가 RAF 루프를 죽이지 않도록 catch
       console.error('[tick] 렌더링 에러:', err.message, err.stack?.split('\n')?.[1]);
+    }
+    // ── 씬 전환 (렌더링 에러와 무관하게 항상 실행)
+    if (prog >= 1) {
+      if (S.scene < S.script.scenes.length - 1) {
+        S.scene++; S.startTs = now; S.subAnimProg = 0; highlightScene(S.scene);
+        if (!S.muted) playSceneAudio(S.scene);
+      } else {
+        D.vProg.style.width = '100%'; S.playing = false; stopAudio(); setPlayIcon(false);
+        showRepeatPrompt();
+        return;
+      }
     }
     S.raf = requestAnimationFrame(run);
   };
@@ -2311,13 +2312,18 @@ async function exportRenderLoop() {
   return new Promise(resolve => {
     const frame = now => {
       if (!ts) ts = now;
-      const dur = sc[si].duration, el = (now - ts) / 1000, prog = Math.min(el / dur, 1);
+      const dur  = (sc[si].duration > 0 && isFinite(sc[si].duration)) ? sc[si].duration : 3;
+      const el   = (now - ts) / 1000, prog = Math.min(el / dur, 1);
       const _abuf = S.audioBuffers?.[si]; const _adur = _abuf?.duration ?? null;
       const _stgt = _adur ? Math.min(_adur / dur, 0.95) : 0.70;
       S.subAnimProg = Math.min(prog / _stgt, 1);
-      const TD = 0.28;
-      if (el >= dur - TD && si < sc.length - 1) drawTransition(si, (el - (dur - TD)) / TD);
-      else renderFrame(si, prog);
+      const TD = Math.min(0.28, dur * 0.15);
+      try {
+        if (el >= dur - TD && si < sc.length - 1) drawTransition(si, Math.min((el - (dur - TD)) / TD, 1));
+        else renderFrame(si, prog);
+      } catch (err) {
+        console.warn('[exportRenderLoop] 렌더 에러:', err.message);
+      }
       if (prog >= 1) {
         if (si < sc.length - 1) { si++; ts = now; S.subAnimProg = 0; playSceneAudio(si, true); }
         else { resolve(); return; }
