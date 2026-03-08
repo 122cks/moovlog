@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v31 (20260308-1700)';
+const APP_VERSION  = 'v32 (20260309-1100)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -947,7 +947,10 @@ async function fetchTypeCastTTS(text) {
   // 💡 호출 직전 현재 인덱스에 맞는 키를 확실히 가져옴
   const apiKey = _TYPECAST_KEYS[_tcKeyIdx % _TYPECAST_KEYS.length];
   if (!apiKey) throw new Error('TYPECAST_401: 사용 가능한 API 키 없음');
-  console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_TYPECAST_KEYS.length} 사용 중...`);
+  // 템플릿별 가변 TTS 테스크: 괐성/시네마는 느리게, 바이럴/먹방은 빠르게
+  const _TEMPO_MAP = { cinematic: 1.12, aesthetic: 1.15, story: 1.15, vlog: 1.18, review: 1.20, info: 1.22, viral: 1.30, mukbang: 1.28 };
+  const _tcTempo = _TEMPO_MAP[selectedTemplate] ?? 1.22;
+  console.log(`[Typecast 시도] 키 #${_tcKeyIdx + 1}/${_TYPECAST_KEYS.length} 사용 중... tempo=${_tcTempo}`);
 
   // 1. 합성 요청 (7초 이상 대기 시 강제 중단 → 다음 키로 넘어감)
   const res = await fetchWithTimeout('https://api.typecast.ai/v1/text-to-speech', {
@@ -959,7 +962,7 @@ async function fetchTypeCastTTS(text) {
       model:     'ssfm-v30',
       language:  'kor',
       prompt:    { emotion_type: 'friendly' },
-      output:    { volume: 100, audio_pitch: 1, audio_tempo: 1.27, audio_format: 'wav' },
+      output:    { volume: 100, audio_pitch: 1, audio_tempo: _tcTempo, audio_format: 'wav' },
     }),
   }, 7000);
 
@@ -1565,11 +1568,23 @@ function drawMedia(media, effect, prog) {
 
 /* ── 시네마틱 컬러 그레이드 ──────────────────────────────── */
 function drawColorGrade(prog) {
-  // 연한 웜 톤 오버레이 (음식 영상 식욕 자극용)
   ctx.save();
-  ctx.globalAlpha = 0.04;
-  ctx.fillStyle = 'rgba(255, 170, 60, 1)';
-  ctx.fillRect(0, 0, CW, CH);
+  // 1. 라이트릭 (Light Leak) — 좌측 상단 오렌지빛 팝업
+  const leak = ctx.createRadialGradient(CW * 0.1, CH * 0.05, 0, CW * 0.1, CH * 0.05, CW * 0.70);
+  leak.addColorStop(0.0, 'rgba(255,140,50,0.22)');
+  leak.addColorStop(0.5, 'rgba(255,100,30,0.06)');
+  leak.addColorStop(1.0, 'rgba(0,0,0,0)');
+  ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = 1.0;
+  ctx.fillStyle = leak; ctx.fillRect(0, 0, CW, CH);
+  // 2. 대비 Overlay — 하이라이트 강화
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CW, CH);
+  // 3. 필름 그레인
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.028;
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#000000';
+    ctx.fillRect(Math.random() * CW, Math.random() * CH, Math.random() * 2 * SCALE, Math.random() * 2 * SCALE);
+  }
   ctx.restore();
 }
 
@@ -1724,7 +1739,9 @@ function drawSubtitle(sc, animProg) {
    공통 헬퍼
    ────────────────────────────────────────────────────────── */
 function subY(pos) {
-  return pos === 'upper' ? CH * 0.20 : pos === 'center' ? CH * 0.50 : CH - 195 * SCALE;
+  // Safe Zone: 유튜브/인스타 UI(좋아요·댓글·공유) 가림 25% 밖으로 고정
+  const safeBot = CH * 0.745; // 하단 25.5%를 비 UI-safe 영역
+  return pos === 'upper' ? CH * 0.20 : pos === 'center' ? CH * 0.50 : safeBot;
 }
 function subBg(cy, h, alpha) {
   const grad = ctx.createLinearGradient(0, cy - h, 0, cy + h);
@@ -1788,6 +1805,17 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     // 자동 키워드 강조 감지
     const KEYWORDS = ['진짜', '대박', '미쳤다', '역대급', '최고', '꼭', '실화', '잔낙', '업업', '얼마'];
     const isKeyword = KEYWORDS.some(k => word.includes(k));
+    // 바이럴 이모지 자동 매핑 (음식 자막 전용)
+    const EMOJI_MAP = {
+      '육즈': '🥩', '소고기': '🥩', '안심': '🥩', '돼지': '🥩',
+      '흔식': '🍜', '라멘': '🍜', '국수': '🍜', '마른': '🍜',
+      '치즈': '🧀', '피자': '🍕', '뺄기': '🥞', '헴버거': '🍔',
+      '샤룈': '🥗', '연어': '🐟', '새우': '🦐', '변덮': '🦑',
+      '케익': '🍰', '디저트': '🍨', '아이스크림': '🍨',
+      '미쳤다': '🔥', '대박': '🔥', '진짜': '✨', '실화': '😱',
+      '최고': '🏆', '역대급': '🏆', '릹': '😋', '맛있': '😋',
+    };
+    const matchedEmoji = Object.entries(EMOJI_MAP).find(([k]) => word.includes(k))?.[1] || null;
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(wx, cy); ctx.scale(scl, scl); ctx.rotate(rot);
@@ -1812,6 +1840,16 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
       ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
       ctx.fillStyle = color;
       ctx.fillText(word, -wM[i] / 2, 0);
+    }
+    // 이모지 팝업: 키워드에 해당하면 단어 위쪽 페이드인
+    if (matchedEmoji && wProg > 0.6) {
+      const eAlpha = Math.min((wProg - 0.6) / 0.2, 1);
+      ctx.globalAlpha = eAlpha;
+      ctx.font = `${sz * 0.75}px serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      // ctx.shadowColor 제거 (이모지 그림자 방지)
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+      ctx.fillText(matchedEmoji, wM[i] / 2 + sz * 0.45, -sz * 0.75);
     }
     ctx.restore();
   });
