@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v31 (20260308-1430)';
+const APP_VERSION  = 'v31 (20260308-1530)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -834,10 +834,10 @@ const TYPECAST_VOICE_ID = localStorage.getItem('moovlog_typecast_voice') || 'tc_
 const TTS_CONFIG = {
   models:      ['gemini-2.5-flash-preview-tts', 'gemini-2.0-flash-exp', 'gemini-1.5-flash'],
   voices:      ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede'],
-  concurrency: 1,    // 한 번에 하나씩 순서 처리 (429 에러 방지)
-  retryDelay:  1500, // 실패 시 재시도 대기 ms
-  maxRetry:    2,
-  sceneDelay:  1000, // 각 씬 시작 전 1초 딜레이 (연속 요청 방지)
+  concurrency: 1,
+  retryDelay:  3000, // 실패 시 3초 대기 (구글 과부하 방지)
+  maxRetry:    4,    // 4번까지 끈질기게 재시도
+  sceneDelay:  3000, // 씬마다 3초 휴식 (구글 서버 차단 회피)
 };
 
 /* ── 나레이션 타입캐스트 스타일 전처리 ──────────────────────
@@ -1011,7 +1011,9 @@ async function fetchTTSWithRetry(text, sceneIdx) {
       lastErr = e;
       if (e.message?.startsWith('TTS_403')) throw e;
       if (e.message?.startsWith('429')) {
-        await sleep(1800 * (attempt + 1)); // Rate Limit: 더 길게 대기
+        const waitSec = 5 * (attempt + 1);
+        console.warn(`[TTS] 429 구글 서버 과부하: ${waitSec}초 강제 대기 후 재시도...`);
+        await sleep(waitSec * 1000);
         continue;
       }
       console.warn(`[TTS] 씬${sceneIdx + 1} 시도${attempt + 1}:`, e.message);
@@ -1370,10 +1372,15 @@ function tick() {
         // S.audioStartTs 리셋 제거 — doStart() 내부에서 resume 완료 후 직접 설정됨 (BUG C 수정)
         S.subAnimProg = 0;
         highlightScene(S.scene);
-        // 💡 클립이 바뀔 때만 0초 리셋 — 단일 긴 영상은 이어서 재생 (자막 타이밍 일치)
+        // � 스마트 씬 점프: 단일 영상은 씬 비율 타임스탬프로 강제 점프, 멀티 클립은 교체 시 0초
         const _nextMedia = getMedia(S.script.scenes[S.scene]);
-        if (_nextMedia?.type === 'video' && _nextMedia.src && S.files.length > 1 && _prevMedia !== _nextMedia) {
-          _nextMedia.src.currentTime = 0;
+        if (_nextMedia?.type === 'video' && _nextMedia.src) {
+          if (S.files.length === 1) {
+            const _vidDur = isFinite(_nextMedia.src.duration) ? _nextMedia.src.duration : 0;
+            if (_vidDur > 0) _nextMedia.src.currentTime = (_vidDur / S.script.scenes.length) * S.scene;
+          } else if (_prevMedia !== _nextMedia) {
+            _nextMedia.src.currentTime = 0;
+          }
         }
         if (!S.muted) playSceneAudio(S.scene);
       } else {
@@ -2667,8 +2674,21 @@ async function exportRenderLoop() {
         console.warn('[exportRenderLoop] 렌더 에러:', err.message);
       }
       if (prog >= 1) {
-        if (si < sc.length - 1) { si++; ts = now; S.subAnimProg = 0; playSceneAudio(si, true); }
-        else { resolve(); return; }
+        if (si < sc.length - 1) {
+          const _prevEx = getMedia(sc[si]);
+          si++; ts = now; S.subAnimProg = 0;
+          // 🚀 내보내기에서도 동일한 스마트 점프 적용
+          const _nextEx = getMedia(sc[si]);
+          if (_nextEx?.type === 'video' && _nextEx.src) {
+            if (S.files.length === 1) {
+              const _vd = isFinite(_nextEx.src.duration) ? _nextEx.src.duration : 0;
+              if (_vd > 0) _nextEx.src.currentTime = (_vd / sc.length) * si;
+            } else if (_prevEx !== _nextEx) {
+              _nextEx.src.currentTime = 0;
+            }
+          }
+          playSceneAudio(si, true);
+        } else { resolve(); return; }
       }
       requestAnimationFrame(frame);
     };
