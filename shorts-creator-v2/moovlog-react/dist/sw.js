@@ -1,7 +1,7 @@
 // MOOVLOG Shorts Creator — Service Worker
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
-const CACHE_NAME = 'moovlog-v2.1';
+const CACHE_NAME = 'moovlog-v2.2';
 const STATIC_ASSETS = [
   '/moovlog/shorts-creator/',
   '/moovlog/shorts-creator/index.html',
@@ -36,8 +36,14 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // 앱 쉘: 캐시 우선, 실패 시 네트워크
+  // 앱 쉘: HTML은 네트워크 우선(항상 최신 index.html), JS/CSS/폰트는 캐시 우선
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    url.pathname.endsWith('.html') || url.pathname.endsWith('/')
+      ? fetch(e.request).then(res => {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+          return res;
+        }).catch(() => caches.match(e.request))
+      : caches.match(e.request).then(cached => cached || fetch(e.request))
   );
 });
