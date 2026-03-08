@@ -3,7 +3,7 @@
    Network-first: 배포 즉시 반영
    ============================================= */
 
-const CACHE = 'moovlog-shorts-v8';
+const CACHE = 'moovlog-shorts-v9';
 
 // App shell: network-first (배포 즉시 반영)
 const APP_SHELL = ['.html', '.js', '.css'];

@@ -1,11 +1,11 @@
 'use strict';
 /* ============================================================
-   무브먼트 Shorts Creator v8 — script.js
-   Build: 2026-03-09T00:00:00+09:00
+   무브먼트 Shorts Creator v9 — script.js
+   Build: 2026-03-09T12:00:00+09:00
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v27';
+const APP_VERSION  = 'v28';
 const APP_BUILD_TS = '2026-03-09 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -461,7 +461,7 @@ async function startMake() {
       const sc  = script.scenes[i];
       const buf = S.audioBuffers[i];
       if (buf && buf.duration > 0) {
-        sc.duration = Math.round((buf.duration + 0.3) * 10) / 10;
+        sc.duration = Math.max(2.0, Math.round((buf.duration + 0.3) * 10) / 10);
       }
       // caption1 / caption2 초기화 (AI가 제공 또는 splitCaptions 분할)
       if (!sc.caption1) {
@@ -653,15 +653,18 @@ ${imgSummary || '분석 없음'}
 - narration: 아래 규칙 엄격 준수
   • 반드시 해당 이미지에서 실제로 보이는 것을 묘사할 것 (메뉴명, 색감, 식감, 굽기, 윤기 등)
   • 틱톡 호흡: 한 씬 나레이션 총합 15글자 이하 필수. 1~2문장만. 글자 수 초과 금지.
+  • 마침표(.) 최소화, 쉼표(,)와 느낌표(!) 적극 활용 — TTS가 자연스러운 억양으로 읽음
+  • 매 씬 같은 패턴(~거 봐 / ~미쳤다 / ~실화야) 3회 이상 반복 금지 — 다양한 시작 방식 사용
+  • 다양한 시작: 궁금증("여기 뭐냐!"), 놀람("진짜 이거 된대"), 청각("시즈마 들려봐"), 한술("가격이 3만원이라고?"), 리액션("서렇될 듯" · "저장해") 등
   • 인스타 릴스 느낌: 반말, 감탄, 의성어, 구체적 맛·식감 묘사
   • 이미지 focus 값을 narration에 반드시 반영할 것
-  • ✅ 예시(Hook): "이거 실화야. 이 가격에 이게 나온다고."
-  • ✅ 예시(Hero): "육즙이 터지는 거 봐. 바삭하고 촉촉한 게 진짜 미쳤다."
-  • ✅ 예시(Detail): "불향이 살아있는 거 봐. 겉은 바삭, 속은 촉촉."
-  • ✅ 예시(Ambiance): "분위기가 너무 좋아. 여기 데이트 코스야."
-  • ✅ 예시(CTA): "여기 꼭 가봐. 저장해두면 나중에 고마워."
+  • ✅ 예시(Hook): "이거 실화야! 이 가격에 이게 나온다고."
+  • ✅ 예시(Hero): "육즙이, 진짜 터진다! 바삭하고 촉촉해."
+  • ✅ 예시(Detail): "불향이 살아있어! 겉은 바삭, 속은 촉촉."
+  • ✅ 예시(Ambiance): "여기 분위기, 완전 좋다! 데이트 코스야."
+  • ✅ 예시(CTA): "여기 꼭 가봐! 저장해두면 나중에 고마워."
   • ❌ 금지(반드시): 습니다/세요/드립니다 등 존댓말, 추상적 설명, 이모지, 실제 영상에 없는 내용
-  • 글자 수: ≤ duration × 6 (예: 3초 씬 → 18글자 이내)
+  • 글자 수: ≤ duration × 7 (예: 3초 씬 → 21글자 이내)
 - effect: 컷 분석 best_effect 우선, 없으면 hero→zoom-in / ambiance→pan-left / detail→zoom-in-slow
 - duration: 컷 분석 suggested_duration 우선, 나레이션 길이 반영 (min:2.5 / max:6)
 - idx: 0~${S.files.length - 1}
@@ -775,6 +778,8 @@ function preprocessNarration(text) {
     // 이모지 제거 (TTS가 "불꽃 이모티콘" 등으로 읽어버림)
     .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')
     .replace(/[⭐🔥✨🍜📹📖📊🎬🤖💾🙏]/g, '')
+    // 말줄임표(...) → 쉼표 변환 (자연스러운 호흡 유도, "점점점" 방지)
+    .replace(/\.{2,}/g, ',')
     // 쉼표 뒤 자연 끊김 유도
     .replace(/,\s*/g, ', ')
     // 마침표 뒤 짧은 pause 유도
@@ -876,11 +881,11 @@ async function fetchTypeCastTTS(text) {
       text:      text.trim(),
       model:     'ssfm-v30',
       language:  'kor',
-      prompt:    { emotion_type: 'smart' },
+      prompt:    { emotion_type: 'friendly' },
       output: {
         volume:       100,
-        audio_pitch:  0,
-        audio_tempo:  1.05,
+        audio_pitch:  1,
+        audio_tempo:  1.18,
         audio_format: 'wav',
       },
     }),
@@ -1050,7 +1055,12 @@ async function prerenderAudio(totalDur) {
     }
     offset += scDur;
   }
+  // 오디오 버퍼 길이 0이하 → OfflineAudioContext NotSupportedError 방지
+  if (maxEnd <= 0) return null;
+
   const off = new OfflineAudioContext(1, Math.ceil(SR * (maxEnd + 0.1)), SR);
+
+  // 1. 나레이션 트랙 믹싱
   offset = 0;
   for (let i = 0; i < S.script.scenes.length; i++) {
     const scDur = (S.script.scenes[i].duration > 0 && isFinite(S.script.scenes[i].duration))
@@ -1063,6 +1073,30 @@ async function prerenderAudio(totalDur) {
     }
     offset += scDur;
   }
+
+  // 2. BGM 트랙 자동 믹싱 (템플릿 기반 무드 매칭)
+  try {
+    const BGM_MAP = {
+      cinematic: 'Oceanic_Overflow', viral:  'Sizzle_Flow',
+      aesthetic: 'Vinyl_Daydreams',  mukbang: 'Grill_Masters_Anthem',
+      vlog:      'Sizzle_Flow',       review:  'Vinyl_Daydreams',
+      story:     'Oceanic_Overflow',  info:    'Sizzle_Flow',
+    };
+    const bgmFile = BGM_MAP[selectedTemplate] || 'Vinyl_Daydreams';
+    const bgmRes  = await fetch(`./bgm/${bgmFile}.mp3`);
+    if (bgmRes.ok) {
+      const bgmBuf = await audioCtx.decodeAudioData(await bgmRes.arrayBuffer());
+      const bgmSrc = off.createBufferSource();
+      bgmSrc.buffer = bgmBuf; bgmSrc.loop = true;
+      const bgmGain = off.createGain();
+      bgmGain.gain.value = 0.15; // 나레이션 선명도 유지 — BGM 15%
+      bgmSrc.connect(bgmGain); bgmGain.connect(off.destination);
+      bgmSrc.start(0);
+    }
+  } catch (e) {
+    console.warn('[Export] BGM 믹싱 실패 (무시):', e.message);
+  }
+
   const rendered = await off.startRendering();
   return rendered.getChannelData(0); // Float32Array@48kHz
 }
@@ -1073,7 +1107,7 @@ function playSceneAudio(si, capture = false) {
   if (buf && audioCtx) {
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const src = audioCtx.createBufferSource();
-    src.buffer = buf; src.playbackRate.value = 1.0;
+    src.buffer = buf; src.playbackRate.value = 1.08;
     src.connect(audioCtx.destination);
     if (capture && audioMixDest) src.connect(audioMixDest);
     src.start(); S.currentAudio = src;
@@ -1089,7 +1123,7 @@ function playWebSpeech(sc) {
   if (!sc?.narration || typeof speechSynthesis === 'undefined') return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(sc.narration);
-  u.lang = 'ko-KR'; u.pitch = 0.1; u.rate = 0.85; u.volume = 1;
+  u.lang = 'ko-KR'; u.pitch = 1.1; u.rate = 1.05; u.volume = 1;
   const trySpeak = () => {
     const all  = speechSynthesis.getVoices();
     const pick = all.find(x => /male|남성/i.test(x.name) && x.lang.startsWith('ko'))
@@ -1109,6 +1143,38 @@ function playWebSpeech(sc) {
 function stopAudio() {
   if (S.currentAudio) { try { S.currentAudio.stop(); } catch {} S.currentAudio = null; }
   if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
+
+/* ── BGM 실시간 재생 시스템 ──────────────────────────────── */
+let _bgmSrc  = null;
+let _bgmGain = null;
+const BGM_MAP = {
+  cinematic: 'Oceanic_Overflow', viral:   'Sizzle_Flow',
+  aesthetic: 'Vinyl_Daydreams',  mukbang: 'Grill_Masters_Anthem',
+  vlog:      'Sizzle_Flow',      review:  'Vinyl_Daydreams',
+  story:     'Oceanic_Overflow', info:    'Sizzle_Flow',
+};
+async function playBGM() {
+  if (!audioCtx) ensureAudio();
+  stopBGM();
+  try {
+    const bgmFile = BGM_MAP[selectedTemplate] || 'Vinyl_Daydreams';
+    const res = await fetch(`./bgm/${bgmFile}.mp3`);
+    if (!res.ok) return;
+    const buf = await audioCtx.decodeAudioData(await res.arrayBuffer());
+    _bgmSrc = audioCtx.createBufferSource();
+    _bgmSrc.buffer = buf; _bgmSrc.loop = true;
+    _bgmGain = audioCtx.createGain();
+    _bgmGain.gain.value = 0.15;
+    _bgmSrc.connect(_bgmGain);
+    _bgmGain.connect(audioCtx.destination);
+    if (audioMixDest) _bgmGain.connect(audioMixDest);
+    _bgmSrc.start(0);
+    console.log('[BGM] 재생:', bgmFile);
+  } catch (e) { console.warn('[BGM] 로드 실패:', e.message); }
+}
+function stopBGM() {
+  if (_bgmSrc) { try { _bgmSrc.stop(); } catch {} _bgmSrc = null; _bgmGain = null; }
 }
 
 /* ── Preload media ───────────────────────────────────────── */
@@ -1174,7 +1240,7 @@ function doReplay()   { pausePlay(); S.scene = 0; S.startTs = null; S.subAnimPro
 function toggleMute() {
   S.muted = !S.muted;
   D.muteIco.className = S.muted ? 'fas fa-volume-mute' : 'fas fa-volume-up';
-  if (S.muted) stopAudio(); else if (S.playing) playSceneAudio(S.scene);
+  if (S.muted) { stopAudio(); stopBGM(); } else if (S.playing) { playSceneAudio(S.scene); playBGM(); }
 }
 function setPlayIcon(pl) { D.playIco.className = pl ? 'fas fa-pause' : 'fas fa-play'; }
 
@@ -2259,7 +2325,7 @@ async function doExport() {
 /* ── WebCodecs 경로 ──────────────────────────────────────── */
 async function doExportWebCodecs() {
   const FPS      = 30;
-  const totalDur = S.script.scenes.reduce((a, s) => a + s.duration, 0);
+  const totalDur = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
   const nFrames  = Math.ceil(totalDur * FPS);
   const hasAudio = S.audioBuffers.some(b => b !== null);
 
@@ -2329,6 +2395,13 @@ async function doExportWebCodecs() {
       timestamp: Math.round(f * 1_000_000 / FPS),
       duration:  Math.round(1_000_000 / FPS),
     });
+    // 백프레셔: 인코더 큐 30프레임 초과 시 대기 (모바일 OOM 방지)
+    if (videoEnc.encodeQueueSize > 30) {
+      await new Promise(resolve => {
+        const checkQ = () => videoEnc.encodeQueueSize <= 10 ? resolve() : setTimeout(checkQ, 10);
+        checkQ();
+      });
+    }
     videoEnc.encode(vf, { keyFrame: f % (FPS * 2) === 0 });
     vf.close();
     if (f % 12 === 0) {
@@ -2380,7 +2453,7 @@ async function doExportWebCodecs() {
 /* ── MediaRecorder 폴백 ──────────────────────────────────── */
 async function doExportMediaRecorder() {
   toast('WebCodecs 미지원 → 녹화 방식으로 저장합니다', 'inf');
-  const totalDur = S.script.scenes.reduce((a, s) => a + s.duration, 0);
+  const totalDur = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
 
   // captureStream 지원 체크
   if (typeof D.canvas.captureStream !== 'function') {
@@ -2460,7 +2533,7 @@ async function doExportAudio() {
   D.dlAudioBtn.disabled = true;
   D.dlAudioBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 음성 처리 중...';
   try {
-    const totalDur = S.script.scenes.reduce((a, s) => a + s.duration, 0);
+    const totalDur = S.script.scenes.reduce((a, s) => a + ((s.duration > 0 && isFinite(s.duration)) ? s.duration : 3), 0);
     const pcm = await prerenderAudio(totalDur);
     const wav = encodeWav(pcm, 48000);
     downloadBlob(new Blob([wav], { type: 'audio/wav' }), `moovlog_audio_${sanitizeName()}.wav`);
