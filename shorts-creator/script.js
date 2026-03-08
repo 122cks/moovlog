@@ -79,6 +79,8 @@ const D  = {
 };
 const ctx = D.canvas.getContext('2d');
 D.canvas.width = CW; D.canvas.height = CH;
+ctx.imageSmoothingEnabled = true;  // 렌더링 화질 최상으로 강제 설정 (계단 현상 방지)
+ctx.imageSmoothingQuality = 'high';
 
 /* ── Audio ───────────────────────────────────────────────── */
 let audioCtx = null, audioMixDest = null;
@@ -463,7 +465,8 @@ async function startMake() {
       const sc  = script.scenes[i];
       const buf = S.audioBuffers[i];
       if (buf && buf.duration > 0) {
-        sc.duration = Math.max(2.0, Math.round((buf.duration + 0.3) * 10) / 10);
+        const minDur = (i === 0) ? 1.0 : 1.5; // 쪵 시 (i=0): 1초, 나머지: 1.5초 최소값
+        sc.duration = Math.max(minDur, Math.round((buf.duration + 0.15) * 10) / 10);
       }
       // caption1 / caption2 초기화 (AI가 제공 또는 splitCaptions 분할)
       if (!sc.caption1) {
@@ -1099,7 +1102,9 @@ async function prerenderAudio(totalDur) {
       const bgmSrc = off.createBufferSource();
       bgmSrc.buffer = bgmBuf; bgmSrc.loop = true;
       const bgmGain = off.createGain();
-      bgmGain.gain.value = 0.15; // 나레이션 선명도 유지 — BGM 15%
+      bgmGain.gain.setValueAtTime(0.15, 0);                          // BGM 15% 유지
+      bgmGain.gain.setValueAtTime(0.15, Math.max(0, maxEnd - 1.5)); // 종료 1.5초 전
+      bgmGain.gain.linearRampToValueAtTime(0, maxEnd);               // 페이드아웃
       bgmSrc.connect(bgmGain); bgmGain.connect(off.destination);
       bgmSrc.start(0);
     }
@@ -1174,21 +1179,18 @@ const BGM_MAP = {
 async function playBGM() {
   if (!audioCtx) ensureAudio();
   stopBGM();
+  if (!_bgmBuf) return; // 사전 로드된 버퍼 없으면 무시 (첫 화면 렉 방지)
   try {
-    const bgmFile = BGM_MAP[selectedTemplate] || 'Vinyl_Daydreams';
-    const res = await fetch(`./bgm/${bgmFile}.mp3`);
-    if (!res.ok) return;
-    const buf = await audioCtx.decodeAudioData(await res.arrayBuffer());
     _bgmSrc = audioCtx.createBufferSource();
-    _bgmSrc.buffer = buf; _bgmSrc.loop = true;
+    _bgmSrc.buffer = _bgmBuf; _bgmSrc.loop = true;
     _bgmGain = audioCtx.createGain();
     _bgmGain.gain.value = 0.15;
     _bgmSrc.connect(_bgmGain);
     _bgmGain.connect(audioCtx.destination);
     if (audioMixDest) _bgmGain.connect(audioMixDest);
     _bgmSrc.start(0);
-    console.log('[BGM] 재생:', bgmFile);
-  } catch (e) { console.warn('[BGM] 로드 실패:', e.message); }
+    console.log('[BGM] 즉시 재생 완료 (사전 로드된 버퍼)');
+  } catch (e) { console.warn('[BGM] 재생 실패:', e.message); }
 }
 function stopBGM() {
   if (_bgmSrc) { try { _bgmSrc.stop(); } catch {} _bgmSrc = null; _bgmGain = null; }
@@ -1197,6 +1199,18 @@ function stopBGM() {
 /* ── Preload media ───────────────────────────────────────── */
 async function preload() {
   S.loaded = [];
+
+  // BGM 사전 디코딩 — 첫 화릴 레 없이 즐시 재생 보장 (preload에서 라운드로빈 없이 고정됨)
+  if (!_bgmBuf) {
+    try {
+      if (!audioCtx) ensureAudio();
+      const bgmFile = BGM_MAP[selectedTemplate] || 'Vinyl_Daydreams';
+      const res = await fetch(`./bgm/${bgmFile}.mp3`);
+      if (res.ok) _bgmBuf = await audioCtx.decodeAudioData(await res.arrayBuffer());
+      console.log('[BGM Preload]', bgmFile);
+    } catch (e) { console.warn('[BGM Preload] 실패:', e.message); }
+  }
+
   for (const m of S.files) {
     if (m.type === 'image') {
       try {
@@ -1443,7 +1457,7 @@ function renderFrameAtTime(t) {
       const prog        = Math.max(0, Math.min((t - elapsed) / dur, 1));
       const _ab = S.audioBuffers?.[i]; const _ad = _ab?.duration ?? null;
       // [FIX] tick()과 동일 계산: 오디오가 씬보다 짧을 때만 오디오 비율 적용
-      const _stTarget = (_ad && _ad < dur) ? Math.max(_ad / dur, 0.40) : 1.0;
+      const _stTarget = (_ad && _ad < dur) ? Math.max(_ad / dur, 0.20) : 1.0; // 0.40→0.20: 짧은 오디오에서도 자막 강제 정지 방지
       const subAnimProg = Math.min(prog / _stTarget, 1);
       const prevSubAnim = S.subAnimProg;
       S.subAnimProg = subAnimProg;
@@ -1699,7 +1713,7 @@ function capWords(text, cx, cy, maxSz, color, hlIdx, ap) {
     wM = words.map(w => ctx.measureText(w).width);
   }
   const N    = words.length;
-  const step = 0.48 / Math.max(N, 1);   // 더 빠른 팝인 (0.55 → 0.48)
+  const step = 0.85 / Math.max(N, 1);   // 나레이션 속도에 맞춰 단어 순차 등장 (0.48 → 0.85)
   const sw   = Math.max(sz * 0.13, SCALE * 7);
   let x = cx - tot() / 2;
   words.forEach((word, i) => {
@@ -2407,7 +2421,7 @@ async function doExportWebCodecs() {
     error:  err => { throw err; },
   });
   videoEnc.configure({ codec: fmt.vc.enc, width: CW, height: CH, bitrate: VIDEO_BITRATE, framerate: FPS,
-    latencyMode: 'quality', bitrateMode: 'constant' });
+    latencyMode: 'quality', bitrateMode: 'variable' }); // VBR: 화질/용량 최적화
 
   // 4. 프레임별 렌더 + 인코딩
   for (let f = 0; f < nFrames; f++) {
@@ -2528,7 +2542,7 @@ async function exportRenderLoop() {
       const dur  = (sc[si].duration > 0 && isFinite(sc[si].duration)) ? sc[si].duration : 3;
       const el   = (now - ts) / 1000, prog = Math.min(el / dur, 1);
       const _abuf = S.audioBuffers?.[si]; const _adur = _abuf?.duration ?? null;
-      const _stgt = (_adur && _adur < dur) ? Math.max(_adur / dur, 0.40) : 1.0;
+      const _stgt = (_adur && _adur < dur) ? Math.max(_adur / dur, 0.20) : 1.0; // 0.40→0.20: 짧은 오디오에서도 자막 강제 정지 방지
       S.subAnimProg = Math.min(prog / _stgt, 1);
       const TD = Math.min(0.28, dur * 0.15);
       try {
