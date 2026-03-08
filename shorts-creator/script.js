@@ -67,9 +67,9 @@ async function geminiWithFallback(body) {
   catch (e) { console.warn('[Gemini] Pro → Flash 폴백:', e.message); return apiPost(getApiUrl('gemini-2.5-flash'), body); }
 }
 
-/* ── Canvas ──────────────────────────────────────────────── */
-const CW = 1080, CH = 1920;       // 유튜브 쇼츠·틱톡·릴스 권장 해상도
-const SCALE = CW / 720;            // 1.5 — 모든 px 좌표 기준 스케일
+/* ── Canvas (멀티 화면 비율 동적 전환 지원) ─────────────────────────── */
+let CW = 1080, CH = 1920;          // 기본: 9:16 쇼츠·틱톡·릴스 해상도
+let SCALE = 1.5;                   // 1080/720 — 모든 px 좌표 기준 스케일
 const AUTO_EXPORT_ON_CREATE = false;
 const g  = id => document.getElementById(id);
 const D  = {
@@ -2362,6 +2362,8 @@ function openMiniEditor(i) {
   document.getElementById('editModalTitle').textContent = `SCENE ${i + 1} 편집`;
   document.getElementById('editCaption').value   = sc.caption1 || sc.subtitle || '';
   document.getElementById('editNarration').value = sc.narration || '';
+  const durEl = document.getElementById('editDuration');
+  if (durEl) durEl.value = sc.duration > 0 ? sc.duration.toFixed(1) : '3.0';
   modal.style.display = 'flex';
 }
 function closeEditModal() {
@@ -2374,6 +2376,12 @@ async function saveEditModal() {
   const si  = _editIdx;
   const newCap = document.getElementById('editCaption').value.trim();
   const newNar = document.getElementById('editNarration').value.trim();
+  // 써 재생 길이 직접 수정
+  const durEl = document.getElementById('editDuration');
+  if (durEl) {
+    const nd = parseFloat(durEl.value);
+    if (!isNaN(nd) && nd >= 0.5) sc.duration = nd;
+  }
 
   if (newCap) { sc.caption1 = newCap; sc.subtitle = newCap; }
 
@@ -2385,7 +2393,13 @@ async function saveEditModal() {
       const text = preprocessNarration(newNar);
       let newBuf = null;
       if (_TYPECAST_KEYS.length > 0) {
-        newBuf = await fetchTypeCastTTS(text);
+        // 미니 에디터에서도 7개 키를 끝까지 시도
+        let tcErr = null;
+        for (let attempt = 0; attempt < _TYPECAST_KEYS.length; attempt++) {
+          try { newBuf = await fetchTypeCastTTS(text); break; }
+          catch (e2) { tcErr = e2; rotateTypeCastKey(); }
+        }
+        if (!newBuf) throw tcErr || new Error('모든 Typecast 키 소진');
       } else {
         newBuf = await fetchTTSWithRetry(text, si);
       }
@@ -2911,3 +2925,27 @@ function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 function esc(s)   { return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 document.addEventListener('click', () => { if (audioCtx?.state === 'suspended') audioCtx.resume(); });
+
+/* ════════════════════════════════════════════════════════════
+   멀티 플랫폼 화면 비율 동적 전환
+   ════════════════════════════════════════════════════════════ */
+window.changeAspectRatio = function(ratio, btnEl) {
+  if      (ratio === '9:16') { CW = 1080; CH = 1920; }
+  else if (ratio === '1:1')  { CW = 1080; CH = 1080; }
+  else if (ratio === '16:9') { CW = 1920; CH = 1080; }
+  // SCALE은 짧은 쪽 기준 720 분의 1로 재계산
+  SCALE = Math.min(CW, CH) / 720;
+  D.canvas.width  = CW;
+  D.canvas.height = CH;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  // 버튼 활성화 표시 업데이트
+  document.querySelectorAll('.ratio-btn').forEach(b => {
+    b.style.background = 'rgba(255,255,255,0.1)';
+    b.style.color = '#888';
+  });
+  if (btnEl) { btnEl.style.background = 'linear-gradient(135deg,#7c3aed,#a855f7)'; btnEl.style.color = '#fff'; }
+  // 현재 씬 즉시 리렌더
+  if (S.script && S.loaded.length) renderFrame(S.scene, S.subAnimProg);
+  toast(`화면 비율 ${ratio} 적용`, 'ok');
+};
