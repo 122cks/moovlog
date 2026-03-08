@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v29';
+const APP_VERSION  = 'v30';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -468,14 +468,9 @@ async function startMake() {
         const minDur = (i === 0) ? 1.0 : 1.5; // 쪵 시 (i=0): 1초, 나머지: 1.5초 최소값
         sc.duration = Math.max(minDur, Math.round((buf.duration + 0.15) * 10) / 10);
       }
-      // caption1 / caption2 초기화 (AI가 제공 또는 splitCaptions 분할)
-      if (!sc.caption1) {
-        const sub = sc.subtitle || '';
-        const [c1, c2] = splitCaptions(sub);
-        sc.caption1 = c1; sc.caption2 = c2;
-      } else if (!sc.caption2) {
-        sc.caption2 = '';
-      }
+      // caption = narration 텍스트 직접 분할 (AI 자막 무시)
+      const [c1, c2] = splitCaptions(sc.narration || sc.subtitle || '');
+      sc.caption1 = c1; sc.caption2 = c2;
       // subtitle fallback (씬 카드·레거시 표시용)
       if (!sc.subtitle) sc.subtitle = sc.caption1 || '';
     }
@@ -531,22 +526,16 @@ async function startMake() {
    이미지별 타입·감성·효과·순서 분석
    ════════════════════════════════════════════════════════════ */
 async function visionAnalysis(restaurantName) {
-  const imgs = S.files.filter(f => f.type === 'image').slice(0, 8);
   const parts = [];
-  if (imgs.length) {
-    for (const img of imgs) { const b64 = await toB64(img.file); parts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
-  } else {
-    // 비디오만 있을 경우: 프레임 추출해서 이미지처럼 분석
-    const videos = S.files.filter(f => f.type === 'video');
-    if (!videos.length) return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
-    for (const vf of videos.slice(0, 2)) {
-      try {
-        const frames = await extractVideoFramesB64(vf.file, 4);
-        for (const fr of frames) parts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
-      } catch (e) { console.warn('[Vision] 비디오 프레임 추출 실패:', e.message); }
-    }
-    if (!parts.length) return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
+  // 이미지 + 영상 프레임 모두 포함 (이미지 최대 6장, 영상 1개당 2프레임)
+  for (const img of S.files.filter(f => f.type === 'image').slice(0, 6)) { const b64 = await toB64(img.file); parts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
+  for (const vf of S.files.filter(f => f.type === 'video').slice(0, 2)) {
+    try {
+      const frames = await extractVideoFramesB64(vf.file, 2);
+      for (const fr of frames) parts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
+    } catch (e) { console.warn('[Vision] 비디오 프레임 추출 실패:', e.message); }
   }
+  if (!parts.length) return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
   const mediaCount = parts.length;
 
   const prompt = `당신은 인스타그램 Reels 전문 비주얼 디렉터입니다.
@@ -591,18 +580,14 @@ async function generateScript(restaurantName, analysis) {
   const imgSummary = pi.map(p => `이미지${p.idx}(${p.type}/감성${p.emotional_score}점): 효과=${p.best_effect}, ${p.suggested_duration}s, "${p.focus}"`).join('\n');
   const totalTarget = Math.min(Math.max(S.files.length * 3 + 6, 22), 42);
 
-  const sampleImgs = S.files.filter(f => f.type === 'image').slice(0, 4);
   const imgParts = [];
-  for (const img of sampleImgs) { const b64 = await toB64(img.file); imgParts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
-  if (!imgParts.length) {
-    // 비디오만 있을 경우 대표 프레임 추출
-    const vidFiles = S.files.filter(f => f.type === 'video').slice(0, 2);
-    for (const vf of vidFiles) {
-      try {
-        const frames = await extractVideoFramesB64(vf.file, 2);
-        for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
-      } catch (e) { console.warn('[generateScript] 비디오 프레임 추출 실패:', e.message); }
-    }
+  // 이미지 + 영상 프레임 모두 포함
+  for (const img of S.files.filter(f => f.type === 'image').slice(0, 4)) { const b64 = await toB64(img.file); imgParts.push({ inline_data: { mime_type: img.file.type || 'image/jpeg', data: b64 } }); }
+  for (const vf of S.files.filter(f => f.type === 'video').slice(0, 2)) {
+    try {
+      const frames = await extractVideoFramesB64(vf.file, 1);
+      for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
+    } catch (e) { console.warn('[generateScript] 비디오 프레임 추출 실패:', e.message); }
   }
 
   const prompt = `당신은 팔로워 50만+ 한국 맛집 인스타그램·유튜브 Shorts 전문 감독 "무브먼트(MOOVLOG)"입니다.
@@ -1082,7 +1067,8 @@ async function prerenderAudio(totalDur) {
     if (buf) {
       const src = off.createBufferSource();
       src.buffer = buf;
-      src.connect(off.destination); src.start(offset);
+      const narGain = off.createGain(); narGain.gain.value = 1.5;
+      src.connect(narGain); narGain.connect(off.destination); src.start(offset);
     }
     offset += scDur;
   }
@@ -1102,8 +1088,8 @@ async function prerenderAudio(totalDur) {
       const bgmSrc = off.createBufferSource();
       bgmSrc.buffer = bgmBuf; bgmSrc.loop = true;
       const bgmGain = off.createGain();
-      bgmGain.gain.setValueAtTime(0.15, 0);                          // BGM 15% 유지
-      bgmGain.gain.setValueAtTime(0.15, Math.max(0, maxEnd - 1.5)); // 종료 1.5초 전
+      bgmGain.gain.setValueAtTime(0.08, 0);                          // BGM 8% 유지
+      bgmGain.gain.setValueAtTime(0.08, Math.max(0, maxEnd - 1.5)); // 종료 1.5초 전
       bgmGain.gain.linearRampToValueAtTime(0, maxEnd);               // 페이드아웃
       bgmSrc.connect(bgmGain); bgmGain.connect(off.destination);
       bgmSrc.start(0);
@@ -1123,8 +1109,9 @@ function playSceneAudio(si, capture = false) {
     if (buf && audioCtx) {
       const src = audioCtx.createBufferSource();
       src.buffer = buf; src.playbackRate.value = 1.0; // 자막 타이머와 1:1 싱크 — 속도는 Typecast tempo로 제어
-      src.connect(audioCtx.destination);
-      if (capture && audioMixDest) src.connect(audioMixDest);
+      const narGain = audioCtx.createGain(); narGain.gain.value = 1.5; // 나레이션 볼륨 강화
+      src.connect(narGain); narGain.connect(audioCtx.destination);
+      if (capture && audioMixDest) narGain.connect(audioMixDest);
       src.start(); S.currentAudio = src;
       S.audioStartTs = audioCtx.currentTime; // resume 완료 후 캡처 — BUG B 수정
     } else {
@@ -1184,7 +1171,7 @@ async function playBGM() {
     _bgmSrc = audioCtx.createBufferSource();
     _bgmSrc.buffer = _bgmBuf; _bgmSrc.loop = true;
     _bgmGain = audioCtx.createGain();
-    _bgmGain.gain.value = 0.15;
+    _bgmGain.gain.value = 0.08;
     _bgmSrc.connect(_bgmGain);
     _bgmGain.connect(audioCtx.destination);
     if (audioMixDest) _bgmGain.connect(audioMixDest);
@@ -1248,6 +1235,7 @@ function setupPlayer() {
   const _ytFill = document.getElementById('ytProgressFill');
   if (_ytFill) _ytFill.style.width = '0%';
   stopBGM(); // 초기화 시 BGM 정지
+  S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = 0; });
 }
 function togglePlay()  { S.playing ? pausePlay() : startPlay(); }
 async function startPlay() {
@@ -1262,6 +1250,7 @@ async function startPlay() {
       D.vProg.style.width = '0%';
       if (D.vProgText) D.vProgText.textContent = '0%';
       highlightScene(0);
+      S.loaded?.forEach(m => { if (m.type === 'video') m.src.currentTime = 0; });
       if (!S.muted) playBGM(); // 처음부터 다시 시작할 때 BGM 켜기
     } else if (!_bgmSrc && !S.muted) {
       playBGM(); // 일시정지 후 이어서 재생할 때 BGM 켜기
