@@ -36,6 +36,7 @@ jobs:
 
       - name: Install & Build React app
         working-directory: shorts-creator-v2/moovlog-react
+        continue-on-error: true   # 실패 시 커밋된 dist(v2.2)로 폴백
         env:
           VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY2 }}
           VITE_TYPECAST_KEY: ${{ secrets.VITE_TYPECAST_KEY }}
@@ -46,6 +47,7 @@ jobs:
           VITE_TYPECAST_KEY_6: ${{ secrets.VITE_TYPECAST_KEY_6 }}
           VITE_TYPECAST_KEY_7: ${{ secrets.VITE_TYPECAST_KEY_7 }}
         run: |
+          echo "Node: $(node --version), npm: $(npm --version)"
           npm install
           npm run build
 
