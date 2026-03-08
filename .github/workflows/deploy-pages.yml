@@ -6,9 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write   # peaceiris 가 gh-pages 브랜치에 push 하려면 write 필요
 
 concurrency:
   group: "pages"
@@ -18,51 +16,44 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── React 앱 빌드 (GEMINI_KEY2 주입) ─────────────────────
+      # ── React 앱 빌드 (GEMINI_KEY2 주입) ──────────────────────
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: shorts-creator-v2/moovlog-react/package-lock.json
 
       - name: Install & Build React app
         working-directory: shorts-creator-v2/moovlog-react
-        continue-on-error: true   # 빌드 실패 시 커밋된 dist로 폴백
         env:
           VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY2 }}
+          VITE_TYPECAST_KEY: ${{ secrets.VITE_TYPECAST_KEY }}
+          VITE_TYPECAST_KEY_2: ${{ secrets.VITE_TYPECAST_KEY_2 }}
+          VITE_TYPECAST_KEY_3: ${{ secrets.VITE_TYPECAST_KEY_3 }}
+          VITE_TYPECAST_KEY_4: ${{ secrets.VITE_TYPECAST_KEY_4 }}
+          VITE_TYPECAST_KEY_5: ${{ secrets.VITE_TYPECAST_KEY_5 }}
+          VITE_TYPECAST_KEY_6: ${{ secrets.VITE_TYPECAST_KEY_6 }}
+          VITE_TYPECAST_KEY_7: ${{ secrets.VITE_TYPECAST_KEY_7 }}
         run: |
           npm install
           npm run build
 
-      # ── pre-built dist/ 를 그대로 복사 ───────────────────────
-      - name: Prepare _site staging directory
+      # ── _site 디렉토리 구성 ────────────────────────────────────
+      - name: Prepare _site
         run: |
           mkdir -p _site/shorts-creator
-          # 루트 랜딩 페이지
           cp index.html style.css script.js _site/
-          # assets (루트 index.html이 참조하는 이미지/영상)
           cp -r assets _site/assets 2>/dev/null || true
-          # React 앱 빌드 결과물만 복사
           cp -r shorts-creator-v2/moovlog-react/dist/. _site/shorts-creator/
-      # ────────────────────────────────────────────────────────────
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      # ── gh-pages 브랜치에 직접 푸시 (사이트 실제 반영) ─────────
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: '_site'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./_site
+          force_orphan: true
