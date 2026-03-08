@@ -5,7 +5,7 @@
    ============================================================ */
 
 /* ── 버전 정보 ───────────────────────────────── */
-const APP_VERSION  = 'v32.2 (20260309-1800)';
+const APP_VERSION  = 'v32.3 (20260309-2000)';
 const APP_BUILD_TS = '2026-03-08 KST';
 
 /* ── API ─────────────────────────────────────────────────── */
@@ -776,7 +776,12 @@ JSON만 반환 (백틱·설명 없이 순수 JSON):
 }
 
 function toB64(file) {
-  return new Promise((ok, fail) => { const r = new FileReader(); r.onload = e => ok(e.target.result.split(',')[1]); r.onerror = fail; r.readAsDataURL(file); });
+  return new Promise((ok, fail) => {
+    const r = new FileReader();
+    r.onload = e => ok(e.target.result.split(',')[1]);
+    r.onerror = () => fail(new Error(`'${file.name}' 파일을 읽는 중 오류를 발생했습니다. (파일이 너무 크거나 형식이 잘못됨)`));
+    r.readAsDataURL(file);
+  });
 }
 
 /* ── 비디오에서 프레임 추출 (Base64 JPEG) ─────────────────── */
@@ -1575,21 +1580,23 @@ function drawMedia(media, effect, prog) {
 /* ── 시네마틱 컬러 그레이드 ──────────────────────────────── */
 function drawColorGrade(prog) {
   ctx.save();
-  // 1. 라이트릭 (Light Leak) — 좌측 상단 오렌지빛 팝업
-  const leak = ctx.createRadialGradient(CW * 0.1, CH * 0.05, 0, CW * 0.1, CH * 0.05, CW * 0.70);
-  leak.addColorStop(0.0, 'rgba(255,140,50,0.22)');
-  leak.addColorStop(0.5, 'rgba(255,100,30,0.06)');
+  // 1. 시네마틱 라이트릭 (Light Leak) 강화
+  const leak = ctx.createRadialGradient(CW * 0.05, CH * 0.02, 0, CW * 0.05, CH * 0.02, CW * 0.85);
+  leak.addColorStop(0.0, 'rgba(255,160,60,0.28)');
+  leak.addColorStop(0.6, 'rgba(255,100,30,0.08)');
   leak.addColorStop(1.0, 'rgba(0,0,0,0)');
   ctx.globalCompositeOperation = 'screen'; ctx.globalAlpha = 1.0;
   ctx.fillStyle = leak; ctx.fillRect(0, 0, CW, CH);
-  // 2. 대비 Overlay — 하이라이트 강화
+  // 2. 강력한 대비 (Overlay) — 쇼츠 특유의 쌍한 느끼
   ctx.globalCompositeOperation = 'overlay';
-  ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CW, CH);
-  // 3. 필름 그레인
-  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.028;
-  for (let i = 0; i < 60; i++) {
-    ctx.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#000000';
-    ctx.fillRect(Math.random() * CW, Math.random() * CH, Math.random() * 2 * SCALE, Math.random() * 2 * SCALE);
+  ctx.globalAlpha = 0.12;
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, CW, CH);
+  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, CW, CH);
+  // 3. 필름 그레인 질감 (디지털 느끼 제거)
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 0.035;
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#000';
+    ctx.fillRect(Math.random() * CW, Math.random() * CH, 2 * SCALE, 2 * SCALE);
   }
   ctx.restore();
 }
@@ -1718,13 +1725,14 @@ function drawSubtitle(sc, animProg) {
 
   ctx.save();
 
-  // 자막 글자 수가 많으면 화면 밖으로 나가지 않도록 자동 축소 (최소 0.55배)
+  // 자막 글자 수가 많으면 화면 밖으로 나가지 않도록 자동 축소 (임계값 7자, 최소 0.50배)
   const textLen = text.replace(/\s/g, '').length;
-  if (textLen > 8) {
-    const shrink = Math.max(0.55, 8 / textLen);
-    ctx.translate(CW / 2, CH / 2);
+  if (textLen > 7) {
+    const shrink = Math.max(0.50, 7 / textLen);
+    const _pivotY = subY(sc.subtitle_position);
+    ctx.translate(CW / 2, _pivotY);
     ctx.scale(shrink, shrink);
-    ctx.translate(-CW / 2, -CH / 2);
+    ctx.translate(-CW / 2, -_pivotY);
   }
 
   let style = sc.subtitle_style || 'detail';
