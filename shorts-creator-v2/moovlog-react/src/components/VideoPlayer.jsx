@@ -76,7 +76,8 @@ export default function VideoPlayer() {
     const ctx  = canvas.getContext('2d');
     const SCALE = Math.min(CW, CH) / 720;
     const sc   = script.scenes[si];
-    const media = loaded?.[(sc.idx ?? 0) % (loaded?.length || 1)] || null;
+    const mediaIdx = sc.media_idx !== undefined ? sc.media_idx : (sc.idx ?? si);
+    const media = loaded?.[mediaIdx % Math.max(loaded?.length || 1, 1)] || null;
 
     ctx.clearRect(0, 0, CW, CH);
     drawMedia(ctx, media, sc.effect, prog, CW, CH, SCALE);
@@ -624,8 +625,8 @@ function drawTransition(ctx, store, fi, t, loaded, aspectRatio, CW, CH, SCALE, s
   const scenes = store.script.scenes;
   const sc1 = scenes[fi];
   const sc2 = scenes[fi + 1];
-  const m1  = loaded?.[(sc1?.idx ?? 0) % (loaded?.length || 1)];
-  const m2  = loaded?.[(sc2?.idx ?? 0) % (loaded?.length || 1)];
+  const m1  = loaded?.[(sc1?.media_idx ?? sc1?.idx ?? 0) % Math.max(loaded?.length || 1, 1)];
+  const m2  = loaded?.[(sc2?.media_idx ?? sc2?.idx ?? 0) % Math.max(loaded?.length || 1, 1)];
 
   drawMedia(ctx, m1, sc1?.effect, 1, CW, CH, SCALE);
   drawVignetteGrad(ctx, CW, CH);
@@ -648,7 +649,8 @@ export function renderFrameToCtx(ctx, { script, loaded, aspectRatio, restaurantN
   const SCALE = Math.min(CW, CH) / 720;
   const sc = script?.scenes?.[si];
   if (!sc) return;
-  const media = loaded?.[(sc.idx ?? 0) % Math.max(loaded?.length || 1, 1)] || null;
+  const mediaIdx = sc.media_idx !== undefined ? sc.media_idx : (sc.idx ?? si);
+  const media = loaded?.[mediaIdx % Math.max(loaded?.length || 1, 1)] || null;
 
   ctx.clearRect(0, 0, CW, CH);
   drawMedia(ctx, media, sc.effect, prog, CW, CH, SCALE);

@@ -331,9 +331,13 @@ youtube_shorts_tags : 핵심 태그 5~8개 100자 이내
 instagram_caption : 감성 소개 2~3줄\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5 (5개 딱 맞기)
 tiktok_tags : #태그 딱 5개만 공백 구분
 
+[컷 매칭 규칙 — ★매우 중요★]
+• 각 씨(scene)에는 반드시 "media_idx" 필드를 추가하여, 이 나레이션과 자막이 원본 미디어 중 몷 번째(idx) 이미지를 보고 쓴 것인지 정확한 번호를 명시하세요.
+• 반드시 권장 컷 순서 [${order.join(',')}] 의 흐름을 따라 장면을 전개하세요.
+
 JSON만 반환:
-{"title":"제목","hashtags":"#태그","naver_clip_tags":"#협찬 #서울맛집 #한식 #점심","youtube_shorts_tags":"#맛집투어 #한식 #shorts","instagram_caption":"소개문\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5","tiktok_tags":"#한식 #맛집 #vlog #food #korea","scenes":[
-  {"idx":0,"duration":3.0,"caption1":"한우 채끝","caption2":"불향 살아있어요","subtitle_style":"hook","subtitle_position":"center","narration":"두툼하게 썰어낸 한우 채끝, 불향이 살아있어요!","effect":"zoom-out"}
+{"title":"제목","hashtags":"#태그","naver_clip_tags":"#협찬 #서울맛집","youtube_shorts_tags":"#맛집 #shorts","instagram_caption":"소개문\\n\\n#태그","tiktok_tags":"#맛집","scenes":[
+  {"idx":0,"media_idx":2,"duration":3.0,"caption1":"한우 쇠끝","caption2":"불향 살아있어요","subtitle_style":"hook","subtitle_position":"center","narration":"두툴하게 썬어낸 한우 쇠끝, 불향이 살아있어요!","effect":"zoom-out"}
 ]}`;
 
   const makeReq = async url => {
