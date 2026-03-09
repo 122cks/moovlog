@@ -32,6 +32,7 @@ export default function BlogPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
   const fileInputRef = useRef();
   const dropRef      = useRef();
@@ -164,6 +165,13 @@ export default function BlogPage() {
       tiktok_tags:         item.tiktokTags || '',
     });
     setActiveTab('blog');
+  };
+
+  // ── 입력화면 검색 패널 토글 ──────────────────────────────
+  const toggleSearch = async () => {
+    const next = !showSearch;
+    setShowSearch(next);
+    if (next && searchResults.length === 0) handleSearch('');
   };
 
   // ── 다시 작성 ─────────────────────────────────────────────
@@ -330,6 +338,74 @@ export default function BlogPage() {
   // ── 입력 화면 ─────────────────────────────────────────────
   return (
     <main className="app-main">
+
+      {/* 기존 포스팅 불러오기 버튼 */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <button
+          className="re-btn"
+          onClick={toggleSearch}
+          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+        >
+          <i className={`fas fa-${showSearch ? 'times' : 'history'}`} />
+          {showSearch ? '닫기' : '포스팅 불러오기'}
+        </button>
+      </div>
+
+      {/* 검색 패널 (입력화면) */}
+      {showSearch && (
+        <section className="card" style={{ marginBottom: 16 }}>
+          <div className="card-label" style={{ marginBottom: 10 }}>
+            <span className="num"><i className="fas fa-history" /></span>
+            <div>
+              <h2>기존 포스팅 불러오기</h2>
+              <p>결과를 클릭하면 편집 화면으로 바로 이동됩니다</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input
+              className="name-input"
+              style={{ flex: 1 }}
+              type="text"
+              placeholder="음식점 이름으로 검색 (비우면 최근 20개)"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+            />
+            <button className="re-btn" onClick={() => handleSearch()} disabled={searchLoading}>
+              {searchLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-search" />}
+            </button>
+          </div>
+          {searchLoading && (
+            <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0' }}>
+              <i className="fas fa-spinner fa-spin" /> 불러오는 중...
+            </p>
+          )}
+          {!searchLoading && searchResults.length === 0 && (
+            <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0' }}>
+              검색 결과가 없습니다
+            </p>
+          )}
+          {searchResults.map(item => (
+            <div
+              key={item.id}
+              className="sns-card"
+              style={{ marginBottom: 8, cursor: 'pointer' }}
+              onClick={() => { loadFromHistory(item); setShowSearch(false); }}
+            >
+              <div className="sns-card-head">
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{item.restaurant || '—'}</span>
+                <span className="sns-limit">{item.location || ''}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-sub)', marginLeft: 'auto' }}>
+                  {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
+                </span>
+              </div>
+              <div className="sns-text" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-sub)' }}>
+                {item.title || '제목 없음'}
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* 업로드 영역 */}
       <section className="card">
