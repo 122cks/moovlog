@@ -104,7 +104,11 @@ export async function startMake() {
       const buf = audioBuffers[i];
       let duration;
       if (isTrend && isTrend.durations[i] !== undefined) {
-        duration = isTrend.durations[i];
+        const trendDur = isTrend.durations[i];
+        // 트렌드 길이와 실제 오디오 길이 중 더 긴 쪽 선택 → 나레이션 잘림 방지
+        duration = (buf && buf.duration > 0)
+          ? Math.max(trendDur, Math.round((buf.duration + 0.3) * 10) / 10)
+          : trendDur;
         if (!sc.effect && isTrend.effect) sc = { ...sc, effect: isTrend.effect[i % isTrend.effect.length] };
       } else if (buf && buf.duration > 0) {
         duration = Math.max(2.0, Math.round((buf.duration + 0.4) * 10) / 10);
