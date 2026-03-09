@@ -129,6 +129,8 @@ export async function startMake() {
       } else {
         duration = Math.max(2.0, sc.duration || 3.0);
       }
+      // 128 BPM 퀀타이징 (0.46초 단위 스냅)
+      duration = Math.max(2.0, Math.round(duration / 0.46) * 0.46);
 
       // caption 분할 (AI caption 없을 때 폴백)
       let caption1 = sc.caption1, caption2 = sc.caption2;
@@ -138,12 +140,13 @@ export async function startMake() {
       }
       const subtitle = caption1 || sc.subtitle || '';
 
-      // focus_coords, aesthetic_score, foodie_score 씬에 주입 (VideoRenderer 활용)
+      // focus_coords, aesthetic_score, foodie_score, best_start_pct 씨에 주입 (VideoRenderer 활용)
       const imgMeta = analysisMap[sc.media_idx ?? i] || {};
       return { ...sc, duration, caption1, caption2, subtitle,
         focus_coords:    imgMeta.focus_coords    || null,
         aesthetic_score: imgMeta.aesthetic_score || null,
         foodie_score:    imgMeta.foodie_score    || null,
+        best_start_pct:  imgMeta.best_start_pct  || 0,
       };
     });
 

@@ -204,7 +204,10 @@ export default function VideoPlayer() {
                   fontSize: '2.2rem', fontWeight: '900',
                   letterSpacing: '-1px',
                   textAlign: 'center', maxWidth: '85%',
-                  boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+                  boxShadow: vibeColor
+                    ? `0 4px 15px rgba(0,0,0,0.3), 0 0 24px ${vibeColor}66`
+                    : '0 4px 15px rgba(0,0,0,0.3)',
+                  textShadow: vibeColor ? `0 0 18px ${vibeColor}99` : undefined,
                   wordBreak: 'keep-all', lineHeight: '1.2',
                 }}>
                   {currentScene.caption1}

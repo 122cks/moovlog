@@ -64,6 +64,8 @@ function getVideoFilter(scene, theme, dur, isLastScene) {
   }
   // 색감 LUT
   f.push(getColorLUT(theme));
+  // ★ 업스케일러: 선명도 강화 + 노이즈 감소
+  f.push('unsharp=5:5:1.0:5:5:0.0,hqdn3d=1.5:1.5:4.5:4.5');
   // Flash 전환 — 씬 시작 화이트 플래시 인
   f.push(`fade=t=in:st=0:d=${flashDur}:color=white`);
   // Flash 전환 — 씬 끝 화이트 플래시 아웃 (마지막 씬은 블랙 페이드아웃)
@@ -213,8 +215,12 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
     if (subtitleF) vf = vf + ',' + subtitleF;
 
     const inputLoopArgs = isVideo ? [] : ['-loop', '1'];
+    const ssArgs = (isVideo && scene.best_start_pct > 0)
+      ? ['-ss', (scene.best_start_pct * dur).toFixed(2)]
+      : [];
     await ff.exec([
       ...inputLoopArgs,
+      ...ssArgs,
       '-i', inputName,
       '-t', String(dur),
       '-vf', vf,

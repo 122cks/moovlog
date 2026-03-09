@@ -188,9 +188,11 @@ const _sessionGeminiVoice = (() => {
   return v;
 })();
 
-export async function fetchTTSWithRetry(text, sceneIdx) {
+export async function fetchTTSWithRetry(text, sceneIdx, energyLevel = 3) {
   const { audioCtx: ac } = ensureAudio();
   let lastErr = null;
+  // energy_level 1~5 → pitch semitone 조정 (-4 ~ +4)
+  const energyPitch = ((energyLevel ?? 3) - 3) * 2;
 
   for (let attempt = 0; attempt < TTS_CONFIG.maxRetry; attempt++) {
     const model     = TTS_CONFIG.models[attempt % TTS_CONFIG.models.length];
@@ -204,7 +206,7 @@ export async function fetchTTSWithRetry(text, sceneIdx) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text }] }],
-            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } },
+            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } }, ...(energyPitch !== 0 ? { audioConfig: { pitch: energyPitch } } : {}) } },
           }),
         },
         42000   // TTS 응답은 최대 42초 대기
@@ -277,7 +279,7 @@ function _allKeysExhausted() {
   return _typeCastKeys.length > 0 && _typeCastKeys.every(k => _isKeyExhausted(k));
 }
 
-async function fetchTypeCastTTSWithRotation(text, theme = 'hansik') {
+async function fetchTypeCastTTSWithRotation(text, theme = 'hansik', energyLevel = 3) {
   if (_allKeysExhausted()) return null; // 모든 키 429 소진 → 즉시 Gemini
   let tcBuf = null;
   const maxAttempts = _typeCastKeys.length * 2;
@@ -343,15 +345,15 @@ export async function generateAllTTS(scenes, onToast, theme = 'hansik') {
       try {
         let buf = null;
         if (useTypecast && !forcedToGemini) {
-          buf = await fetchTypeCastTTSWithRotation(text, theme);
+          buf = await fetchTypeCastTTSWithRotation(text, theme, sc.energy_level ?? 3);
           if (!buf) {
             console.warn(`[Typecast] 씬${i+1} 모든 키 소진 — 이후 씬 전체 Gemini로 전환`);
             onToast?.('Typecast 키 소진 — 이후 씬 Gemini로 생성합니다', 'inf');
             forcedToGemini = true;
-            buf = await fetchTTSWithRetry(text, i);
+            buf = await fetchTTSWithRetry(text, i, sc.energy_level ?? 3);
           }
         } else {
-          buf = await fetchTTSWithRetry(text, i);
+          buf = await fetchTTSWithRetry(text, i, sc.energy_level ?? 3);
         }
         buffers[i] = buf;
         successCount++;
