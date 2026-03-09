@@ -5,8 +5,49 @@ import SceneList    from './SceneList.jsx';
 import ExportPanel  from './ExportPanel.jsx';
 import SNSTags      from './SNSTags.jsx';
 
+// ── 마케팅 에셋 복사 버튼 섹션 ─────────────────────────────
+function MarketingAssets({ marketing, addToast }) {
+  if (!marketing) return null;
+  const copy = async (text, label) => {
+    try { await navigator.clipboard.writeText(text); addToast(`${label} 복사 완료! ✨`, 'ok'); }
+    catch { addToast('복사 실패 — 직접 선택해서 복사해주세요', 'err'); }
+  };
+  return (
+    <div className="marketing-assets-box">
+      <p className="marketing-title"><i className="fas fa-rocket" /> 릴스 떡상 마케팅 키트</p>
+      {marketing.hook_title && (
+        <div className="marketing-row">
+          <span className="marketing-label">🎣 훅 제목</span>
+          <button className="marketing-copy-btn" onClick={() => copy(marketing.hook_title, '훅 제목')}>
+            <i className="fas fa-copy" /> 복사
+          </button>
+          <p className="marketing-text">{marketing.hook_title}</p>
+        </div>
+      )}
+      {marketing.caption && (
+        <div className="marketing-row">
+          <span className="marketing-label">✍️ 인스타 캡션</span>
+          <button className="marketing-copy-btn" onClick={() => copy(marketing.caption, '인스타 캡션')}>
+            <i className="fas fa-copy" /> 복사
+          </button>
+          <p className="marketing-text" style={{ whiteSpace: 'pre-line', fontSize: '0.75rem' }}>{marketing.caption}</p>
+        </div>
+      )}
+      {marketing.hashtags_30 && (
+        <div className="marketing-row">
+          <span className="marketing-label">🏷️ 해시태그 30개</span>
+          <button className="marketing-copy-btn" onClick={() => copy(marketing.hashtags_30, '해시태그 30개')}>
+            <i className="fas fa-copy" /> 한번에 복사
+          </button>
+          <p className="marketing-text" style={{ fontSize: '0.68rem', lineHeight: 1.8, color: '#a855f7' }}>{marketing.hashtags_30}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ResultScreen() {
-  const { script, audioBuffers, reset, setShowResult } = useVideoStore();
+  const { script, audioBuffers, reset, setShowResult, addToast } = useVideoStore();
 
   const totalSec = script?.scenes?.reduce((a, s) => a + (s.duration || 0), 0) || 0;
   const hasAudio = audioBuffers?.some(b => b);
@@ -42,6 +83,9 @@ export default function ResultScreen() {
 
         {/* 저장 패널 */}
         <ExportPanel />
+
+        {/* 마케팅 에셋 키트 */}
+        {script?.marketing && <MarketingAssets marketing={script.marketing} addToast={addToast} />}
 
         {/* SNS 태그 */}
         {script && <SNSTags script={script} />}

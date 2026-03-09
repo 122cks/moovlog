@@ -1,6 +1,7 @@
 // src/components/DrivePicker.jsx
 import { useEffect, useState } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
+import { saveToken, loadToken, clearToken } from '../engine/AuthService.js';
 
 const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_DRIVE_API || '';
 
@@ -14,23 +15,7 @@ function loadScript(src) {
   });
 }
 
-const TOKEN_KEY  = 'moovlog_gdrive_token';
-const EXPIRY_KEY = 'moovlog_gdrive_expiry';
-const TTL_MS     = 55 * 60 * 1000; // 55분 (구글 access_token 만료 1시간 - 5분 여유)
-
-function saveToken(token) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(EXPIRY_KEY, String(Date.now() + TTL_MS));
-}
-function loadToken() {
-  const t = localStorage.getItem(TOKEN_KEY);
-  const e = parseInt(localStorage.getItem(EXPIRY_KEY) || '0', 10);
-  return (t && Date.now() < e) ? t : null;
-}
-function clearToken() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(EXPIRY_KEY);
-}
+const TOKEN_KEY  = ''; // AuthService에서 관리 — 여기선 사용 안 함
 
 export default function DrivePicker() {
   const [ready, setReady] = useState(false);

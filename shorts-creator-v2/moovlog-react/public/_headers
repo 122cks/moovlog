@@ -1,0 +1,28 @@
+/*
+ * public/_headers
+ * Netlify / Cloudflare Pages 배포 시 COOP/COEP 헤더 자동 설정
+ *
+ * ⚠️  GitHub Pages는 이 파일을 지원하지 않습니다.
+ *     GitHub Pages 배포 시에는 sw.js (서비스 워커) 헤더 주입이 자동으로 작동합니다.
+ *
+ * SharedArrayBuffer (FFmpeg WASM 멀티스레딩)에 필요:
+ *   - Cross-Origin-Opener-Policy: same-origin
+ *   - Cross-Origin-Embedder-Policy: credentialless  (require-corp 보다 호환성 우수)
+ */
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/*.css
+  Cache-Control: public, max-age=31536000, immutable
+*/

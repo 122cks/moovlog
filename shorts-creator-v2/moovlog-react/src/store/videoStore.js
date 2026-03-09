@@ -138,6 +138,9 @@ const INITIAL = {
   showResult: false,
   restaurantName: '',
 
+  // Vision 분석 결과 (focus_coords, aesthetic_score, foodie_score 포함)
+  analysis: null,
+
   // 토스트
   toasts: [],         // [{ id, msg, type }]
 
@@ -241,7 +244,11 @@ export const useVideoStore = create(
       setUserPrompt: (userPrompt) => set({ userPrompt }, false, 'setUserPrompt'),
 
       // ── Firebase ───────────────────────────────────────────
-      setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),      setPipelineSessionId: (pipelineSessionId) => set({ pipelineSessionId }, false, 'setPipelineSessionId'),
+      setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),
+      setPipelineSessionId: (pipelineSessionId) => set({ pipelineSessionId }, false, 'setPipelineSessionId'),
+
+      // ── Analysis 저장 (Vision 결과 — focus_coords·aesthetic_score 포함) ──
+      setAnalysis: (analysis) => set({ analysis }, false, 'setAnalysis'),
       // ── 전체 리셋 ──────────────────────────────────────────
       reset: () => set({
         ...INITIAL,

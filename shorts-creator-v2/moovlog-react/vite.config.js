@@ -5,6 +5,10 @@ export default defineConfig({
   plugins: [react()],
   base: '/moovlog/shorts-creator/',   // GitHub Pages 경로 — 기존과 동일
   publicDir: 'public',
+  // FFmpeg WASM: Vite dev server가 사전 번들링하지 않도록 exclude
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+  },
   // FFmpeg WASM이 요구하는 SharedArrayBuffer를 위한 COOP/COEP 헤더 (dev server)
   server: {
     headers: {

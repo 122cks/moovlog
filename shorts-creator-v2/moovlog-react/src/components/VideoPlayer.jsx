@@ -3,13 +3,14 @@
 // 💡 핵심 1: Ken Burns CSS는 이미지에만 적용 (비디오에 적용 시 깜빡임·끊김 발생)
 // 💡 핵심 2: 씬 인덱스(scene)가 바뀔 때만 <video> key 갱신 → 불필요한 재생성 차단
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 import { getAudioCtx } from '../engine/tts.js';
 
 export default function VideoPlayer() {
   const videoRef  = useRef(null);
   const audioRef  = useRef(null);
+  const [safeZone, setSafeZone] = useState(false); // 인스타 세이프 존 가이드 토글
 
   const {
     script, files, playing, muted, scene,
@@ -184,7 +185,7 @@ export default function VideoPlayer() {
               }}
             >
               {currentScene.caption1 && (
-                <div className="animate-subtitle-pop" style={{
+                <div className="animate-subtitle-pop dynamic-subtitle" style={{
                   backgroundColor: 'rgba(0,0,0,0.75)',
                   color: '#FFFFFF', padding: '10px 22px',
                   borderRadius: '50px',
@@ -198,7 +199,7 @@ export default function VideoPlayer() {
                 </div>
               )}
               {currentScene.caption2 && (
-                <div className="animate-subtitle-drop" style={{
+                <div className="animate-subtitle-drop dynamic-subtitle" style={{
                   backgroundColor: vibeColor ? vibeColor : 'rgba(255,234,0,0.92)',
                   color: '#000000', padding: '6px 16px',
                   borderRadius: '8px',
@@ -210,6 +211,24 @@ export default function VideoPlayer() {
                   {currentScene.caption2}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── 인스타그램 세이프 존 가이드 오버레이 ── */}
+          {safeZone && (
+            <div className="safe-zone-overlay" style={{ position: 'absolute', inset: 0, zIndex: 60, pointerEvents: 'none' }}>
+              {/* 상단 UI 영역 (프로필·팔로우) */}
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '14%', background: 'rgba(255,0,0,0.15)', borderBottom: '1px dashed rgba(255,100,100,0.7)' }}>
+                <span style={{ position: 'absolute', bottom: 4, left: 8, fontSize: '0.5rem', color: 'rgba(255,150,150,0.9)', fontWeight: 700 }}>⚠ 상단 UI 영역</span>
+              </div>
+              {/* 하단 UI 영역 (좋아요·댓글·공유) */}
+              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '40%', background: 'rgba(255,165,0,0.10)', borderTop: '1px dashed rgba(255,165,0,0.7)' }}>
+                <span style={{ position: 'absolute', top: 4, left: 8, fontSize: '0.5rem', color: 'rgba(255,180,80,0.9)', fontWeight: 700 }}>⚠ 하단 버튼 영역</span>
+              </div>
+              {/* 안전 자막 구역 표시 */}
+              <div style={{ position: 'absolute', bottom: '14%', left: 0, right: 0, height: '26%', border: '1px solid rgba(0,255,0,0.6)', background: 'rgba(0,255,0,0.05)' }}>
+                <span style={{ position: 'absolute', top: 4, left: 8, fontSize: '0.5rem', color: 'rgba(100,255,100,0.9)', fontWeight: 700 }}>✅ 자막 세이프 존</span>
+              </div>
             </div>
           )}
 
@@ -286,6 +305,13 @@ export default function VideoPlayer() {
           </button>
           <button className="vcb" onClick={() => useVideoStore.getState().setMuted(!muted)}>
             <i className={`fas ${muted ? 'fa-volume-mute' : 'fa-volume-up'}`} />
+          </button>
+          <button
+            className={`vcb${safeZone ? ' vcb-active' : ''}`}
+            onClick={() => setSafeZone(v => !v)}
+            title="인스타 세이프 존 가이드"
+          >
+            <i className="fas fa-th" />
           </button>
         </div>
       </div>

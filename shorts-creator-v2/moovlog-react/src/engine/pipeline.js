@@ -19,7 +19,7 @@ export async function startMake() {
     setPipeline, donePipelineStep, setScript,
     setAudioBuffers, setLoaded, setShowResult,
     addToast, setAutoStyleName, setTemplate, setHook,
-    hidePipeline, reset, setPipelineSessionId,
+    hidePipeline, reset, setPipelineSessionId, setAnalysis,
   } = store;
 
   if (!files.length) { addToast('이미지 또는 영상을 올려주세요', 'err'); return; }
@@ -80,6 +80,8 @@ export async function startMake() {
       'inf'
     );
     donePipelineStep(1);
+    // analysis 저장 (VideoRenderer의 focus_coords · aesthetic_score 활용)
+    setAnalysis(analysis);
 
     // ── STEP 2: 식당 실시간 검색 조사 ──────────────────────────
     setPipeline(2, `"미리보기" 실시간 조사 중...`, `Gemini가 바로 오늘 블로그 리뷰와 식당 정보를 검색합니다`);
@@ -106,6 +108,10 @@ export async function startMake() {
 
     // 오디오 길이로 씬 duration 동기화
     const isTrend = VIRAL_TRENDS[useVideoStore.getState().selectedTemplate];
+    // analysis.per_image 인덱스 맵 (focus_coords, aesthetic_score 씬에 주입)
+    const analysisMap = {};
+    for (const p of (analysis.per_image || [])) analysisMap[p.idx] = p;
+
     const finalScenes = script.scenes.map((sc, i) => {
       const buf = audioBuffers[i];
       let duration;
@@ -130,7 +136,13 @@ export async function startMake() {
       }
       const subtitle = caption1 || sc.subtitle || '';
 
-      return { ...sc, duration, caption1, caption2, subtitle };
+      // focus_coords, aesthetic_score, foodie_score 씬에 주입 (VideoRenderer 활용)
+      const imgMeta = analysisMap[sc.media_idx ?? i] || {};
+      return { ...sc, duration, caption1, caption2, subtitle,
+        focus_coords:    imgMeta.focus_coords    || null,
+        aesthetic_score: imgMeta.aesthetic_score || null,
+        foodie_score:    imgMeta.foodie_score    || null,
+      };
     });
 
     // script 업데이트

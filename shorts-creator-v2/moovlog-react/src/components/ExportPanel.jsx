@@ -12,8 +12,9 @@ import * as WebmMuxer from 'webm-muxer';
 export default function ExportPanel() {
   const { script, audioBuffers, restaurantName, addToast, setExporting, exporting, pipelineSessionId, files } = useVideoStore();
   const [btnText, setBtnText] = useState('영상 저장하기');
-  const [ffmpegText, setFfmpegText] = useState('📦 FFmpeg 내보내기 (자동 호환)');
+  const [ffmpegText, setFfmpegText] = useState('📦 FFmpeg 내보내기 (시네마틱)');
   const [ffmpegBusy, setFfmpegBusy] = useState(false);
+  const [ffmpegPct, setFfmpegPct] = useState(0);
 
   const doExport = async () => {
     if (exporting) return;
@@ -78,18 +79,25 @@ export default function ExportPanel() {
       return;
     }
     setFfmpegBusy(true);
+    setFfmpegPct(0);
     try {
       const blob = await renderVideoWithFFmpeg(
         script.scenes,
         files,
-        (msg) => setFfmpegText(`🎬 ${msg}`)
+        script,
+        (msg, pct) => {
+          setFfmpegText(`🎬 ${msg}`);
+          if (typeof pct === 'number') setFfmpegPct(pct);
+        }
       );
       downloadBlob(blob, `moovlog_ffmpeg_${sanitizeName(restaurantName)}.mp4`);
       addToast('FFmpeg 렌더링 완료!', 'ok');
-      setFfmpegText('📦 FFmpeg 내보내기 (자동 호환)');
+      setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
+      setFfmpegPct(0);
     } catch (err) {
       addToast('FFmpeg 오류: ' + (err?.message || String(err)), 'err');
-      setFfmpegText('📦 FFmpeg 내보내기 (자동 호환)');
+      setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
+      setFfmpegPct(0);
     } finally {
       setFfmpegBusy(false);
     }
@@ -110,10 +118,22 @@ export default function ExportPanel() {
       </button>
       <button className="dl-audio-btn" onClick={doExportFFmpeg} disabled={ffmpegBusy}
         style={{ marginTop: '8px', opacity: crossOriginIsolated ? 1 : 0.45 }}
-        title={crossOriginIsolated ? 'FFmpeg WASM 렌더링' : 'COOP/COEP 헤더 필요 — 로컬 개발 서버에서 지원'}
+        title={crossOriginIsolated ? 'FFmpeg WASM 시네마틱 렌더링 (LUT·Ken Burns·자막)' : 'COOP/COEP 헤더 필요 — 로컬 개발 서버에서 지원'}
       >
         <i className={`fas ${ffmpegBusy ? 'fa-spinner fa-spin' : 'fa-film'}`} /> {ffmpegText}
       </button>
+      {ffmpegBusy && (
+        <div style={{ margin: '6px 0 2px', background: 'rgba(255,255,255,0.08)', borderRadius: '6px', overflow: 'hidden', height: '6px' }}>
+          <div style={{
+            height: '100%', background: 'linear-gradient(90deg,#7c3aed,#a855f7)',
+            width: `${ffmpegPct}%`, transition: 'width 0.4s ease',
+            borderRadius: '6px',
+          }} />
+        </div>
+      )}
+      {ffmpegBusy && ffmpegPct > 0 && (
+        <p style={{ fontSize: '0.68rem', color: '#a855f7', textAlign: 'right', margin: '2px 0 0' }}>{ffmpegPct}%</p>
+      )}
     </div>
   );
 }

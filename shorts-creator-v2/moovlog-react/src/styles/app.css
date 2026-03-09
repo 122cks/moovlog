@@ -399,6 +399,73 @@ html, body {
   .scard-sub { font-size: .84rem; }
 }
 
+/* ── v2.19: Dynamic Subtitle (Kinetic Typography) ─────── */
+@keyframes subtitleElastic {
+  0%   { transform: scale(0.65) translateY(12px); opacity: 0; }
+  55%  { transform: scale(1.06) translateY(-3px); opacity: 1; }
+  75%  { transform: scale(0.97) translateY(1px); }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.dynamic-subtitle {
+  animation: subtitleElastic 0.42s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  will-change: transform, opacity;
+}
+.highlight-text {
+  background: linear-gradient(135deg, #ff6b35, #ffd700);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 900;
+}
+
+/* ── v2.19: Safe Zone Overlay ──────────────────────────── */
+.safe-zone-overlay { pointer-events: none; }
+
+/* ── v2.19: Marketing Assets Box ───────────────────────── */
+.marketing-assets-box {
+  background: var(--surface);
+  border: 1px solid rgba(168, 85, 247, .22);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.marketing-title {
+  font-size: .88rem;
+  font-weight: 700;
+  color: var(--accent2);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.marketing-row { margin-bottom: 12px; }
+.marketing-label {
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--text2);
+  display: block;
+  margin-bottom: 4px;
+}
+.marketing-text {
+  font-size: .78rem;
+  color: var(--text);
+  line-height: 1.65;
+  margin-top: 4px;
+}
+.marketing-copy-btn {
+  float: right;
+  background: rgba(168, 85, 247, .14);
+  border: 1px solid rgba(168, 85, 247, .3);
+  border-radius: 6px;
+  color: var(--accent2);
+  padding: 3px 10px;
+  font-size: .68rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .2s;
+}
+.marketing-copy-btn:hover { background: rgba(168, 85, 247, .28); }
+
 /* ── Google Drive Picker ─────────────────────────────── */
 .drive-row { display: flex; justify-content: center; margin: 10px 0 4px; }
 .drive-import-btn {
