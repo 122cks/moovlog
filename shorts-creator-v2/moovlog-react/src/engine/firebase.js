@@ -55,9 +55,12 @@ async function fbUpload(blob, storagePath) {
 export async function firebaseUploadOriginals(files, restaurantName, pipelineSessionId) {
   if (!storage) return;
   const session = pipelineSessionId || `${Date.now()}_${(restaurantName || 'noname').replace(/\s+/g, '_')}`;
-  files.forEach((m, i) => {
-    fbUpload(m.file, `originals/${session}/${i}_${m.file.name}`);
-  });
+  await Promise.all(
+    files.map((m, i) =>
+      fbUpload(m.file, `originals/${session}/${i}_${m.file.name}`)
+        .catch(e => console.warn(`[Firebase] 파일 ${i} 업로드 실패:`, e.message))
+    )
+  );
 }
 
 export async function firebaseSaveSession(script, restaurantName) {

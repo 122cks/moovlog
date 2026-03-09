@@ -46,6 +46,9 @@ async function fetchWithTimeout(url, options, timeout = 15000) {
   const id = setTimeout(() => controller.abort(), timeout);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`네트워크 타임아웃 (${Math.round(timeout / 1000)}s 초과)`);
+    throw e;
   } finally {
     clearTimeout(id);
   }
@@ -170,11 +173,20 @@ const TTS_CONFIG = {
     'gemini-2.5-flash-preview-tts',   // 3순위: flash 재시도
     'gemini-2.5-pro-preview-tts',     // 4순위: pro 재시도
   ],
-  voices:     ['Fenrir', 'Orus', 'Charon', 'Kore', 'Aoede', 'Puck'],
   maxRetry:   4,
   retryDelay: 2000,   // 429 이외 오류 대기 (ms)
   sceneDelay: 2500,
 };
+
+// 세션 내 단일 부이스 고정 — 모든 씨 동일 남성 목소리
+const _GEMINI_MALE_VOICES = ['Fenrir', 'Orus', 'Charon', 'Puck'];
+const _sessionGeminiVoice = (() => {
+  const stored = localStorage.getItem('moovlog_gemini_voice');
+  if (stored && _GEMINI_MALE_VOICES.includes(stored)) return stored;
+  const v = _GEMINI_MALE_VOICES[Math.floor(Math.random() * _GEMINI_MALE_VOICES.length)];
+  localStorage.setItem('moovlog_gemini_voice', v);
+  return v;
+})();
 
 export async function fetchTTSWithRetry(text, sceneIdx) {
   const { audioCtx: ac } = ensureAudio();
@@ -182,7 +194,7 @@ export async function fetchTTSWithRetry(text, sceneIdx) {
 
   for (let attempt = 0; attempt < TTS_CONFIG.maxRetry; attempt++) {
     const model     = TTS_CONFIG.models[attempt % TTS_CONFIG.models.length];
-    const voiceName = TTS_CONFIG.voices[sceneIdx % TTS_CONFIG.voices.length];
+    const voiceName = _sessionGeminiVoice;
     try {
       // 오디오 전용 모델에 직접 요청 (geminiWithFallback은 텍스트 모델만 순환)
       const r = await fetchWithTimeout(
@@ -251,20 +263,43 @@ export async function fetchTTSWithRetry(text, sceneIdx) {
 }
 
 // ─── Typecast 단일 씬 TTS (HTTP 코드 기반 로테이션) ─────
+// 429 소진 키 임시 마킹 (60초 TTL)
+const _tcExhaustedAt = new Map();
+const TC_EXHAUST_TTL = 60_000;
+function _isKeyExhausted(key) {
+  const ts = _tcExhaustedAt.get(key);
+  if (!ts) return false;
+  if (Date.now() - ts > TC_EXHAUST_TTL) { _tcExhaustedAt.delete(key); return false; }
+  return true;
+}
+function _markKeyExhausted(key) { _tcExhaustedAt.set(key, Date.now()); }
+function _allKeysExhausted() {
+  return _typeCastKeys.length > 0 && _typeCastKeys.every(k => _isKeyExhausted(k));
+}
+
 async function fetchTypeCastTTSWithRotation(text) {
+  if (_allKeysExhausted()) return null; // 모든 키 429 소진 → 즉시 Gemini
   let tcBuf = null;
   const maxAttempts = _typeCastKeys.length * 2;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (_allKeysExhausted()) break;
+    // 소진된 키 건너뜀
+    let skip = 0;
+    while (_isKeyExhausted(getTypeCastKey()) && skip < _typeCastKeys.length) {
+      rotateTypeCastKey(); skip++;
+    }
+    if (_isKeyExhausted(getTypeCastKey())) break;
     try {
       tcBuf = await fetchTypeCastTTS(text);
       break;
     } catch (e2) {
       const m2 = e2.message || '';
-      // 401(인증)/429(할당량) → 즉시 다음 키로 전환
-      if (m2.startsWith('TYPECAST_401') || m2.startsWith('TYPECAST_429')) {
+      if (m2.startsWith('TYPECAST_429')) {
+        _markKeyExhausted(getTypeCastKey());
         rotateTypeCastKey();
         continue;
       }
+      if (m2.startsWith('TYPECAST_401')) { rotateTypeCastKey(); continue; }
       // 타임아웃 → 한 번 더 같은 키로 시도
       if (m2.includes('타임아웃') || m2.includes('30초') || e2.name === 'AbortError') {
         if (attempt % 2 === 1) rotateTypeCastKey();
@@ -297,6 +332,7 @@ export async function generateAllTTS(scenes, onToast) {
 
   // 병렬 처리 (concurrency 슬롯 제어)
   let taskIdx = 0;
+  let forcedToGemini = false; // Typecast 실패 시 이후 씬 전체 Gemini → 목소리 일관성
   const worker = async () => {
     while (taskIdx < tasks.length) {
       if (fatalStop) break;
@@ -306,11 +342,12 @@ export async function generateAllTTS(scenes, onToast) {
 
       try {
         let buf = null;
-        if (useTypecast) {
+        if (useTypecast && !forcedToGemini) {
           buf = await fetchTypeCastTTSWithRotation(text);
           if (!buf) {
-            console.warn(`[Typecast] 씬${i+1} 모든 키 소진 — Gemini로 전환`);
-            onToast?.('Typecast 키 소진 — Gemini로 전환합니다', 'inf');
+            console.warn(`[Typecast] 씬${i+1} 모든 키 소진 — 이후 씬 전체 Gemini로 전환`);
+            onToast?.('Typecast 키 소진 — 이후 씬 Gemini로 생성합니다', 'inf');
+            forcedToGemini = true;
             buf = await fetchTTSWithRetry(text, i);
           }
         } else {

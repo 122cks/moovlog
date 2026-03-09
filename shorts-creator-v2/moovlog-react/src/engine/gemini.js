@@ -22,6 +22,9 @@ async function fetchWithTimeout(url, options, timeout = 30000) {
   const id = setTimeout(() => controller.abort(), timeout);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`네트워크 타임아웃 (${Math.round(timeout / 1000)}s 초과)`);
+    throw e;
   } finally {
     clearTimeout(id);
   }
