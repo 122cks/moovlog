@@ -369,6 +369,17 @@ ${userPrompt ? userPrompt : '특별한 요청 없음. 평소체림 최고의 감
 템플릿: ${TEMPLATE_HINTS[selectedTemplate] || TEMPLATE_HINTS.story}
 훅: ${HOOK_HINTS[selectedHook] || HOOK_HINTS.question}
 
+[테마 자동 인식 — researchData와 비주얼을 보고 아래 테마 중 하나를 반드시 선택, JSON에 theme/vibe_color 포함]
+☕ 카페/디저트 → theme:"cafe"        vibe_color:"#F5C6D0"  (감성·부드러운 톤. 키워드: 채광, 비주얼, 인생샷)
+🥩 고깃집/BBQ  → theme:"grill"       vibe_color:"#FF6B35"  (에너지·타격감 있는 톤. 키워드: 육즙, 숯불향)
+🥘 한식/밥집   → theme:"hansik"      vibe_color:"#C8E6C9"  (진정성·담백한 톤. 키워드: 손맛, 든든함)
+🍷 고급/양식   → theme:"premium"     vibe_color:"#E8D5B7"  (우아·전문적인 톤. 키워드: 분위기, 기념일)
+🍺 술집/포차   → theme:"pub"         vibe_color:"#CE93D8"  (신나·텐션 높은 톤. 키워드: 안주, 분위기)
+🦞 해산물/일식 → theme:"seafood"     vibe_color:"#80DEEA"  (깔끔·명쾌한 톤. 키워드: 신선도, 입안이 바다)
+🥡 중식/가성비 → theme:"chinese"     vibe_color:"#FFF176"  (빠르고 활기찬 톤. 키워드: 양 실화, 가성비)
+테마 키워드를 caption1·caption2·naration에 자연스럽게 섞어주세요.
+테마별 권장 effect: cafe=zoom-out, grill=zoom-in, pub=pan-right, chinese=tilt-down 
+
 [비주얼 컷 분석 — narration_hint를 나레이션 작성 기반으로 활용]
 ${imgSummary || '분석 없음'}
 권장 컷 순서: [${order.join(',')}]

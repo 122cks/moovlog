@@ -22,6 +22,7 @@ export default function VideoPlayer() {
   const currentFile  = files?.[fileIdx];
   const isImage      = currentFile?.type === 'image';
   const effectClass  = currentScene?.effect ? `effect-${currentScene.effect}` : '';
+  const vibeColor    = script?.vibe_color || null;  // Gemini 테마 컬러 (null 시 기본 스타일 유지)
 
   // ── 비디오: 씬 전환 시 0초로 되감고 재생 보장 ───────────
   useEffect(() => {
@@ -187,7 +188,7 @@ export default function VideoPlayer() {
               )}
               {currentScene.caption2 && (
                 <div className="animate-subtitle-drop" style={{
-                  backgroundColor: 'rgba(255,234,0,0.92)',
+                  backgroundColor: vibeColor ? vibeColor : 'rgba(255,234,0,0.92)',
                   color: '#000000', padding: '6px 16px',
                   borderRadius: '8px',
                   fontSize: '1.3rem', fontWeight: '700',
