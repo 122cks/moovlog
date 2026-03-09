@@ -212,6 +212,7 @@ export async function visionAnalysis(restaurantName) {
 - focus: 화면에 보이는 것 핵심 포인트 1문장 (존댓말, 예: "두툼한 한우 채끝이 철판 위에 올려져 있습니다.")
 - focus_coords: {"x":0.5,"y":0.5}
 - viral_potential: "high"|"medium"|"low"
+- is_exterior: 가게 외관·간판·건물 입구·상호명이 보이면 true, 음식·실내·기타면 false
 
 전체:
 - keywords: 트렌딩 검색어 포함 (ex: "줄서는 집", "인생 맛집", "맛집투어")
@@ -221,7 +222,7 @@ export async function visionAnalysis(restaurantName) {
 - recommended_hook: viral_2026|pov|shock|question|challenge 중 선택
 
 JSON만 반환:
-{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"설명","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high"}]}`;
+{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"설명","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false}]}`;
 
   const data1 = await geminiWithFallback({
     contents: [{ parts: [...parts, { text: prompt1 }] }],
@@ -292,8 +293,12 @@ export async function generateScript(restaurantName, analysis) {
   const { files, selectedTemplate, selectedHook } = useVideoStore.getState();
   const pi    = analysis.per_image || [];
   const order = analysis.recommended_order?.length ? analysis.recommended_order : files.map((_, i) => i);
+  const exteriorIdx = analysis.per_image?.find(p => p.is_exterior === true)?.idx;
+  const exteriorInfo = exteriorIdx !== undefined
+    ? `\n• [★ 외관 강제 배치] ${exteriorIdx}번 미디어가 가게 외관으로 분석되었습니다. 마지막 씬의 media_idx는 반드시 ${exteriorIdx}로 설정하세요.`
+    : '';
   const imgSummary = pi.map(p =>
-    `이미지${p.idx}(${p.type}/감성${p.emotional_score}점): 효과=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ''}"`
+    `이미지${p.idx}(${p.type}/감성${p.emotional_score}점${p.is_exterior ? '/🏪외관' : ''}): 효과=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ''}"`
   ).join('\n');
 
   const isTrend = VIRAL_TRENDS[selectedTemplate];
@@ -343,7 +348,7 @@ ${imgSummary || '분석 없음'}
 씬2 설정/기대(3~4s): 이 곳이 특별한 이유, 분위기·비하인드
 씬3 클라이맥스 전(3~4s): 대표 메뉴 등장, 텍스처·디테일
 씬4 감정 피크(3~4.5s): 맛·경험 최고조 → 가장 인상적인 컷
-마지막 씬 CTA(3~4s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption1에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.
+마지막 씬 CTA(3~4s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption1에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.${exteriorInfo}
 
 [나레이션 스타일 — 담백하고 진정성 있는 현실 톤]
 • '실화', '미쳤다', '대박', '기절', '폼 미쳤다' 같은 억지스러운 숏폼 과장어 절대 금지
@@ -369,6 +374,7 @@ tiktok_tags : #태그 딱 5개만 공백 구분
 • 각 이미지를 제공할 때 앞에 "--- [원본 미디어 번호 media_idx: N] ---" 이라고 라벨을 붙여두었습니다.
 • 스크립트 씬(scene)을 구성할 때, 화면에 나가는 컷이 어떤 원본 파일인지 파악하여 라벨에 적힌 정확한 N값을 "media_idx" 필드에 적어주세요.
 • 반드시 권장 컷 순서 [${order.join(',')}] 의 흐름을 따라 장면을 전개하세요.
+${exteriorIdx !== undefined ? `• 가게 외관 사진(${exteriorIdx}번)은 마지막 씬에만 배치하고, 중간 씬에서는 사용하지 마세요.` : ''}
 
 [모범 나레이션 예시 (이 현실적인 톤과 길이를 똑같이 따라하세요)]
 - 씬1: "요즘 이 동네에서 가장 예약하기 힘들다는 곳, 드디어 다녀왔습니다."

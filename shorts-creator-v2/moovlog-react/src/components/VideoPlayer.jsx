@@ -161,24 +161,32 @@ export default function VideoPlayer() {
               key={`sub-${scene}`}
               className="subtitle-overlay"
               style={{
-                position: 'absolute', bottom: '12%', left: '50%',
-                transform: 'translateX(-50%)',
-                textAlign: 'center', width: '90%', zIndex: 10,
+                position: 'absolute', bottom: '15%',
+                left: 0, width: '100%', height: 'auto',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                zIndex: 20, pointerEvents: 'none',
               }}
             >
               {currentScene.caption1 && (
                 <div className="animate-subtitle-pop" style={{
-                  color: '#fff', fontSize: '2.2rem', fontWeight: 'bold',
-                  textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
-                  marginBottom: '0.4rem',
+                  color: '#fff', fontSize: '2.4rem', fontWeight: '900',
+                  textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
+                  marginBottom: '0.8rem',
+                  maxWidth: '85%', textAlign: 'center',
+                  wordBreak: 'keep-all', lineHeight: '1.2',
+                  transformOrigin: 'center center',
                 }}>
                   {currentScene.caption1}
                 </div>
               )}
               {currentScene.caption2 && (
                 <div className="animate-subtitle-drop" style={{
-                  color: '#FFEA00', fontSize: '1.8rem', fontWeight: 'bold',
-                  textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
+                  color: '#FFD700', fontSize: '1.8rem', fontWeight: '800',
+                  textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
+                  maxWidth: '85%', textAlign: 'center',
+                  wordBreak: 'keep-all',
+                  transformOrigin: 'center center',
                 }}>
                   {currentScene.caption2}
                 </div>

@@ -45,7 +45,7 @@ jobs:
           VITE_TYPECAST_KEY_6: ${{ secrets.VITE_TYPECAST_KEY_6 }}
           VITE_TYPECAST_KEY_7: ${{ secrets.VITE_TYPECAST_KEY_7 }}
           VITE_GOOGLE_DRIVE_API: ${{ secrets.GOOGLE_DRIVE_API }}
-          VITE_GOOGLE_API_KEY: ${{ secrets.GOOGLE_DRIVE_API }}
+          VITE_GOOGLE_API_KEY: ${{ secrets.VITE_GOOGLE_API_KEY }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
           VITE_GOOGLE_APP_ID: ${{ secrets.VITE_GOOGLE_APP_ID }}
         run: |
