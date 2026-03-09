@@ -224,6 +224,26 @@ html, body {
 .dl-btn:disabled { opacity: .6; cursor: not-allowed; }
 .dl-audio-btn { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #444; background: transparent; color: var(--text2); font-size: .82rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit; }
 
+/* ── Video Player Animations (Ken Burns + Subtitle Pop) ─── */
+@keyframes subtitlePopIn {
+  0%   { opacity: 0; transform: translate(-50%, -20%) scale(0.8); }
+  45%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1.0); }
+}
+.animate-subtitle-pop  { animation: subtitlePopIn 0.35s ease-out forwards; will-change: transform, opacity; }
+.animate-subtitle-drop { animation: subtitlePopIn 0.4s ease-out 0.15s forwards; opacity: 0; will-change: transform, opacity; }
+
+@keyframes kenBurnsZoomIn  { 0% { transform: scale3d(1,1,1); }      100% { transform: scale3d(1.12,1.12,1); } }
+@keyframes kenBurnsZoomOut { 0% { transform: scale3d(1.12,1.12,1); } 100% { transform: scale3d(1,1,1); } }
+@keyframes kenBurnsPanLeft  { 0% { transform: scale3d(1.1,1.1,1) translate3d(5%,0,0); }  100% { transform: scale3d(1.1,1.1,1) translate3d(-5%,0,0); } }
+@keyframes kenBurnsPanRight { 0% { transform: scale3d(1.1,1.1,1) translate3d(-5%,0,0); } 100% { transform: scale3d(1.1,1.1,1) translate3d(5%,0,0); } }
+.effect-zoom-in  { animation: kenBurnsZoomIn  linear forwards; }
+.effect-zoom-out { animation: kenBurnsZoomOut linear forwards; }
+.effect-pan-left  { animation: kenBurnsPanLeft  linear forwards; }
+.effect-pan-right { animation: kenBurnsPanRight linear forwards; }
+.video-media-container { overflow: hidden; position: relative; width: 100%; height: 100%; }
+.video-media-content   { width: 100%; height: 100%; object-fit: cover; transform-origin: center center; }
+
 /* ── SNS Tags ────────────────────────────────────────────── */
 .sns-wrap { margin-bottom: 14px; }
 .sns-title { font-size: .82rem; font-weight: 700; color: var(--text2); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }

@@ -85,13 +85,13 @@ export async function geminiRace(body, models = TEXT_MODELS, timeoutMs = 28000) 
   return result.data;
 }
 
-// ─── 파일 → Base64 변환 ───────────────────────────────────
+// ─── 파일 → Base64 변환 (원본 화질 유지 + 에러 핸들링) ────
 export function toB64(file) {
-  return new Promise((ok, fail) => {
-    const r = new FileReader();
-    r.onload = () => ok(r.result.split(',')[1]);
-    r.onerror = fail;
-    r.readAsDataURL(file);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = () => reject(new Error(`'${file.name}' 파일을 읽을 수 없습니다. (파일 손상 또는 OS 접근 권한 문제)`));
+    reader.readAsDataURL(file);
   });
 }
 

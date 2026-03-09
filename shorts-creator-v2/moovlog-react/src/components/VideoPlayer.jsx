@@ -405,12 +405,25 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
               : pos === 'center' ? CH * 0.44
               : CH * 0.70;    // lower
 
-  const appear = Math.min(animProg * 5.0, 1);
-  const oy     = (1 - ease(appear)) * 20 * SCALE;
+  // cap2 전환 여부를 먼저 파악 (appear 산정 기준)
+  const showCap2 = !!(cap2 && animProg > 0.60);
+  // cap1: 씬 시작부터, cap2: 전환 시점부터 각각 독립 팝 등장
+  const appear = showCap2
+    ? Math.min((animProg - 0.60) * 10.0, 1)
+    : Math.min(animProg * 5.0, 1);
+  const oy     = (1 - ease(appear)) * 18 * SCALE;
+
+  // 팝(Pop) 스케일: 0.80 → 1.12(오버슈트) → 1.0 자리잡기
+  const popScale = appear < 0.45
+    ? 0.80 + (appear / 0.45) * 0.32
+    : 1.12 - ((appear - 0.45) / 0.55) * 0.12;
 
   ctx.save();
   ctx.globalAlpha = appear;
   ctx.translate(0, oy);
+  ctx.translate(CW / 2, baseY);
+  ctx.scale(popScale, popScale);
+  ctx.translate(-CW / 2, -baseY);
 
   // ── 스타일 세트 (2026 릴스/쇼츠 최신 미학) ───────────────
   const SM = {
@@ -429,8 +442,6 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // animProg 60% 이후 cap2로 전환 (오디오 싱크 기준)
-  const showCap2 = !!(cap2 && animProg > 0.60);
   const text = showCap2 ? cap2 : cap1;
   if (!text) { ctx.restore(); return; }
 
