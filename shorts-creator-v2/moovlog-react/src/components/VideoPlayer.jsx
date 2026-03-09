@@ -30,10 +30,11 @@ export default function VideoPlayer() {
     if (!isImage && videoRef.current) {
       const video = videoRef.current;
       const onMetadata = () => {
-        // 클립 길이 ÷ 씬 duration → 0.7배속~1.3배속 사이로 자동 조율
+        // 클립 길이 ÷ 씬 duration → 슬로우모션(0.25x) ~ 정속(1.0x) 사이로 자동 조율
+        // 0.25 미만은 freeze frame(loop=false)으로 처리되므로 최저 0.25로 고정
         if (video.duration && isFinite(video.duration) && currentScene?.duration) {
           const rate = video.duration / currentScene.duration;
-          video.playbackRate = Math.max(0.7, Math.min(1.3, rate));
+          video.playbackRate = Math.max(0.25, Math.min(1.0, rate));
         }
       };
       video.addEventListener('loadedmetadata', onMetadata);
@@ -167,7 +168,7 @@ export default function VideoPlayer() {
                   width: '100%', height: '100%', objectFit: 'contain',
                   '--dur': `${currentScene?.duration ?? 3}s`,
                 }}
-                autoPlay muted loop playsInline
+                autoPlay muted playsInline
               />
             ))}
           </div>

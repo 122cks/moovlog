@@ -58,9 +58,17 @@ export async function startMake() {
   } catch (_wlErr) { /* 지원 안 해도 계속 진행 */ }
 
   try {
-    // ── STEP 1: Vision Analysis ────────────────────────────
-    setPipeline(1, 'AI 이미지 분석 + 스타일 자동 선택 중...', 'AI가 최적의 템플릿과 훅을 찾고 있습니다');
-    const analysis = await visionAnalysis(restaurantName.trim());
+    // ── STEP 1: 식당 인텔리전스 — 데이터 선행형 파이프라인 ─────────────────────
+    // 💡 데이터 먼저! 식당 정보 → AI가 "어떤 사진이 핵심인지" 알고 이미지 분석에 들어갑니다
+    setPipeline(1, `"${restaurantName}" 식당 인텔리전스 수집 중...`, `데이터 선행형 — Gemini가 시그니처 메뉴·USP·방문 팁을 먼저 확보합니다`);
+    const researchData = await researchRestaurant(restaurantName.trim()).catch(() => '');
+    if (researchData) addToast('식당 인텔리전스 확보 ✅ — 데이터 기반 시각 분석 시작', 'ok');
+    donePipelineStep(1);
+
+    // ── STEP 2: 컨텍스트 기반 Vision Analysis ─────────────────────────────────
+    // 💡 식당 정보를 먼저 숙지한 AI가 "어떤 사진이 시그니처 메뉴인지" 판단하며 분석합니다
+    setPipeline(2, 'AI 컨텍스트 기반 이미지 분석 중...', '식당 데이터 참고 → 시그니처 메뉴 컷 우선 선별');
+    const analysis = await visionAnalysis(restaurantName.trim(), researchData);
 
     // AI 자동 스타일 선택
     const curState = useVideoStore.getState();
@@ -79,15 +87,9 @@ export async function startMake() {
         : `AI 추천: ${TEMPLATE_NAMES[curTemplate] || curTemplate}`,
       'inf'
     );
-    donePipelineStep(1);
+    donePipelineStep(2);
     // analysis 저장 (VideoRenderer의 focus_coords · aesthetic_score 활용)
     setAnalysis(analysis);
-
-    // ── STEP 2: 식당 실시간 검색 조사 ──────────────────────────
-    setPipeline(2, `"미리보기" 실시간 조사 중...`, `Gemini가 바로 오늘 블로그 리뷰와 식당 정보를 검색합니다`);
-    const researchData = await researchRestaurant(restaurantName.trim()).catch(() => '');
-    if (researchData) addToast('히트 정보 조사 완료 — 더 풍부한 대본에 반영됩니다 ✨', 'ok');
-    donePipelineStep(2);
 
     // ── STEP 3: Script Generation ─────────────────────────────
     setPipeline(3, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');

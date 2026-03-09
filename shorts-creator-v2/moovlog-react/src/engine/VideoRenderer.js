@@ -53,6 +53,9 @@ function getVideoFilter(scene, theme, dur, isLastScene) {
 
   // 기본 해상도 / 크롭
   f.push('scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1');
+  // ★ Freeze Frame: 영상 소스가 scene.duration보다 짧을 때 마지막 프레임 정지 ("틱틱" 반복 방지)
+  // tpad가 최대 30초 분량의 동결 프레임을 추가하고, -t ${dur} 아웃풋 옵션이 정확히 잘라냄
+  f.push('tpad=stop_mode=clone:stop_duration=30');
   // 색감 LUT
   f.push(getColorLUT(theme));
   // Flash 전환 — 씬 시작 화이트 플래시 인
