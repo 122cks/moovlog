@@ -280,7 +280,7 @@ async function fetchTypeCastTTSWithRotation(text) {
 // ─── 전체 씬 TTS 생성 (병렬 처리 + concurrency 제어) ───
 export async function generateAllTTS(scenes, onToast) {
   const buffers = new Array(scenes.length).fill(null);
-  let successCount = 0, failCount = 0, fatalStop = false;
+  let successCount = 0, failCount = 0, fatalStop = false, processedCount = 0;
   const useTypecast = hasTypeCastKeys();
 
   // Typecast는 API rate limit 특성상 최대 3개 동시, Gemini는 2개
@@ -290,6 +290,10 @@ export async function generateAllTTS(scenes, onToast) {
   const tasks = scenes
     .map((sc, i) => ({ sc, i }))
     .filter(({ sc }) => sc.narration?.trim());
+
+  if (tasks.length > 0) {
+    onToast?.(`🎙️ AI 보이스 생성 시작 (${tasks.length}개 씬, ${CONCURRENCY}개 병렬)`, 'inf');
+  }
 
   // 병렬 처리 (concurrency 슬롯 제어)
   let taskIdx = 0;
@@ -323,6 +327,10 @@ export async function generateAllTTS(scenes, onToast) {
           failCount++;
           console.warn(`[TTS] 씬${i + 1} 최종 실패:`, msg);
         }
+      }
+      processedCount++;
+      if (!fatalStop && processedCount < tasks.length) {
+        onToast?.(`🎙️ AI 보이스 ${processedCount}/${tasks.length} 완료...`, 'inf');
       }
     }
   };

@@ -28,7 +28,7 @@ jobs:
 
       - name: Build
         env:
-            VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY2 }}
+          VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY2 }}
           VITE_TYPECAST_KEY: ${{ secrets.VITE_TYPECAST_KEY }}
           VITE_TYPECAST_KEY_2: ${{ secrets.VITE_TYPECAST_KEY_2 }}
           VITE_TYPECAST_KEY_3: ${{ secrets.VITE_TYPECAST_KEY_3 }}
