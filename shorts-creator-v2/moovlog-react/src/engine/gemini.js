@@ -100,7 +100,6 @@ export function extractVideoFramesB64(file, count = 4) {
   return new Promise(resolve => {
     const vid = Object.assign(document.createElement('video'), {
       muted: true, playsInline: true, preload: 'metadata',
-      crossOrigin: 'anonymous',   // CORS Tainted Canvas 방지
     });
     const url = URL.createObjectURL(file);
 
@@ -164,12 +163,13 @@ export async function visionAnalysis(restaurantName) {
 
   for (let i = 0; i < Math.min(files.length, 8); i++) {
     const m = files[i];
+    parts.push({ text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` });
     if (m.type === 'image') {
       const b64 = await toB64(m.file);
       parts.push({ inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } });
     } else {
       try {
-        const frames = await extractVideoFramesB64(m.file, 2);
+        const frames = await extractVideoFramesB64(m.file, 4);
         for (const fr of frames) parts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
       } catch (_) {}
     }
@@ -283,12 +283,13 @@ export async function generateScript(restaurantName, analysis) {
   const imgParts = [];
   for (let i = 0; i < Math.min(files.length, 8); i++) {
     const m = files[i];
+    imgParts.push({ text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` });
     if (m.type === 'image') {
       const b64 = await toB64(m.file);
       imgParts.push({ inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } });
     } else {
       try {
-        const frames = await extractVideoFramesB64(m.file, 2);
+        const frames = await extractVideoFramesB64(m.file, 4);
         for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
       } catch (_) {}
     }
@@ -333,6 +334,9 @@ ${imgSummary || '분석 없음'}
 • 예: "화르르 타오르는 불향이 살아있어요. 겉은 바삭하고 속은 촉촉해요."
 • 예: "여기 분위기 진짜 좋아요! 데이트하기 딱이에요."
 • 예: "꼭 한 번 가보세요! 저장해두면 나중에 고마워요."
+• 단순한 상황 설명("~하고 있습니다", "~을 먹고 있습니다")을 절대 금지합니다.
+• 반드시 오감(시각·청각·미각·촉각)을 자극하는 표현을 1개 이상 섞어주세요.
+  (예: "지글지글 끓는 소리", "입안에서 사르르 녹는", "육즙이 팡팡 터지는", "불향이 확 코를 찌르는")
 
 [자막 규칙 — 임팩트 극대화]
 caption1: 해당 컷 핵심 내용 4~10자 (존댓말 가능, 명사형 허용)
@@ -346,16 +350,25 @@ instagram_caption : 감성 소개 2~3줄\\n\\n#태그1 #태그2 #태그3 #태그
 tiktok_tags : #태그 딱 5개만 공백 구분
 
 [컷 매칭 규칙 — ★매우 중요★]
-• 각 씨(scene)에는 반드시 "media_idx" 필드를 추가하여, 이 나레이션과 자막이 원본 미디어 중 몷 번째(idx) 이미지를 보고 쓴 것인지 정확한 번호를 명시하세요.
+• 각 이미지를 제공할 때 앞에 "--- [원본 미디어 번호 media_idx: N] ---" 이라고 라벨을 붙여두었습니다.
+• 스크립트 씬(scene)을 구성할 때, 화면에 나가는 컷이 어떤 원본 파일인지 파악하여 라벨에 적힌 정확한 N값을 "media_idx" 필드에 적어주세요.
 • 반드시 권장 컷 순서 [${order.join(',')}] 의 흐름을 따라 장면을 전개하세요.
+
+[모범 나레이션 예시 — 이 텐션과 길이를 똑같이 따라하세요]
+- 씬1: "와, 비주얼 미쳤죠? 오늘 소개할 곳은 진짜 나만 알고 싶은 아지트예요!"
+- 씬2: "한 입 먹자마자 불향이 입안을 싹 감싸는데, 이거 완전 밥도둑이에요."
+- 씬3: "저 영롱한 육즙 보이시나요? 씹을 필요도 없이 사르르 녹아내려요."
 
 JSON만 반환:
 {"title":"제목","hashtags":"#태그","naver_clip_tags":"#협찬 #서울맛집","youtube_shorts_tags":"#맛집 #shorts","instagram_caption":"소개문\\n\\n#태그","tiktok_tags":"#맛집","scenes":[
-  {"idx":0,"media_idx":2,"duration":3.0,"caption1":"한우 쇠끝","caption2":"불향 살아있어요","subtitle_style":"hook","subtitle_position":"center","narration":"두툴하게 썬어낸 한우 쇠끝, 불향이 살아있어요!","effect":"zoom-out"}
+  {"idx":0,"media_idx":2,"duration":3.0,"caption1":"한우 쇠끝","caption2":"불향 살아있어요","subtitle_style":"hook","subtitle_position":"center","narration":"두툼하게 썰어낸 한우 쇠끝, 불향이 살아있어요!","effect":"zoom-out"}
 ]}`;
 
   const makeReq = async url => {
     const data = await apiPost(url, {
+      system_instruction: {
+        parts: [{ text: "당신은 트렌디하고 텐션 높은 2030 맛집 크리에이터 '무브먼트'입니다. 절대 AI나 봇처럼 말하지 말고, 친한 친구에게 호들갑 떨며 맛집을 추천하는 구어체만 사용해야 합니다." }],
+      },
       contents: [{ parts: [...imgParts, { text: prompt }] }],
       generationConfig: { temperature: 0.92, responseMimeType: 'application/json' },
     });
@@ -381,7 +394,7 @@ export async function generateBlogPost({ name, location, keywords, extra, imageF
       imgParts.push({ inline_data: { mime_type: f.type || 'image/jpeg', data: b64 } });
     } else if (f.type.startsWith('video/')) {
       try {
-        const frames = await extractVideoFramesB64(f, 2);
+        const frames = await extractVideoFramesB64(f, 4);
         for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
       } catch (_) {}
     }
