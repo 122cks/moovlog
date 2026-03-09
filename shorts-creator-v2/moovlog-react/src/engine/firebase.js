@@ -52,9 +52,9 @@ async function fbUpload(blob, storagePath) {
   }
 }
 
-export async function firebaseUploadOriginals(files, restaurantName) {
+export async function firebaseUploadOriginals(files, restaurantName, pipelineSessionId) {
   if (!storage) return;
-  const session = `${Date.now()}_${(restaurantName || 'noname').replace(/\s+/g, '_')}`;
+  const session = pipelineSessionId || `${Date.now()}_${(restaurantName || 'noname').replace(/\s+/g, '_')}`;
   files.forEach((m, i) => {
     fbUpload(m.file, `originals/${session}/${i}_${m.file.name}`);
   });
@@ -81,9 +81,9 @@ export async function firebaseSaveSession(script, restaurantName) {
   }
 }
 
-export async function firebaseUploadVideo(blob, ext, restaurantName) {
+export async function firebaseUploadVideo(blob, ext, restaurantName, pipelineSessionId) {
   if (!storage || !db) return;
-  const session = `${Date.now()}_${(restaurantName || 'noname').replace(/\s+/g, '_')}`;
+  const session = pipelineSessionId || `${Date.now()}_${(restaurantName || 'noname').replace(/\s+/g, '_')}`;
   const url = await fbUpload(blob, `generated/${session}/video.${ext}`);
   if (!url) return;
   try {

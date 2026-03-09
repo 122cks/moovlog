@@ -9,7 +9,7 @@ import * as Mp4Muxer  from 'mp4-muxer';
 import * as WebmMuxer from 'webm-muxer';
 
 export default function ExportPanel() {
-  const { script, audioBuffers, restaurantName, addToast, setExporting, exporting } = useVideoStore();
+  const { script, audioBuffers, restaurantName, addToast, setExporting, exporting, pipelineSessionId } = useVideoStore();
   const [btnText, setBtnText] = useState('영상 저장하기');
 
   const doExport = async () => {
@@ -271,5 +271,5 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
   downloadBlob(blob, `moovlog_${sanitizeName(restaurantName)}.${fmt.ext}`);
   setBtnText('다시 저장하기');
   addToast(pcm ? `✓ AI 음성 포함 ${fmt.ext.toUpperCase()} 저장 완료!` : `✓ ${fmt.ext.toUpperCase()} 저장 완료!`, 'ok');
-  firebaseUploadVideo(blob, fmt.ext, restaurantName).catch(() => {});
+  firebaseUploadVideo(blob, fmt.ext, restaurantName, pipelineSessionId).catch(() => {});
 }

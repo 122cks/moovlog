@@ -143,6 +143,7 @@ const INITIAL = {
 
   // Firebase 세션
   sessionDocId: null,
+  pipelineSessionId: null,  // startMake 시작 시 생성 — originals·video 동일 경로
 };
 
 // ─── Store ────────────────────────────────────────────────────
@@ -234,8 +235,7 @@ export const useVideoStore = create(
       }), false, 'removeToast'),
 
       // ── Firebase ───────────────────────────────────────────
-      setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),
-
+      setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),      setPipelineSessionId: (pipelineSessionId) => set({ pipelineSessionId }, false, 'setPipelineSessionId'),
       // ── 전체 리셋 ──────────────────────────────────────────
       reset: () => set({
         ...INITIAL,

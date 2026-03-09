@@ -6,6 +6,7 @@ import { visionAnalysis, generateScript } from './gemini.js';
 import { generateAllTTS, ensureAudio, sleep, preprocessNarration } from './tts.js';
 import { splitCaptions } from './utils.js';
 import { firebaseUploadOriginals, firebaseSaveSession } from './firebase.js';
+// firebaseUploadVideo는 VideoPlayer에서 직접 사용 — pipeline에서 pipelineSessionId 노출
 
 // ─── 자막 분할 ────────────────────────────────────────────
 // (utils.js에서 임포트, 기존 splitCaptions() 동일)
@@ -18,7 +19,7 @@ export async function startMake() {
     setPipeline, donePipelineStep, setScript,
     setAudioBuffers, setLoaded, setShowResult,
     addToast, setAutoStyleName, setTemplate, setHook,
-    hidePipeline, reset,
+    hidePipeline, reset, setPipelineSessionId,
   } = store;
 
   if (!files.length) { addToast('이미지 또는 영상을 올려주세요', 'err'); return; }
@@ -40,8 +41,12 @@ export async function startMake() {
     const _u = new SpeechSynthesisUtterance(''); _u.volume = 0; speechSynthesis.speak(_u);
   }
 
+  // 파이프라인 공유 sessionId — originals·video 모두 같은 폴더
+  const pipelineSessionId = `${Date.now()}_${restaurantName.trim().replace(/\s+/g, '_')}`;
+  setPipelineSessionId(pipelineSessionId);
+
   // 원본 파일 Firebase 백그라운드 업로드
-  firebaseUploadOriginals(files, restaurantName).catch(() => {});
+  firebaseUploadOriginals(files, restaurantName, pipelineSessionId).catch(() => {});
 
   // 화면 꺼짐 방지 (Wake Lock API) — 생성 중 휴대폰 꺼져도 계속 진행
   let _wakeLock = null;
