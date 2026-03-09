@@ -17,7 +17,7 @@ export function getApiUrl(model, key) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key || geminiKey}`;
 }
 
-async function fetchWithTimeout(url, options, timeout = 30000) {
+async function fetchWithTimeout(url, options, timeout = 60000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
   try {
@@ -30,7 +30,7 @@ async function fetchWithTimeout(url, options, timeout = 30000) {
   }
 }
 
-export async function apiPost(url, body, timeoutMs = 30000) {
+export async function apiPost(url, body, timeoutMs = 60000) {
   const r = await fetchWithTimeout(
     url,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
@@ -85,12 +85,33 @@ export async function geminiRace(body, models = TEXT_MODELS, timeoutMs = 28000) 
   return result.data;
 }
 
-// ─── 파일 → Base64 변환 (원본 화질 유지 + 에러 핸들링) ────
+// ─── 파일 → Base64 변환 (PC 전용 스마트 압축: 화질 보존 + 속도 떡상) ────
+const MAX_IMG_SIZE = 1920; // Gemini Vision은 FHD급으로 내부 리사이즈 → 4K 원본 전송은 데이터 낭비
 export function toB64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = () => reject(new Error(`'${file.name}' 파일을 읽을 수 없습니다. (파일 손상 또는 OS 접근 권한 문제)`));
+    reader.onerror = () => reject(new Error(`'${file.name}' 파일을 읽을 수 없습니다.`));
+
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('이미지 파싱 실패'));
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width: w, height: h } = img;
+
+        if (w > MAX_IMG_SIZE || h > MAX_IMG_SIZE) {
+          const ratio = Math.min(MAX_IMG_SIZE / w, MAX_IMG_SIZE / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.9).split(',')[1]);
+      };
+      img.src = reader.result;
+    };
     reader.readAsDataURL(file);
   });
 }

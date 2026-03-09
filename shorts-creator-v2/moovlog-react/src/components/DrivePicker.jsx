@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 
-const API_KEY = import.meta.env.VITE_GOOGLE_DRIVE_API || '';
+const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_DRIVE_API || '';
 
 function loadScript(src) {
   return new Promise((resolve) => {
@@ -32,6 +32,9 @@ export default function DrivePicker() {
   }, []);
 
   const getClientId = () => {
+    // 환경변수 우선, 없으면 localStorage, 없으면 팝업 입력
+    const envId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+    if (envId) return envId.trim();
     let id = localStorage.getItem('moovlog_google_client_id') || '';
     if (!id) {
       id = prompt(
