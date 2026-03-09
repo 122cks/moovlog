@@ -103,17 +103,31 @@ export function extractVideoFramesB64(file, count = 4) {
       crossOrigin: 'anonymous',   // CORS Tainted Canvas 방지
     });
     const url = URL.createObjectURL(file);
-    vid.onerror = () => { URL.revokeObjectURL(url); resolve([]); };
+
+    const cleanup = (canvas) => {
+      URL.revokeObjectURL(url);
+      vid.pause();
+      vid.src = '';
+      vid.load();
+      vid.remove();
+      if (canvas) { canvas.width = 0; canvas.height = 0; }
+    };
+
+    vid.onerror = () => { cleanup(null); resolve([]); };
     vid.onloadedmetadata = () => {
       const dur = isFinite(vid.duration) ? vid.duration : 0;
-      if (!dur) { URL.revokeObjectURL(url); resolve([]); return; }
+      if (!dur) { cleanup(null); resolve([]); return; }
       const offscreen = document.createElement('canvas');
       offscreen.width = 640; offscreen.height = 360;
       const octx = offscreen.getContext('2d');
       const frames = [];
       const times = Array.from({ length: count }, (_, i) => dur * (i + 0.5) / count);
       const captureAt = idx => {
-        if (idx >= times.length) { URL.revokeObjectURL(url); resolve(frames); return; }
+        if (idx >= times.length) {
+          cleanup(offscreen);
+          resolve(frames);
+          return;
+        }
         vid.currentTime = times[idx];
         vid.onseeked = () => {
           try {
