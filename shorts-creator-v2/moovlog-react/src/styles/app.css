@@ -225,22 +225,44 @@ html, body {
 .dl-audio-btn { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #444; background: transparent; color: var(--text2); font-size: .82rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit; }
 
 /* ── Video Player Animations (Ken Burns + Subtitle Pop) ─── */
-@keyframes subtitlePopIn {
-  0%   { opacity: 0; transform: translateY(20px) scale(0.8); }
-  60%  { opacity: 1; transform: translateY(-5px) scale(1.1); }
-  100% { opacity: 1; transform: translateY(0) scale(1.0); }
+@keyframes elasticPop {
+  0%   { opacity: 0; transform: scale(0.5) translateY(20px); }
+  60%  { opacity: 1; transform: scale(1.1) translateY(-5px); }
+  80%  { transform: scale(0.95) translateY(2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
 }
-.animate-subtitle-pop  { animation: subtitlePopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; will-change: transform, opacity; }
-.animate-subtitle-drop { animation: subtitlePopIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.15s forwards; opacity: 0; will-change: transform, opacity; }
+@keyframes smoothSlideUp {
+  0%   { opacity: 0; transform: translateY(15px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-subtitle-pop  { animation: elasticPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; will-change: transform, opacity; }
+.animate-subtitle-drop { animation: smoothSlideUp 0.4s ease-out 0.15s forwards; opacity: 0; will-change: transform, opacity; }
 
-@keyframes kenBurnsZoomIn  { 0% { transform: scale3d(1,1,1); }      100% { transform: scale3d(1.12,1.12,1); } }
-@keyframes kenBurnsZoomOut { 0% { transform: scale3d(1.12,1.12,1); } 100% { transform: scale3d(1,1,1); } }
-@keyframes kenBurnsPanLeft  { 0% { transform: scale3d(1.1,1.1,1) translate3d(5%,0,0); }  100% { transform: scale3d(1.1,1.1,1) translate3d(-5%,0,0); } }
-@keyframes kenBurnsPanRight { 0% { transform: scale3d(1.1,1.1,1) translate3d(-5%,0,0); } 100% { transform: scale3d(1.1,1.1,1) translate3d(5%,0,0); } }
-.effect-zoom-in  { animation: kenBurnsZoomIn  linear forwards; }
-.effect-zoom-out { animation: kenBurnsZoomOut linear forwards; }
-.effect-pan-left  { animation: kenBurnsPanLeft  linear forwards; }
-.effect-pan-right { animation: kenBurnsPanRight linear forwards; }
+@keyframes zoom-in    { 0% { transform: scale(1); }                              100% { transform: scale(1.25); } }
+@keyframes zoom-out   { 0% { transform: scale(1.25); }                           100% { transform: scale(1); } }
+@keyframes pan-right  { 0% { transform: scale(1.2) translateX(-10%); }           100% { transform: scale(1.2) translateX(10%); } }
+@keyframes pan-left   { 0% { transform: scale(1.2) translateX(10%); }            100% { transform: scale(1.2) translateX(-10%); } }
+@keyframes tilt-up    { 0% { transform: scale(1.2) translateY(10%); }            100% { transform: scale(1.2) translateY(-10%); } }
+@keyframes tilt-down  { 0% { transform: scale(1.2) translateY(-10%); }           100% { transform: scale(1.2) translateY(10%); } }
+@keyframes zoom-in-slow { 0% { transform: scale(1); }                            100% { transform: scale(1.12); } }
+@keyframes float-up   { 0% { transform: scale(1.1) translateY(6%); }             100% { transform: scale(1.1) translateY(-2%); } }
+@keyframes drift      { 0% { transform: scale(1.08) translateX(-4%); } 50% { transform: scale(1.08) translateX(4%); } 100% { transform: scale(1.08) translateX(0); } }
+
+.effect-zoom-in      { animation: zoom-in      var(--dur, 3s) ease-in-out forwards; }
+.effect-zoom-out     { animation: zoom-out     var(--dur, 3s) ease-in-out forwards; }
+.effect-pan-right    { animation: pan-right    var(--dur, 3s) ease-in-out forwards; }
+.effect-pan-left     { animation: pan-left     var(--dur, 3s) ease-in-out forwards; }
+.effect-tilt-up      { animation: tilt-up      var(--dur, 3s) ease-in-out forwards; }
+.effect-tilt-down    { animation: tilt-down    var(--dur, 3s) ease-in-out forwards; }
+.effect-zoom-in-slow { animation: zoom-in-slow var(--dur, 3s) ease-in-out forwards; }
+.effect-float-up     { animation: float-up     var(--dur, 3s) ease-in-out forwards; }
+.effect-drift        { animation: drift        var(--dur, 3s) ease-in-out forwards; }
+
+.vignette-overlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.4) 100%);
+  pointer-events: none; z-index: 5;
+}
 .video-media-container { overflow: hidden; position: relative; width: 100%; height: 100%; }
 .video-media-content   {
   width: 100%; height: 100%; object-fit: cover; transform-origin: center center;

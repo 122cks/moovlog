@@ -21,7 +21,7 @@ export default function VideoPlayer() {
   const fileIdx      = currentScene?.media_idx ?? scene;
   const currentFile  = files?.[fileIdx];
   const isImage      = currentFile?.type === 'image';
-  const effectClass  = isImage && currentScene?.effect ? `effect-${currentScene.effect}` : '';
+  const effectClass  = currentScene?.effect ? `effect-${currentScene.effect}` : '';
 
   // ── 비디오: 씬 전환 시 0초로 되감고 재생 보장 ───────────
   useEffect(() => {
@@ -132,6 +132,7 @@ export default function VideoPlayer() {
 
           {/* ── 미디어 레이어 ── */}
           <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', backgroundColor: '#000' }}>
+            <div className="vignette-overlay" />
             {currentFile && (isImage ? (
               <img
                 key={`img-${scene}`}
@@ -140,6 +141,7 @@ export default function VideoPlayer() {
                 className={`video-media-content ${effectClass}`}
                 style={{
                   width: '100%', height: '100%', objectFit: 'contain',
+                  '--dur': `${currentScene?.duration ?? 3}s`,
                   animationDuration: `${currentScene?.duration ?? 3}s`,
                 }}
               />
@@ -148,8 +150,11 @@ export default function VideoPlayer() {
                 ref={videoRef}
                 key={`vid-${fileIdx}`}
                 src={currentFile.url}
-                className="video-media-content"
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                className={`video-media-content ${effectClass}`}
+                style={{
+                  width: '100%', height: '100%', objectFit: 'contain',
+                  '--dur': `${currentScene?.duration ?? 3}s`,
+                }}
                 autoPlay muted loop playsInline
               />
             ))}
@@ -159,34 +164,36 @@ export default function VideoPlayer() {
           {currentScene && (
             <div
               key={`sub-${scene}`}
-              className="subtitle-overlay"
               style={{
                 position: 'absolute', bottom: '15%',
-                left: 0, width: '100%', height: 'auto',
+                left: 0, width: '100%',
                 display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                zIndex: 20, pointerEvents: 'none',
+                alignItems: 'center', gap: '10px',
+                zIndex: 50, pointerEvents: 'none',
               }}
             >
               {currentScene.caption1 && (
                 <div className="animate-subtitle-pop" style={{
-                  color: '#fff', fontSize: '2.4rem', fontWeight: '900',
-                  textShadow: '3px 3px 6px rgba(0,0,0,0.9)',
-                  marginBottom: '0.8rem',
-                  maxWidth: '85%', textAlign: 'center',
+                  backgroundColor: 'rgba(0,0,0,0.75)',
+                  color: '#FFFFFF', padding: '10px 22px',
+                  borderRadius: '50px',
+                  fontSize: '1.8rem', fontWeight: '800',
+                  textAlign: 'center', maxWidth: '85%',
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
                   wordBreak: 'keep-all', lineHeight: '1.2',
-                  transformOrigin: 'center center',
                 }}>
                   {currentScene.caption1}
                 </div>
               )}
               {currentScene.caption2 && (
                 <div className="animate-subtitle-drop" style={{
-                  color: '#FFD700', fontSize: '1.8rem', fontWeight: '800',
-                  textShadow: '2px 2px 4px rgba(0,0,0,0.9)',
-                  maxWidth: '85%', textAlign: 'center',
+                  backgroundColor: 'rgba(255,234,0,0.92)',
+                  color: '#000000', padding: '6px 16px',
+                  borderRadius: '8px',
+                  fontSize: '1.3rem', fontWeight: '700',
+                  textAlign: 'center', maxWidth: '80%',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
                   wordBreak: 'keep-all',
-                  transformOrigin: 'center center',
                 }}>
                   {currentScene.caption2}
                 </div>

@@ -4,6 +4,7 @@ import { useVideoStore, TEMPLATE_NAMES, TEMPLATE_HINTS } from '../store/videoSto
 import { startMake } from '../engine/pipeline.js';
 import { setGeminiKey } from '../engine/gemini.js';
 import DrivePicker from './DrivePicker.jsx';
+import PromptInput from './PromptInput.jsx';
 
 export default function UploadSection() {
   const {
@@ -157,6 +158,9 @@ export default function UploadSection() {
           >{name}</button>
         ))}
       </div>
+
+      {/* AI 특별 요청 */}
+      <PromptInput />
 
       {/* 생성 버튼 */}
       <button

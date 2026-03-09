@@ -131,7 +131,7 @@ const INITIAL = {
     title: '',
     sub: '',
     autoStyleName: '',
-    done: [false, false, false, false],
+    done: [false, false, false, false, false],
   },
 
   // 결과 화면
@@ -140,6 +140,9 @@ const INITIAL = {
 
   // 토스트
   toasts: [],         // [{ id, msg, type }]
+
+  // 유저 프롬프트
+  userPrompt: '',
 
   // Firebase 세션
   sessionDocId: null,
@@ -233,6 +236,9 @@ export const useVideoStore = create(
       removeToast: (id) => set(s => ({
         toasts: s.toasts.filter(t => t.id !== id),
       }), false, 'removeToast'),
+
+      // ── 유저 프롬프트 ──────────────────────────────────────
+      setUserPrompt: (userPrompt) => set({ userPrompt }, false, 'setUserPrompt'),
 
       // ── Firebase ───────────────────────────────────────────
       setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),      setPipelineSessionId: (pipelineSessionId) => set({ pipelineSessionId }, false, 'setPipelineSessionId'),

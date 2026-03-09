@@ -2,7 +2,7 @@
 // startMake() 파이프라인 — 기존 script.js startMake() 이식 + React store 연동
 
 import { useVideoStore, VIRAL_TRENDS } from '../store/videoStore.js';
-import { visionAnalysis, generateScript } from './gemini.js';
+import { visionAnalysis, generateScript, researchRestaurant } from './gemini.js';
 import { generateAllTTS, ensureAudio, sleep, preprocessNarration } from './tts.js';
 import { splitCaptions } from './utils.js';
 import { firebaseUploadOriginals, firebaseSaveSession } from './firebase.js';
@@ -81,14 +81,20 @@ export async function startMake() {
     );
     donePipelineStep(1);
 
-    // ── STEP 2: Script Generation ──────────────────────────
-    setPipeline(2, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');
-    const script = await generateScript(restaurantName.trim(), analysis);
-    setScript(script);
+    // ── STEP 2: 식당 실시간 검색 조사 ──────────────────────────
+    setPipeline(2, `"미리보기" 실시간 조사 중...`, `Gemini가 바로 오늘 블로그 리뷰와 식당 정보를 검색합니다`);
+    const researchData = await researchRestaurant(restaurantName.trim()).catch(() => '');
+    if (researchData) addToast('히트 정보 조사 완료 — 더 풍부한 대본에 반영됩니다 ✨', 'ok');
     donePipelineStep(2);
 
-    // ── STEP 3: TTS ────────────────────────────────────────
-    setPipeline(3, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
+    // ── STEP 3: Script Generation ─────────────────────────────
+    setPipeline(3, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');
+    const script = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData);
+    setScript(script);
+    donePipelineStep(3);
+
+    // ── STEP 4: TTS ─────────────────────────────────────────────────
+    setPipeline(4, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
     let audioBuffers;
     try {
       audioBuffers = await generateAllTTS(script.scenes, (msg, type) => addToast(msg, type));
@@ -130,14 +136,14 @@ export async function startMake() {
     // script 업데이트
     setScript({ ...script, scenes: finalScenes });
     setAudioBuffers(audioBuffers);
-    donePipelineStep(3);
+    donePipelineStep(4);
 
-    // ── STEP 4: 미디어 프리로드 ────────────────────────────
-    setPipeline(4, '렌더링 준비 중...', '컷 배치 · 애니메이션 · 효과 적용');
+    // ── STEP 5: 미디어 프리로드 ────────────────────────────────────
+    setPipeline(5, '렌더링 준비 중...', '컷 배치 · 애니메이션 · 효과 적용');
     const loaded = await preloadMedia(files);
     setLoaded(loaded);
     await sleep(200);
-    donePipelineStep(4);
+    donePipelineStep(5);
 
     // Firebase 세션 저장
     firebaseSaveSession({ ...script, scenes: finalScenes }, restaurantName).catch(() => {});
