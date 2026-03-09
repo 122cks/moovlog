@@ -1,7 +1,7 @@
 // MOOVLOG Shorts Creator — Service Worker
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
-const CACHE_NAME = 'moovlog-v2.6';
+const CACHE_NAME = 'moovlog-v2.18';
 const STATIC_ASSETS = [
   '/moovlog/shorts-creator/',
   '/moovlog/shorts-creator/index.html',
@@ -29,6 +29,20 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+
+  // ── FFmpeg WASM용 COOP/COEP 헤더 주입 (GitHub Pages는 커스텀 헤더 불가 → SW로 주입) ──
+  // HTML 문서 응답에만 적용 (cross-origin 리소스는 건드리지 않음)
+  if (e.request.destination === 'document' && url.origin === self.location.origin) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const headers = new Headers(res.headers);
+        headers.set('Cross-Origin-Opener-Policy',   'same-origin');
+        headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+        return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+      }).catch(() => caches.match(e.request))
+    );
+    return;
+  }
 
   // API, Firebase, Gemini 요청은 캐시 안 함 — 항상 네트워크
   if (

@@ -5,12 +5,15 @@ import { getAudioCtx } from '../engine/tts.js';
 import { downloadBlob, sanitizeName } from '../engine/utils.js';
 import { firebaseUploadVideo } from '../engine/firebase.js';
 import { renderFrameToCtx, ASPECT_MAP_EX } from './VideoPlayer.jsx';
+import { renderVideoWithFFmpeg } from '../engine/VideoRenderer.js';
 import * as Mp4Muxer  from 'mp4-muxer';
 import * as WebmMuxer from 'webm-muxer';
 
 export default function ExportPanel() {
-  const { script, audioBuffers, restaurantName, addToast, setExporting, exporting, pipelineSessionId } = useVideoStore();
+  const { script, audioBuffers, restaurantName, addToast, setExporting, exporting, pipelineSessionId, files } = useVideoStore();
   const [btnText, setBtnText] = useState('영상 저장하기');
+  const [ffmpegText, setFfmpegText] = useState('📦 FFmpeg 내보내기 (자동 호환)');
+  const [ffmpegBusy, setFfmpegBusy] = useState(false);
 
   const doExport = async () => {
     if (exporting) return;
@@ -66,6 +69,32 @@ export default function ExportPanel() {
     }
   };
 
+  const doExportFFmpeg = async () => {
+    if (ffmpegBusy) return;
+    if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
+    if (!files?.length) { addToast('미디어 파일이 없습니다', 'err'); return; }
+    if (!crossOriginIsolated) {
+      addToast('FFmpeg는 보안 격리(COOP/COEP)가 필요합니다. Chrome 환경에서 실행 중인지 확인하세요.', 'err');
+      return;
+    }
+    setFfmpegBusy(true);
+    try {
+      const blob = await renderVideoWithFFmpeg(
+        script.scenes,
+        files,
+        (msg) => setFfmpegText(`🎬 ${msg}`)
+      );
+      downloadBlob(blob, `moovlog_ffmpeg_${sanitizeName(restaurantName)}.mp4`);
+      addToast('FFmpeg 렌더링 완료!', 'ok');
+      setFfmpegText('📦 FFmpeg 내보내기 (자동 호환)');
+    } catch (err) {
+      addToast('FFmpeg 오류: ' + (err?.message || String(err)), 'err');
+      setFfmpegText('📦 FFmpeg 내보내기 (자동 호환)');
+    } finally {
+      setFfmpegBusy(false);
+    }
+  };
+
   return (
     <div className="dl-box">
       <p className="dl-title"><i className="fas fa-download" /> 영상 저장</p>
@@ -78,6 +107,12 @@ export default function ExportPanel() {
       </button>
       <button className="dl-audio-btn" onClick={doExportAudio}>
         <i className="fas fa-music" /> 음성만 저장 (WAV)
+      </button>
+      <button className="dl-audio-btn" onClick={doExportFFmpeg} disabled={ffmpegBusy}
+        style={{ marginTop: '8px', opacity: crossOriginIsolated ? 1 : 0.45 }}
+        title={crossOriginIsolated ? 'FFmpeg WASM 렌더링' : 'COOP/COEP 헤더 필요 — 로컬 개발 서버에서 지원'}
+      >
+        <i className={`fas ${ffmpegBusy ? 'fa-spinner fa-spin' : 'fa-film'}`} /> {ffmpegText}
       </button>
     </div>
   );

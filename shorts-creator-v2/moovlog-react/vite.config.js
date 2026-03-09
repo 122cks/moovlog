@@ -5,6 +5,13 @@ export default defineConfig({
   plugins: [react()],
   base: '/moovlog/shorts-creator/',   // GitHub Pages 경로 — 기존과 동일
   publicDir: 'public',
+  // FFmpeg WASM이 요구하는 SharedArrayBuffer를 위한 COOP/COEP 헤더 (dev server)
+  server: {
+    headers: {
+      'Cross-Origin-Opener-Policy':   'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
+  },
   build: {
     target: 'es2022',                 // WebCodecs, AudioWorklet 지원
     outDir: 'dist',

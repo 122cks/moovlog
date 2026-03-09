@@ -24,11 +24,21 @@ export default function VideoPlayer() {
   const effectClass  = currentScene?.effect ? `effect-${currentScene.effect}` : '';
   const vibeColor    = script?.vibe_color || null;  // Gemini 테마 컬러 (null 시 기본 스타일 유지)
 
-  // ── 비디오: 씬 전환 시 0초로 되감고 재생 보장 ───────────
+  // ── 비디오: 씬 전환 시 0초로 되감고 재생 + Adaptive Sync ─
   useEffect(() => {
     if (!isImage && videoRef.current) {
-      videoRef.current.currentTime = 0;
-      videoRef.current.play().catch(() => {});
+      const video = videoRef.current;
+      const onMetadata = () => {
+        // 클립 길이 ÷ 씬 duration → 0.7배속~1.3배속 사이로 자동 조율
+        if (video.duration && isFinite(video.duration) && currentScene?.duration) {
+          const rate = video.duration / currentScene.duration;
+          video.playbackRate = Math.max(0.7, Math.min(1.3, rate));
+        }
+      };
+      video.addEventListener('loadedmetadata', onMetadata);
+      video.currentTime = 0;
+      video.play().catch(() => {});
+      return () => video.removeEventListener('loadedmetadata', onMetadata);
     }
   }, [scene, isImage]);
 
@@ -178,7 +188,8 @@ export default function VideoPlayer() {
                   backgroundColor: 'rgba(0,0,0,0.75)',
                   color: '#FFFFFF', padding: '10px 22px',
                   borderRadius: '50px',
-                  fontSize: '1.8rem', fontWeight: '800',
+                  fontSize: '2.2rem', fontWeight: '900',
+                  letterSpacing: '-1px',
                   textAlign: 'center', maxWidth: '85%',
                   boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
                   wordBreak: 'keep-all', lineHeight: '1.2',
