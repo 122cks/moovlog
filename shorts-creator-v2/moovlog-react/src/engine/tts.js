@@ -84,7 +84,7 @@ export async function fetchTypeCastTTS(text) {
     xapi_hd: true,
     model_version: 'latest',
     xapi_audio_format: 'mp3',
-    tempo: 1.25,
+    tempo: 1.45,   // 속도 향상 (1.25 → 1.45)
     volume: 100,
     pitch: 0,
   });
@@ -105,6 +105,9 @@ export async function fetchTypeCastTTS(text) {
   if (!res.ok) {
     const _errData = await res.json().catch(() => ({}));
     const _errMsg  = _errData?.result?.message || _errData?.error?.message || `HTTP ${res.status}`;
+    // 401(인증 오류)은 즉시 키 로테이션, 429(할당량 초과)는 명시적 표기
+    if (res.status === 401) throw new Error(`TYPECAST_401: ${_errMsg}`);
+    if (res.status === 429) throw new Error(`TYPECAST_429: ${_errMsg}`);
     throw new Error(`TYPECAST_FAIL_${res.status}: ${_errMsg}`);
   }
 
@@ -247,62 +250,90 @@ export async function fetchTTSWithRetry(text, sceneIdx) {
   throw lastErr || new Error('TTS 최종 실패');
 }
 
-// ─── 전체 씬 TTS 생성 ────────────────────────────────────
+// ─── Typecast 단일 씬 TTS (HTTP 코드 기반 로테이션) ─────
+async function fetchTypeCastTTSWithRotation(text) {
+  let tcBuf = null;
+  const maxAttempts = _typeCastKeys.length * 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      tcBuf = await fetchTypeCastTTS(text);
+      break;
+    } catch (e2) {
+      const m2 = e2.message || '';
+      // 401(인증)/429(할당량) → 즉시 다음 키로 전환
+      if (m2.startsWith('TYPECAST_401') || m2.startsWith('TYPECAST_429')) {
+        rotateTypeCastKey();
+        continue;
+      }
+      // 타임아웃 → 한 번 더 같은 키로 시도
+      if (m2.includes('타임아웃') || m2.includes('30초') || e2.name === 'AbortError') {
+        if (attempt % 2 === 1) rotateTypeCastKey();
+        continue;
+      }
+      // 기타 오류 → 키 로테이션 후 재시도
+      rotateTypeCastKey();
+    }
+  }
+  return tcBuf; // null이면 Gemini 폴백
+}
+
+// ─── 전체 씬 TTS 생성 (병렬 처리 + concurrency 제어) ───
 export async function generateAllTTS(scenes, onToast) {
   const buffers = new Array(scenes.length).fill(null);
   let successCount = 0, failCount = 0, fatalStop = false;
   const useTypecast = hasTypeCastKeys();
 
-  for (let i = 0; i < scenes.length; i++) {
-    if (fatalStop) break;
-    const sc = scenes[i];
-    if (!sc.narration) { if (i < scenes.length - 1) await sleep(TTS_CONFIG.sceneDelay); continue; }
+  // Typecast는 API rate limit 특성상 최대 3개 동시, Gemini는 2개
+  const CONCURRENCY = useTypecast ? 3 : 2;
 
-    const text = preprocessNarration(sc.narration);
-    if (!text) { if (i < scenes.length - 1) await sleep(TTS_CONFIG.sceneDelay); continue; }
+  // 처리할 씬 인덱스만 추출
+  const tasks = scenes
+    .map((sc, i) => ({ sc, i }))
+    .filter(({ sc }) => sc.narration?.trim());
 
-    try {
-      if (useTypecast) {
-        let tcBuf = null, tcErr = null;
-        const maxAttempts = _typeCastKeys.length * 2;
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          try { tcBuf = await fetchTypeCastTTS(text); break; }
-          catch (e2) {
-            tcErr = e2;
-            const m2 = e2.message || '';
-            const isTimeout = m2.includes('타임아웃') || m2.includes('30초') || e2.name === 'AbortError';
-            if (!isTimeout || attempt % 2 === 1) rotateTypeCastKey();
+  // 병렬 처리 (concurrency 슬롯 제어)
+  let taskIdx = 0;
+  const worker = async () => {
+    while (taskIdx < tasks.length) {
+      if (fatalStop) break;
+      const { sc, i } = tasks[taskIdx++];
+      const text = preprocessNarration(sc.narration);
+      if (!text) continue;
+
+      try {
+        let buf = null;
+        if (useTypecast) {
+          buf = await fetchTypeCastTTSWithRotation(text);
+          if (!buf) {
+            console.warn(`[Typecast] 씬${i+1} 모든 키 소진 — Gemini로 전환`);
+            onToast?.('Typecast 키 소진 — Gemini로 전환합니다', 'inf');
+            buf = await fetchTTSWithRetry(text, i);
           }
-        }
-        if (tcBuf) {
-          buffers[i] = tcBuf; successCount++;
         } else {
-          console.warn(`[Typecast] 모든 키 소진 — Gemini로 전환`);
-          onToast?.(`Typecast 키 소진 — Gemini로 전환합니다`, 'inf');
-          buffers[i] = await fetchTTSWithRetry(text, i);
-          successCount++;
+          buf = await fetchTTSWithRetry(text, i);
         }
-      } else {
-        buffers[i] = await fetchTTSWithRetry(text, i);
+        buffers[i] = buf;
         successCount++;
-      }
-    } catch (e) {
-      const msg = e.message || '';
-      if (msg.includes('TTS_403')) {
-        fatalStop = true;
-        onToast?.('AI 보이스: API 키에 TTS 권한 없음 — 무음으로 진행합니다', 'inf');
-      } else {
-        failCount++;
-        console.warn(`[TTS] 씬${i + 1} 최종 실패:`, msg);
+      } catch (e) {
+        const msg = e.message || '';
+        if (msg.includes('TTS_403')) {
+          fatalStop = true;
+          onToast?.('AI 보이스: API 키에 TTS 권한 없음 — 무음으로 진행합니다', 'inf');
+        } else {
+          failCount++;
+          console.warn(`[TTS] 씬${i + 1} 최종 실패:`, msg);
+        }
       }
     }
+  };
 
-    if (i < scenes.length - 1) await sleep(TTS_CONFIG.sceneDelay);
-  }
+  // CONCURRENCY 수만큼 worker 병렬 실행
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
   if (!fatalStop) {
+    const total = tasks.length;
     if (successCount === 0) onToast?.('AI 보이스 생성 실패 — 무음 영상으로 진행합니다', 'inf');
-    else if (failCount > 0) onToast?.(`AI 보이스 ${successCount}/${scenes.length}씬 완료 (${failCount}씬 무음)`, 'inf');
+    else if (failCount > 0) onToast?.(`AI 보이스 ${successCount}/${total}씬 완료 (${failCount}씬 무음)`, 'inf');
     else onToast?.(`${useTypecast ? 'Typecast' : 'Gemini'} AI 보이스 ${successCount}씬 생성 완료 ✓`, 'ok');
   }
 

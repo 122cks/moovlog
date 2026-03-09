@@ -7,7 +7,7 @@ import {
 } from 'firebase/storage';
 import {
   getFirestore, collection, addDoc, serverTimestamp,
-  query, orderBy, limit, getDocs, doc, updateDoc,
+  query, orderBy, limit, getDocs, doc, updateDoc, where,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -112,6 +112,87 @@ export async function firebaseLoadRecentSession() {
     return latest;
   } catch (e) {
     console.warn('[Firebase] 최근 세션 로드 실패:', e.message);
+    return null;
+  }
+}
+
+// ─── 블로그 포스팅 저장 ───────────────────────────────────
+export async function saveBlogPost(blogData) {
+  if (!db) return null;
+  try {
+    const docRef = await addDoc(collection(db, 'blog_posts'), {
+      restaurant: blogData.restaurant || '',
+      location:   blogData.location || '',
+      title:      blogData.title || '',
+      body:       blogData.body || '',
+      naverClipTags:    blogData.naver_clip_tags || '',
+      youtubeTags:      blogData.youtube_shorts_tags || '',
+      instagramCaption: blogData.instagram_caption || '',
+      tiktokTags:       blogData.tiktok_tags || '',
+      keywords:   blogData.keywords || [],
+      createdAt:  serverTimestamp(),
+    });
+    console.log('[Firebase] 블로그 저장:', docRef.id);
+    return docRef.id;
+  } catch (e) {
+    console.warn('[Firebase] 블로그 저장 실패:', e.message);
+    return null;
+  }
+}
+
+export async function getRecentBlogPosts(limitN = 20) {
+  if (!db) return [];
+  try {
+    const q    = query(collection(db, 'blog_posts'), orderBy('createdAt', 'desc'), limit(limitN));
+    const snap = await getDocs(q);
+    const results = [];
+    snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+    return results;
+  } catch (e) {
+    console.warn('[Firebase] 블로그 목록 로드 실패:', e.message);
+    return [];
+  }
+}
+
+export async function searchBlogPosts(keyword) {
+  if (!db || !keyword?.trim()) return [];
+  const kw = keyword.trim();
+  try {
+    // restaurant 필드 전방 일치 검색 (Firestore는 full-text 미지원 → startAt/endAt 방식)
+    const q = query(
+      collection(db, 'blog_posts'),
+      orderBy('restaurant'),
+      where('restaurant', '>=', kw),
+      where('restaurant', '<=', kw + '\uf8ff'),
+      limit(30),
+    );
+    const snap = await getDocs(q);
+    const results = [];
+    snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+    return results;
+  } catch (e) {
+    console.warn('[Firebase] 블로그 검색 실패:', e.message);
+    return [];
+  }
+}
+
+// ─── SNS 태그 저장 ────────────────────────────────────────
+export async function saveSNSTags(tagsData) {
+  if (!db) return null;
+  try {
+    const docRef = await addDoc(collection(db, 'sns_tags'), {
+      restaurant:       tagsData.restaurant || '',
+      naverClipTags:    tagsData.naver_clip_tags || '',
+      youtubeTags:      tagsData.youtube_shorts_tags || '',
+      instagramCaption: tagsData.instagram_caption || '',
+      tiktokTags:       tagsData.tiktok_tags || '',
+      hashtags:         tagsData.hashtags || '',
+      createdAt:        serverTimestamp(),
+    });
+    console.log('[Firebase] SNS 태그 저장:', docRef.id);
+    return docRef.id;
+  } catch (e) {
+    console.warn('[Firebase] SNS 태그 저장 실패:', e.message);
     return null;
   }
 }

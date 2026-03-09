@@ -2,12 +2,14 @@
 // 블로그 포스팅 생성기 페이지 — index2.html을 React로 이식
 import { useState, useRef, useCallback } from 'react';
 import { generateBlogPost } from '../engine/gemini.js';
+import { saveBlogPost, saveSNSTags, getRecentBlogPosts, searchBlogPosts } from '../engine/firebase.js';
 import { useVideoStore } from '../store/videoStore.js';
 
 const TABS = [
-  { id: 'blog',  label: '📝 블로그 포스팅' },
-  { id: 'sns',   label: '📱 SNS 태그' },
-  { id: 'guide', label: '🟢 네이버 등록' },
+  { id: 'blog',   label: '📝 블로그 포스팅' },
+  { id: 'sns',    label: '📱 SNS 태그' },
+  { id: 'guide',  label: '🟢 네이버 등록' },
+  { id: 'search', label: '🔍 검색 기록' },
 ];
 
 export default function BlogPage() {
@@ -25,6 +27,11 @@ export default function BlogPage() {
   const [loading, setLoading]   = useState(false);
   const [loadLabel, setLoadLabel] = useState('');
   const [activeTab, setActiveTab] = useState('blog');
+
+  // ── 검색 기록 ─────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   const fileInputRef = useRef();
   const dropRef      = useRef();
@@ -75,6 +82,29 @@ export default function BlogPage() {
       setResult(r);
       setActiveTab('blog');
       addToast('블로그 포스팅 생성 완료 ✓', 'ok');
+
+      // Firebase 자동 저장 (실패해도 UI에 영향 없음)
+      saveBlogPost({
+        restaurant: name.trim(),
+        location: location.trim(),
+        keywords: keywords.trim() ? keywords.trim().split(/[,\s]+/).filter(Boolean) : [],
+        title: r.title || '',
+        body: r.body || '',
+        naver_clip_tags: r.naver_clip_tags || '',
+        youtube_shorts_tags: r.youtube_shorts_tags || '',
+        instagram_caption: r.instagram_caption || '',
+        tiktok_tags: r.tiktok_tags || '',
+      }).catch(e => console.warn('[Blog] Firebase 저장 실패:', e.message));
+
+      saveSNSTags({
+        restaurant: name.trim(),
+        naver_clip_tags: r.naver_clip_tags || '',
+        youtube_shorts_tags: r.youtube_shorts_tags || '',
+        instagram_caption: r.instagram_caption || '',
+        tiktok_tags: r.tiktok_tags || '',
+        hashtags: r.hashtags || '',
+      }).catch(e => console.warn('[SNS] Firebase 저장 실패:', e.message));
+
     } catch (err) {
       console.error(err);
       addToast('오류: ' + (err.message || '알 수 없는 오류'), 'err');
@@ -99,6 +129,41 @@ export default function BlogPage() {
     if (!result) return;
     const text = (result.title ? result.title + '\n\n' : '') + (result.body || '');
     copyText(text, '제목 + 본문');
+  };
+
+  // ── 검색 실행 ─────────────────────────────────────────────
+  const handleSearch = async (q) => {
+    const kw = (q ?? searchQuery).trim();
+    setSearchLoading(true);
+    try {
+      const results = kw
+        ? await searchBlogPosts(kw)
+        : await getRecentBlogPosts(20);
+      setSearchResults(results);
+    } catch (e) {
+      addToast('검색 실패: ' + e.message, 'err');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // 검색 탭 진입 시 최근 기록 자동 로드
+  const handleTabChange = async (id) => {
+    setActiveTab(id);
+    if (id === 'search' && searchResults.length === 0) handleSearch('');
+  };
+
+  // ── 검색 결과에서 불러오기 ────────────────────────────────
+  const loadFromHistory = (item) => {
+    setResult({
+      title:           item.title || '',
+      body:            item.body || '',
+      naver_clip_tags: item.naverClipTags || '',
+      youtube_shorts_tags: item.youtubeTags || '',
+      instagram_caption:   item.instagramCaption || '',
+      tiktok_tags:         item.tiktokTags || '',
+    });
+    setActiveTab('blog');
   };
 
   // ── 다시 작성 ─────────────────────────────────────────────
@@ -139,7 +204,7 @@ export default function BlogPage() {
             <button
               key={t.id}
               className={`btab ${activeTab === t.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(t.id)}
+              onClick={() => handleTabChange(t.id)}
             >{t.label}</button>
           ))}
         </div>
@@ -186,8 +251,7 @@ export default function BlogPage() {
         )}
 
         {/* 네이버 등록 가이드 탭 */}
-        {activeTab === 'guide' && (
-          <div className="blog-pane-content">
+        {activeTab === 'guide' && (          <div className="blog-pane-content">
             <div className="naver-guide-card">
               <div className="naver-guide-title">
                 <i className="fas fa-info-circle" /> 네이버 블로그 붙여넣기 방법
@@ -217,6 +281,46 @@ export default function BlogPage() {
                 <b>③ 네이버 태그</b>는 복사 후 태그 입력란에 붙여넣기
               </p>
             </div>
+          </div>
+        )}
+
+        {/* 검색 기록 탭 */}
+        {activeTab === 'search' && (
+          <div className="blog-pane-content">
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <input
+                className="name-input"
+                style={{ flex: 1 }}
+                type="text"
+                placeholder="음식점 이름으로 검색 (비우면 최근 20개)"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              />
+              <button className="re-btn" onClick={() => handleSearch()} disabled={searchLoading}>
+                {searchLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-search" />}
+              </button>
+            </div>
+            {searchResults.length === 0 && !searchLoading && (
+              <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '24px 0' }}>
+                검색 결과가 없습니다
+              </p>
+            )}
+            {searchResults.map(item => (
+              <div key={item.id} className="sns-card" style={{ marginBottom: 8, cursor: 'pointer' }}
+                onClick={() => loadFromHistory(item)}>
+                <div className="sns-card-head">
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{item.restaurant || '—'}</span>
+                  <span className="sns-limit">{item.location || ''}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-sub)', marginLeft: 'auto' }}>
+                    {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
+                  </span>
+                </div>
+                <div className="sns-text" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-sub)' }}>
+                  {item.title || '제목 없음'}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </main>

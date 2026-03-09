@@ -413,23 +413,23 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
 
   // ── 스타일 세트 (2026 릴스/쇼츠 최신 미학) ───────────────
   const SM = {
-    hook:      { main: '#FFFFFF', hl: '#FF2D55',  sz: 62, bg: 'gradient' },
-    hero:      { main: '#FFE340', hl: '#FF9F0A',  sz: 58, bg: 'gradient' },
-    cta:       { main: '#CCFF00', hl: '#FF3B30',  sz: 56, bg: 'gradient' },
-    detail:    { main: '#FFFFFF', hl: '#FFFFFF',  sz: 50, bg: 'simple'   },
-    bold_drop: { main: '#FFFFFF', hl: '#FFD60A',  sz: 66, bg: 'bold'     },
-    minimal:   { main: '#FFFFFF', hl: '#FFFFFFA0', sz: 44, bg: 'none'    },
-    elegant:   { main: '#FFE8C0', hl: '#FFC87A',  sz: 50, bg: 'elegant'  },
+    hook:      { main: '#FFFFFF', hl: '#FF2D55',  sz: 54, bg: 'gradient' },
+    hero:      { main: '#FFE340', hl: '#FF9F0A',  sz: 50, bg: 'gradient' },
+    cta:       { main: '#CCFF00', hl: '#FF3B30',  sz: 48, bg: 'gradient' },
+    detail:    { main: '#FFFFFF', hl: '#FFFFFF',  sz: 44, bg: 'simple'   },
+    bold_drop: { main: '#FFFFFF', hl: '#FFD60A',  sz: 56, bg: 'bold'     },
+    minimal:   { main: '#FFFFFF', hl: '#FFFFFFA0', sz: 40, bg: 'none'    },
+    elegant:   { main: '#FFE8C0', hl: '#FFC87A',  sz: 44, bg: 'elegant'  },
   };
   const S = SM[style] || SM.detail;
   const fs = Math.round(S.sz * SCALE);
 
-  ctx.font = `900 ${fs}px 'Black Han Sans', 'Noto Sans KR', sans-serif`;
+  ctx.font = `500 ${fs}px 'Noto Sans KR', sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // animProg 55% 이후 cap2로 전환 (슬라이드)
-  const showCap2 = !!(cap2 && animProg > 0.52);
+  // animProg 60% 이후 cap2로 전환 (오디오 싱크 기준)
+  const showCap2 = !!(cap2 && animProg > 0.60);
   const text = showCap2 ? cap2 : cap1;
   if (!text) { ctx.restore(); return; }
 
@@ -525,6 +525,7 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
       const totalW = fw + rw;
       const startX = CW/2 - totalW/2;
 
+      ctx.font = `600 ${fs}px 'Noto Sans KR', sans-serif`;
       ctx.strokeText(firstWord, startX + fw/2, baseY);
       ctx.fillStyle = S.hl;
       ctx.fillText(firstWord, startX + fw/2, baseY);

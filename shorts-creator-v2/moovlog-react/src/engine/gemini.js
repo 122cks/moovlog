@@ -97,6 +97,7 @@ export function extractVideoFramesB64(file, count = 4) {
   return new Promise(resolve => {
     const vid = Object.assign(document.createElement('video'), {
       muted: true, playsInline: true, preload: 'metadata',
+      crossOrigin: 'anonymous',   // CORS Tainted Canvas 방지
     });
     const url = URL.createObjectURL(file);
     vid.onerror = () => { URL.revokeObjectURL(url); resolve([]); };
@@ -106,7 +107,7 @@ export function extractVideoFramesB64(file, count = 4) {
       const offscreen = document.createElement('canvas');
       offscreen.width = 640; offscreen.height = 360;
       const octx = offscreen.getContext('2d');
-      const frames = []; let done = 0;
+      const frames = [];
       const times = Array.from({ length: count }, (_, i) => dur * (i + 0.5) / count);
       const captureAt = idx => {
         if (idx >= times.length) { URL.revokeObjectURL(url); resolve(frames); return; }
@@ -126,7 +127,20 @@ export function extractVideoFramesB64(file, count = 4) {
   });
 }
 
-// ─── STEP 1: Vision Analysis ──────────────────────────────
+// ─── Gemini 응답 안전 파싱 (Safety 필터 차단 체크) ──────────
+function safeExtractText(data) {
+  const candidate = data?.candidates?.[0];
+  const finishReason = candidate?.finishReason;
+  if (finishReason === 'SAFETY') {
+    throw new Error('콘텐츠 안전성 정책에 의해 생성이 차단되었습니다. 질의를 수정해 주세요.');
+  }
+  if (finishReason && finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
+    console.warn(`[Gemini] finishReason: ${finishReason}`);
+  }
+  return candidate?.content?.parts?.[0]?.text || '';
+}
+
+// ─── STEP 1: Vision Analysis (2-pass) ────────────────────
 export async function visionAnalysis(restaurantName) {
   const { files } = useVideoStore.getState();
   const parts = [];
@@ -148,40 +162,88 @@ export async function visionAnalysis(restaurantName) {
     return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
   }
 
-  const prompt = `당신은 2026년 인스타그램 Reels · 유튜브 Shorts 알고리즘 전문 비주얼 디렉터입니다.
+  // ── 1번째 패스: 기본 비주얼 분석 ──
+  const prompt1 = `당신은 2026년 인스타그램 Reels · 유튜브 Shorts 알고리즘 전문 비주얼 디렉터입니다.
 음식점: "${restaurantName}" / 미디어 ${parts.length}개
 
-[핵심 분석 규칙] 2026 릴스/쉽츠 알고리즘
-• 첫 0.5초에 시청자를 멈춰라 → hook 이미지 최우선
-• 시각적 충격도(emotional_score 9~10) 컷을 첫 씨이 배치
-• 음식 클로즈업, 디테일 샷이 코멘트/공유 환율 3배
-
 각 이미지:
-- type: "hook"|"추마"|"detail"|"ambiance"|"process"|"wide"
+- type: "hook"|"hero"|"detail"|"ambiance"|"process"|"wide"
 - best_effect: "zoom-in"|"zoom-out"|"pan-left"|"pan-right"|"zoom-in-slow"|"float-up"
 - emotional_score: 1~10
 - suggested_duration: 0.5~5초
-- focus: 핵심 포인트 1문장
+- focus: 화면에 보이는 것 핵심 포인트 1문장 (존댓말, 예: "두툼한 한우 채끝이 철판 위에 올려져 있습니다.")
 - focus_coords: {"x":0.5,"y":0.5}
 - viral_potential: "high"|"medium"|"low"
 
 전체:
-- keywords: 트렌딩 검색어 포함 (ex: "줄서는 집", "인생 맛집", "핸릹투어")
+- keywords: 트렌딩 검색어 포함 (ex: "줄서는 집", "인생 맛집", "맛집투어")
 - mood, menu, visual_hook
-- recommended_order: 시청자 유지률 최고 순서
+- recommended_order: emotional_score 내림차순으로 시청자 유지율 최고 순서
 - recommended_template: pov|reveal|viral_fast|aesthetic|mukbang|foreshadow 중 선택
 - recommended_hook: viral_2026|pov|shock|question|challenge 중 선택
 
 JSON만 반환:
 {"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"설명","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high"}]}`;
 
-  const data = await geminiWithFallback({
-    contents: [{ parts: [...parts, { text: prompt }] }],
-    generationConfig: { temperature: 0.6, responseMimeType: 'application/json' },
+  const data1 = await geminiWithFallback({
+    contents: [{ parts: [...parts, { text: prompt1 }] }],
+    generationConfig: { temperature: 0.5, responseMimeType: 'application/json' },
   });
-  const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-  try { return JSON.parse(raw.replace(/```json|```/g, '').trim()); }
-  catch { return { keywords: [restaurantName], mood: '활기찬', per_image: [], recommended_order: [] }; }
+  let firstResult;
+  try {
+    const raw1 = safeExtractText(data1);
+    firstResult = JSON.parse(raw1.replace(/```json|```/g, '').trim());
+  } catch {
+    firstResult = { keywords: [restaurantName], mood: '활기찬', per_image: [], recommended_order: [] };
+  }
+
+  // ── 2번째 패스: narration_hint 생성 (존댓말·정보전달) ──
+  const topIdxs = (firstResult.recommended_order || []).slice(0, Math.min(5, parts.length));
+  const topParts = topIdxs.length
+    ? topIdxs.flatMap(idx => (parts[idx] ? [parts[idx]] : []))
+    : parts.slice(0, 5);
+
+  const focusSummary = (firstResult.per_image || [])
+    .map(p => `이미지${p.idx}: ${p.focus || ''}`)
+    .join('\n');
+
+  const prompt2 = `당신은 정보전달형 맛집 숏폼 나레이터입니다.
+음식점: "${restaurantName}"
+아래 이미지들의 1차 분석 결과를 참고하여, 각 이미지에 대한 나레이션 힌트를 생성하세요.
+
+[1차 분석 요약]
+${focusSummary || '분석 없음'}
+
+[narration_hint 규칙]
+• 존댓말(합니다/입니다/아요/어요) 사용
+• 화면에 실제 보이는 것을 구체적으로 설명 (맛·식감·비주얼·조리 장면 등)
+• 감탄사 절대 금지 (와!/대박!/실화야 등 금지)
+• 1문장, 15자 내외
+
+JSON만 반환 — per_image 배열 각 항목에 narration_hint 필드만 포함:
+{"per_image":[{"idx":0,"narration_hint":"두툼하게 썰어낸 한우 채끝이 달궈진 철판 위에서 익어가고 있습니다."}]}`;
+
+  let secondResult = { per_image: [] };
+  try {
+    const data2 = await geminiWithFallback({
+      contents: [{ parts: [...topParts, { text: prompt2 }] }],
+      generationConfig: { temperature: 0.4, responseMimeType: 'application/json' },
+    });
+    const raw2 = safeExtractText(data2);
+    secondResult = JSON.parse(raw2.replace(/```json|```/g, '').trim());
+  } catch (e) {
+    console.warn('[visionAnalysis 2-pass] 2번째 패스 실패:', e.message);
+  }
+
+  // ── 결과 병합: narration_hint 주입 ──
+  const hintMap = {};
+  for (const h of (secondResult.per_image || [])) hintMap[h.idx] = h.narration_hint;
+  const mergedPerImage = (firstResult.per_image || []).map(p => ({
+    ...p,
+    narration_hint: hintMap[p.idx] || p.focus || '',
+  }));
+
+  return { ...firstResult, per_image: mergedPerImage };
 }
 
 // ─── STEP 2: Script Generation ────────────────────────────
@@ -190,7 +252,7 @@ export async function generateScript(restaurantName, analysis) {
   const pi    = analysis.per_image || [];
   const order = analysis.recommended_order?.length ? analysis.recommended_order : files.map((_, i) => i);
   const imgSummary = pi.map(p =>
-    `이미지${p.idx}(${p.type}/감성${p.emotional_score}점): 효과=${p.best_effect}, ${p.suggested_duration}s, "${p.focus}"`
+    `이미지${p.idx}(${p.type}/감성${p.emotional_score}점): 효과=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ''}"`
   ).join('\n');
 
   const isTrend = VIRAL_TRENDS[selectedTemplate];
@@ -218,8 +280,8 @@ export async function generateScript(restaurantName, analysis) {
 duration 1.5초 미만 씬 → narration 비우거나 단어 1~2개만.
 ` : '';
 
-  const prompt = `당신은 팔로워 50만+ 한국 맛집 인스타그램·유튜브 Shorts 전문 감독 "무브먼트(MOOVLOG)"입니다.
-2026 최신 릴스/쇼츠 트렌드: 스토리 아크(기승전결), 감정 몰입, 느린 여운, 자막 임팩트.
+  const prompt = `당신은 정보전달형 한국 맛집 숏폼 나레이터 "무브먼트(MOOVLOG)"입니다.
+2026 릴스/쇼츠: 첫 컷 임팩트, 정보 밀도, 존댓말 나레이션, 자막 임팩트.
 ${trendInstruction}
 [음식점 정보]
 이름: ${restaurantName} / 분위기: ${analysis.mood || '감성적인'}
@@ -230,25 +292,27 @@ ${trendInstruction}
 템플릿: ${TEMPLATE_HINTS[selectedTemplate] || TEMPLATE_HINTS.story}
 훅: ${HOOK_HINTS[selectedHook] || HOOK_HINTS.question}
 
-[비주얼 컷 분석]
+[비주얼 컷 분석 — narration_hint를 나레이션 작성 기반으로 활용]
 ${imgSummary || '분석 없음'}
 권장 컷 순서: [${order.join(',')}]
 
-[★ 총 ${totalTarget}초, ${files.length}씬 구성 — 완성형 스토리 아크]
-씬1 발견/훅(2.5~3.5s): 충격적 첫 비주얼 + 궁금증 폭발 자막
+[★ 총 ${totalTarget}초, ${files.length}씬 구성]
+씬1 발견/훅(2.5~3.5s): 강렬한 첫 비주얼 + 궁금증 유발 자막
 씬2 설정/기대(3~4s): 이 곳이 특별한 이유, 분위기·비하인드
-씬3 클라이맥스 전(3~4s): 대표 메뉴 등장, 텍스처·디테일 극대화
-씬4 감정 피크(3~4.5s): 맛 반응, 경험 최고조 → 가장 인상적인 컷
-씬N CTA(2.5~3.5s): 감성 마무리 + "꼭 가봐", 위치 힌트
+씬3 클라이맥스 전(3~4s): 대표 메뉴 등장, 텍스처·디테일
+씬4 감정 피크(3~4.5s): 맛·경험 최고조 → 가장 인상적인 컷
+씬N CTA(2.5~3.5s): 정보 마무리 + 위치 힌트
 
-[나레이션 스타일 — 2026 인플루언서 말투]
-• 반말, 1~2문장, 각 씬 duration × 5글자 이하 (여유있게 읽히도록)
-• 감정 흐름: 설렘→기대→충격→감동→여운
-• 이모지 금지, 구어체 자연스럽게 (ex: "이거 실화야", "미쳤다 진짜", "꼭 와봐")
+[나레이션 스타일 — 정보전달형 존댓말]
+• 존댓말(합니다/입니다/아요/어요) 필수, 1~2문장
+• 각 씬 duration × 4.5글자 이하 (여유 있게 읽히도록)
+• 감탄사 절대 금지 (와!/대박!/실화야/미쳤다 등 금지)
+• 화면에 실제 보이는 것을 구체적으로 설명 (narration_hint 참고)
+• 예: "두툼하게 썰어낸 한우 채끝이 달궈진 철판 위에서 익어가고 있습니다."
 
 [자막 규칙 — 임팩트 극대화]
-caption1: narration 첫 임팩트 구절 4~10자 (반말, 구어체)
-caption2: narration 후반 감정 핵심 4~10자 (없으면 빈 문자열)
+caption1: 해당 컷 핵심 내용 4~10자 (존댓말 가능, 명사형 허용)
+caption2: narration 후반 감정·정보 핵심 4~10자 (없으면 빈 문자열)
 subtitle_style: hook(강렬한 첫 씬) | hero(음식 클라이맥스) | cta(마지막 행동유도) | bold_drop(TikTok 스타일) | minimal(여운/감성) | elegant(에세이 스타일)
 
 [★ SNS 태그 규칙 — 반드시 준수]
@@ -259,7 +323,7 @@ tiktok_tags : #태그 딱 5개만 공백 구분
 
 JSON만 반환:
 {"title":"제목","hashtags":"#태그","naver_clip_tags":"#협찬 #서울맛집 #한식 #점심","youtube_shorts_tags":"#맛집투어 #한식 #shorts","instagram_caption":"소개문\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5","tiktok_tags":"#한식 #맛집 #vlog #food #korea","scenes":[
-  {"idx":0,"duration":3.0,"caption1":"이거 실화임?","caption2":"이 가격에..","subtitle_style":"hook","subtitle_position":"center","narration":"이거 실화야. 이 가격에 이게 나온다고.","effect":"zoom-out"}
+  {"idx":0,"duration":3.0,"caption1":"한우 채끝","caption2":"철판 위에서","subtitle_style":"hook","subtitle_position":"center","narration":"두툼하게 썰어낸 한우 채끝이 달궈진 철판 위에서 익어가고 있습니다.","effect":"zoom-out"}
 ]}`;
 
   const makeReq = async url => {
@@ -267,7 +331,7 @@ JSON만 반환:
       contents: [{ parts: [...imgParts, { text: prompt }] }],
       generationConfig: { temperature: 0.92, responseMimeType: 'application/json' },
     });
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const raw = safeExtractText(data);
     const obj = JSON.parse(raw.replace(/```json|```/g, '').trim());
     if (!Array.isArray(obj.scenes) || !obj.scenes.length) throw new Error('스크립트 오류');
     return obj;
@@ -339,12 +403,12 @@ JSON만 반환:
 
   try {
     const data = await apiPost(getApiUrl('gemini-2.5-pro'), body);
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const raw = safeExtractText(data);
     return JSON.parse(raw.replace(/```json|```/g, '').trim());
   } catch (e) {
     console.warn('[Blog] Pro → Flash 폴백:', e.message);
     const data = await apiPost(getApiUrl('gemini-2.5-flash'), body);
-    const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    const raw = safeExtractText(data);
     return JSON.parse(raw.replace(/```json|```/g, '').trim());
   }
 }
