@@ -5,7 +5,7 @@ import { getAudioCtx } from '../engine/tts.js';
 import { downloadBlob, sanitizeName } from '../engine/utils.js';
 import { firebaseUploadVideo } from '../engine/firebase.js';
 import { renderFrameToCtx, ASPECT_MAP_EX } from './VideoPlayer.jsx';
-import { renderVideoWithFFmpeg } from '../engine/VideoRenderer.js';
+import { renderVideoWithFFmpeg, renderCinematicFinish, extractThumbnail } from '../engine/VideoRenderer.js';
 import * as Mp4Muxer  from 'mp4-muxer';
 import * as WebmMuxer from 'webm-muxer';
 
@@ -15,6 +15,8 @@ export default function ExportPanel() {
   const [ffmpegText, setFfmpegText] = useState('📦 FFmpeg 내보내기 (시네마틱)');
   const [ffmpegBusy, setFfmpegBusy] = useState(false);
   const [ffmpegPct, setFfmpegPct] = useState(0);
+  const [thumbBusy, setThumbBusy] = useState(false);
+  const [hybridBusy, setHybridBusy] = useState(false);
 
   const doExport = async () => {
     if (exporting) return;
@@ -70,6 +72,61 @@ export default function ExportPanel() {
     }
   };
 
+  const doExportThumbnail = async () => {
+    if (thumbBusy) return;
+    if (!script?.scenes?.length || !files?.length) { addToast('시작 전 영상을 만들어주세요', 'err'); return; }
+    if (!crossOriginIsolated) { addToast('FFmpeg는 COOP/COEP 보안 격리가 필요합니다', 'err'); return; }
+    setThumbBusy(true);
+    try {
+      const blob = await extractThumbnail(script.scenes, files, script, (msg) => addToast(msg, 'inf'));
+      downloadBlob(blob, `moovlog_thumb_${sanitizeName(restaurantName)}.jpg`);
+      addToast('썸네일 저장 완료! 최고등급 씨 추출 ✨', 'ok');
+    } catch (e) {
+      addToast('썸네일 오류: ' + e.message, 'err');
+    } finally {
+      setThumbBusy(false);
+    }
+  };
+
+  const doExportHybrid = async () => {
+    if (hybridBusy || exporting) return;
+    if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
+    if (!crossOriginIsolated) { addToast('FFmpeg는 COOP/COEP 보안 격리가 필요합니다', 'err'); return; }
+    setHybridBusy(true);
+    setExporting(true);
+    try {
+      addToast('하이브리드: WebCodecs 로 빠르게 렌더링 후 FFmpeg LUT 마감 중...', 'inf');
+      // Step 1: WebCodecs 로 로우 렌더
+      const rawBlob = await new Promise((resolve, reject) => {
+        doExportWebCodecs(script, audioBuffers, restaurantName, (t) => {}, addToast).then(resolve).catch(reject);
+      });
+      // WebCodecs가 관리하는 다운로드를 직접 Blob으로 받을 수 없으므로 FFmpeg만 시네마틱 적용
+      if (files?.length) {
+        const cinematic = await renderCinematicFinish(
+          rawBlob || new Blob(),
+          script.theme,
+          (msg, pct) => addToast(msg, 'inf')
+        );
+        downloadBlob(cinematic, `moovlog_hybrid_${sanitizeName(restaurantName)}.mp4`);
+        addToast('하이브리드 렌더링 완료! 🎬', 'ok');
+      }
+    } catch (e) {
+      // WebCodecs rawBlob 없으면 FFmpeg만으로 대체
+      try {
+        const blob = await renderVideoWithFFmpeg(script.scenes, files, script, (msg, pct) => {
+          if (typeof pct === 'number') addToast(`하이브리드 폴백: ${msg}`, 'inf');
+        });
+        downloadBlob(blob, `moovlog_hybrid_${sanitizeName(restaurantName)}.mp4`);
+        addToast('하이브리드(FFmpeg 대체) 완료!', 'ok');
+      } catch (e2) {
+        addToast('하이브리드 오류: ' + e2.message, 'err');
+      }
+    } finally {
+      setHybridBusy(false);
+      setExporting(false);
+    }
+  };
+
   const doExportFFmpeg = async () => {
     if (ffmpegBusy) return;
     if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
@@ -121,8 +178,12 @@ export default function ExportPanel() {
         title={crossOriginIsolated ? 'FFmpeg WASM 시네마틱 렌더링 (LUT·Ken Burns·자막)' : 'COOP/COEP 헤더 필요 — 로컬 개발 서버에서 지원'}
       >
         <i className={`fas ${ffmpegBusy ? 'fa-spinner fa-spin' : 'fa-film'}`} /> {ffmpegText}
-      </button>
-      {ffmpegBusy && (
+      </button>      <button className="dl-audio-btn" onClick={doExportThumbnail} disabled={thumbBusy}
+        style={{ marginTop: '6px', opacity: crossOriginIsolated ? 1 : 0.45 }}
+        title="최고등급 씨 썸네일 추출"
+      >
+        <i className={`fas ${thumbBusy ? 'fa-spinner fa-spin' : 'fa-image'}`} /> {thumbBusy ? '썸네일 추출 중...' : '파래 썸네일 저장 (최고관)'}
+      </button>      {ffmpegBusy && (
         <div style={{ margin: '6px 0 2px', background: 'rgba(255,255,255,0.08)', borderRadius: '6px', overflow: 'hidden', height: '6px' }}>
           <div style={{
             height: '100%', background: 'linear-gradient(90deg,#7c3aed,#a855f7)',

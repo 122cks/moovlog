@@ -87,9 +87,9 @@ export async function fetchTypeCastTTS(text) {
     xapi_hd: true,
     model_version: 'latest',
     xapi_audio_format: 'mp3',
-    tempo: 1.45,   // 속도 향상 (1.25 → 1.45)
+    tempo: PROSODY_TEMPO[theme] ?? 1.45,
     volume: 100,
-    pitch: 0,
+    pitch: PROSODY_PITCH[theme] ?? 0,
   });
   const tcHeaders = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` };
 
@@ -277,7 +277,7 @@ function _allKeysExhausted() {
   return _typeCastKeys.length > 0 && _typeCastKeys.every(k => _isKeyExhausted(k));
 }
 
-async function fetchTypeCastTTSWithRotation(text) {
+async function fetchTypeCastTTSWithRotation(text, theme = 'hansik') {
   if (_allKeysExhausted()) return null; // 모든 키 429 소진 → 즉시 Gemini
   let tcBuf = null;
   const maxAttempts = _typeCastKeys.length * 2;
@@ -290,7 +290,7 @@ async function fetchTypeCastTTSWithRotation(text) {
     }
     if (_isKeyExhausted(getTypeCastKey())) break;
     try {
-      tcBuf = await fetchTypeCastTTS(text);
+      tcBuf = await fetchTypeCastTTS(text, theme);
       break;
     } catch (e2) {
       const m2 = e2.message || '';
@@ -313,7 +313,7 @@ async function fetchTypeCastTTSWithRotation(text) {
 }
 
 // ─── 전체 씬 TTS 생성 (병렬 처리 + concurrency 제어) ───
-export async function generateAllTTS(scenes, onToast) {
+export async function generateAllTTS(scenes, onToast, theme = 'hansik') {
   const buffers = new Array(scenes.length).fill(null);
   let successCount = 0, failCount = 0, fatalStop = false, processedCount = 0;
   const useTypecast = hasTypeCastKeys();
@@ -343,7 +343,7 @@ export async function generateAllTTS(scenes, onToast) {
       try {
         let buf = null;
         if (useTypecast && !forcedToGemini) {
-          buf = await fetchTypeCastTTSWithRotation(text);
+          buf = await fetchTypeCastTTSWithRotation(text, theme);
           if (!buf) {
             console.warn(`[Typecast] 씬${i+1} 모든 키 소진 — 이후 씬 전체 Gemini로 전환`);
             onToast?.('Typecast 키 소진 — 이후 씬 Gemini로 생성합니다', 'inf');

@@ -5,6 +5,33 @@ import SceneList    from './SceneList.jsx';
 import ExportPanel  from './ExportPanel.jsx';
 import SNSTags      from './SNSTags.jsx';
 
+// ── 3종 훅 베리에이션 선택 UI ──────────────────────────────
+function HookPicker({ variations, script, setScript, addToast }) {
+  if (!variations?.length) return null;
+  const LABELS = { shock: '🔥 충격형', info: 'ℹ️ 정보형', pov: '👤 1인칭' };
+  const handleSelect = (h) => {
+    const newScenes = script.scenes ? [...script.scenes] : [];
+    if (newScenes.length > 0) {
+      newScenes[0] = { ...newScenes[0], caption1: h.caption1, caption2: h.caption2, narration: h.narration };
+    }
+    setScript({ ...script, scenes: newScenes });
+    addToast(`${LABELS[h.type] || h.type} 훅으로 교체 완료! ✨`, 'ok');
+  };
+  return (
+    <div className="hook-picker-wrap">
+      <p className="marketing-title"><i className="fas fa-fish" /> AI PD의 3종 훅 전략</p>
+      <div className="hook-grid">
+        {variations.map((h, i) => (
+          <div key={i} className="hook-card" onClick={() => handleSelect(h)}>
+            <span className="hook-type">{LABELS[h.type] || h.type}</span>
+            <p className="hook-cap">{h.caption1}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── 마케팅 에셋 복사 버튼 섹션 ─────────────────────────────
 function MarketingAssets({ marketing, addToast }) {
   if (!marketing) return null;
@@ -42,12 +69,21 @@ function MarketingAssets({ marketing, addToast }) {
           <p className="marketing-text" style={{ fontSize: '0.68rem', lineHeight: 1.8, color: '#a855f7' }}>{marketing.hashtags_30}</p>
         </div>
       )}
+      {marketing.receipt_review && (
+        <div className="marketing-row">
+          <span className="marketing-label">🧢 네이버 영수증 리뷰</span>
+          <button className="marketing-copy-btn" onClick={() => copy(marketing.receipt_review, '영수증 리뷰')}>
+            <i className="fas fa-copy" /> 복사
+          </button>
+          <p className="marketing-text">{marketing.receipt_review}</p>
+        </div>
+      )}
     </div>
   );
 }
 
 export default function ResultScreen() {
-  const { script, audioBuffers, reset, setShowResult, addToast } = useVideoStore();
+  const { script, audioBuffers, reset, setShowResult, addToast, setScript } = useVideoStore();
 
   const totalSec = script?.scenes?.reduce((a, s) => a + (s.duration || 0), 0) || 0;
   const hasAudio = audioBuffers?.some(b => b);
@@ -86,6 +122,11 @@ export default function ResultScreen() {
 
         {/* 마케팅 에셋 키트 */}
         {script?.marketing && <MarketingAssets marketing={script.marketing} addToast={addToast} />}
+
+        {/* 3종 훅 빆리에이션 */}
+        {script?.hook_variations?.length > 0 && (
+          <HookPicker variations={script.hook_variations} script={script} setScript={setScript} addToast={addToast} />
+        )}
 
         {/* SNS 태그 */}
         {script && <SNSTags script={script} />}

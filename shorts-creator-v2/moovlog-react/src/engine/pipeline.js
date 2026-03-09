@@ -101,7 +101,7 @@ export async function startMake() {
     setPipeline(4, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
     let audioBuffers;
     try {
-      audioBuffers = await generateAllTTS(script.scenes, (msg, type) => addToast(msg, type));
+      audioBuffers = await generateAllTTS(script.scenes, (msg, type) => addToast(msg, type), script.theme);
     } catch (ttsErr) {
       console.warn('[TTS] 전체 실패, 무음 진행:', ttsErr.message);
       audioBuffers = script.scenes.map(() => null);

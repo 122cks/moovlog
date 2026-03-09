@@ -35,16 +35,17 @@ async function getFFmpeg(onLog) {
 // ─── 테마별 색감 보정 LUT 필터 ───────────────────────────
 function getColorLUT(theme) {
   const LUTs = {
-    cafe:    'curves=preset=vintage,eq=saturation=1.15:brightness=0.03:contrast=1.05',
-    grill:   'eq=contrast=1.2:saturation=1.5:brightness=-0.05,unsharp=3:3:1.0:3:3:0.0',
-    hansik:  'eq=saturation=1.1:contrast=1.05,unsharp=2:2:0.5:2:2:0.0',
-    premium: 'eq=contrast=1.1:saturation=0.92:brightness=0.04,curves=r=\'0/0 0.5/0.46 1/0.9\'',
-    pub:     'eq=saturation=1.3:contrast=1.1:brightness=-0.02,unsharp=2:2:0.6:2:2:0.0',
-    seafood: 'eq=saturation=1.2:hue=3:brightness=0.02,unsharp=2:2:0.8:2:2:0.0',
-    chinese: 'eq=saturation=1.4:contrast=1.15:brightness=-0.03,unsharp=2:2:0.5:2:2:0.0',
+    cafe:    'curves=preset=vintage,eq=saturation=1.2:brightness=0.03:contrast=1.08,unsharp=3:3:0.8:3:3:0.0',
+    grill:   'eq=contrast=1.3:saturation=1.6:brightness=-0.05,unsharp=5:5:1.5:5:5:0.0',
+    hansik:  'eq=saturation=1.15:contrast=1.08,unsharp=3:3:0.8:3:3:0.0',
+    premium: 'eq=contrast=1.12:saturation=0.90:brightness=0.05,curves=r=\'0/0 0.5/0.46 1/0.9\',unsharp=2:2:0.6:2:2:0.0',
+    pub:     'eq=saturation=1.4:contrast=1.15:brightness=-0.02,unsharp=3:3:0.9:3:3:0.0',
+    seafood: 'eq=saturation=1.3:hue=3:brightness=0.03,unsharp=3:3:1.0:3:3:0.0',
+    chinese: 'eq=saturation=1.5:contrast=1.2:brightness=-0.03,unsharp=3:3:0.8:3:3:0.0',
   };
   return LUTs[theme] || LUTs.hansik;
 }
+export { getColorLUT };
 
 // ─── 비디오용 마스터 필터 (색감 + Flash 전환) ────────────
 function getVideoFilter(scene, theme, dur, isLastScene) {
@@ -53,9 +54,14 @@ function getVideoFilter(scene, theme, dur, isLastScene) {
 
   // 기본 해상도 / 크롭
   f.push('scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1');
-  // ★ Freeze Frame: 영상 소스가 scene.duration보다 짧을 때 마지막 프레임 정지 ("틱틱" 반복 방지)
-  // tpad가 최대 30초 분량의 동결 프레임을 추가하고, -t ${dur} 아웃풋 옵션이 정확히 잘라냄
+  // ★ Freeze Frame
   f.push('tpad=stop_mode=clone:stop_duration=30');
+  // ★ Dynamic Speed Ramping: 30~60% 구간 1.5배 슬로우모션 (3초 이상 비디오에만 적용)
+  if (dur > 3.0) {
+    const rampS = (dur * 0.3).toFixed(2);
+    const rampE = (dur * 0.6).toFixed(2);
+    f.push(`setpts=if(between(t\\,${rampS}\\,${rampE})\\,1.5*PTS\\,0.9*PTS)`);
+  }
   // 색감 LUT
   f.push(getColorLUT(theme));
   // Flash 전환 — 씬 시작 화이트 플래시 인
@@ -113,7 +119,7 @@ function getSubtitleFilter(scene, fontPath) {
 
   const fp = fontPath.replace(/\\/g, '/');
   const filters = [];
-  // 자막 배경 그라데이션 박스 (세이프 존)
+  // 자막 배경 그라데이션 박스 (세이프 졸)
   filters.push(`drawbox=y=ih-440:color=black@0.55:width=iw:height=290:t=fill`);
   // caption1 (메인)
   filters.push(
@@ -128,6 +134,12 @@ function getSubtitleFilter(scene, fontPath) {
       `fontsize=36:fontcolor=yellow:x=(w-text_w)/2:y=h-330:` +
       `borderw=1:bordercolor=black@0.8`
     );
+  }
+  // ★ Visual Cue: focus_coords 위치에 반짝임 효과 (detail/food 타입 씼)
+  if (scene.focus_coords && (scene.type === 'detail' || scene.type === 'food')) {
+    const sx = (scene.focus_coords.x * 720).toFixed(0);
+    const sy = (scene.focus_coords.y * 1280).toFixed(0);
+    filters.push(`drawtext=fontfile='${fp}':text='\u2728':x=${sx}-30:y=${sy}-30:fontsize=60:fontcolor=yellow@0.9:enable='between(t\,0.3\,1.2)'`);
   }
   return filters.join(',');
 }
@@ -241,5 +253,62 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
   if (fontPath) ff.deleteFile(fontPath).catch(() => {});
 
   return new Blob([data.buffer], { type: 'video/mp4' });
+}
+
+/**
+ * 시네마틱 마감 주의 함수 — WebCodecs 원본에 LUT 입혀 최고화
+ */
+export async function renderCinematicFinish(blob, theme, onProgress) {
+  const ff = await getFFmpeg();
+  onProgress?.('시네마틱 마감 처리 중...', 10);
+  await ff.writeFile('raw_input.mp4', await fetchFile(blob));
+  const lut = getColorLUT(theme || 'hansik');
+  await ff.exec([
+    '-i', 'raw_input.mp4',
+    '-vf', `${lut},unsharp=3:3:1.0:3:3:0.0`,
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22',
+    '-c:a', 'copy',
+    'cinematic_out.mp4',
+  ]);
+  onProgress?.('완료!', 100);
+  const data = await ff.readFile('cinematic_out.mp4');
+  ff.deleteFile('raw_input.mp4').catch(() => {});
+  ff.deleteFile('cinematic_out.mp4').catch(() => {});
+  return new Blob([data.buffer], { type: 'video/mp4' });
+}
+
+/**
+ * 절상 aesthetic_score 씬에서 1프레임 연동 썸네일 추출
+ */
+export async function extractThumbnail(scenes, files, script, onProgress) {
+  const ff = await getFFmpeg();
+  // 가장 높은 aesthetic_score 씬 선택
+  let bestIdx = 0, bestScore = -1;
+  for (let i = 0; i < scenes.length; i++) {
+    const s = scenes[i].aesthetic_score ?? 0;
+    if (s > bestScore) { bestScore = s; bestIdx = i; }
+  }
+  const bestScene = scenes[bestIdx];
+  const fileItem  = files[bestScene.media_idx ?? bestIdx] ?? files[0];
+  if (!fileItem) throw new Error('썸네일 추출 실패: 파일 없음');
+  onProgress?.('썸네일 추출 중...', 20);
+  const ext = fileItem.type === 'video' ? 'mp4' : 'jpg';
+  const inputName = `thumb_in.${ext}`;
+  const fileData = fileItem.file ? await fetchFile(fileItem.file) : await fetchFile(fileItem.url);
+  await ff.writeFile(inputName, fileData);
+  const theme = script?.theme || 'hansik';
+  const lut = getColorLUT(theme);
+  const inputLoopArgs = fileItem.type !== 'video' ? ['-loop', '1'] : [];
+  await ff.exec([
+    ...inputLoopArgs, '-i', inputName,
+    '-ss', '0', '-vframes', '1',
+    '-vf', `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,${lut},unsharp=3:3:1.0:3:3:0.0`,
+    'thumbnail.jpg',
+  ]);
+  const data = await ff.readFile('thumbnail.jpg');
+  ff.deleteFile(inputName).catch(() => {});
+  ff.deleteFile('thumbnail.jpg').catch(() => {});
+  onProgress?.('썸네일 완료!', 100);
+  return new Blob([data.buffer], { type: 'image/jpeg' });
 }
 

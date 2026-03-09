@@ -485,3 +485,46 @@ html, body {
   color: #fff;
 }
 .drive-import-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── v2.21: HookPicker ──────────────────────────────────── */
+.hook-picker-wrap {
+  background: var(--surface);
+  border: 1px solid rgba(168, 85, 247, .2);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.hook-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+.hook-card {
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 10px 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: all .2s;
+}
+.hook-card:hover {
+  border-color: var(--accent2);
+  background: rgba(168, 85, 247, .1);
+  transform: translateY(-2px);
+}
+.hook-type {
+  display: block;
+  font-size: .65rem;
+  font-weight: 700;
+  color: var(--accent2);
+  margin-bottom: 6px;
+}
+.hook-cap {
+  font-size: .72rem;
+  color: var(--text);
+  line-height: 1.4;
+  margin: 0;
+  word-break: keep-all;
+}
