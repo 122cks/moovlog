@@ -176,29 +176,31 @@ export async function startMake() {
   }
 }
 
-// ─── 미디어 프리로드 ──────────────────────────────────────
+// ─── 미디어 프리로드 (병렬) ───────────────────────────────
 async function preloadMedia(files) {
-  const loaded = [];
-  for (const m of files) {
+  console.log(`[Preload] ${files.length}개 미디어 병렬 로드 시작`);
+  const loadPromises = files.map(async (m, index) => {
     if (m.type === 'image') {
-      const img = Object.assign(new Image(), { src: m.url });
-      await new Promise(r => { img.onload = r; img.onerror = r; });
-      loaded.push({ type: 'image', src: img });
+      return new Promise((resolve) => {
+        const img = Object.assign(new Image(), { src: m.url });
+        img.onload  = () => resolve({ type: 'image', src: img, idx: index });
+        img.onerror = () => resolve({ type: 'image', src: img, idx: index, error: true });
+      });
     } else {
-      const vid = Object.assign(document.createElement('video'), {
-        src: m.url, muted: true, loop: true, playsInline: true, preload: 'auto',
+      return new Promise((resolve) => {
+        const vid = Object.assign(document.createElement('video'), {
+          src: m.url, muted: true, loop: false, playsInline: true, preload: 'auto',
+        });
+        const timeout = setTimeout(
+          () => resolve({ type: 'video', src: vid, offset: 0, idx: index }),
+          5000,
+        );
+        vid.oncanplay = () => { clearTimeout(timeout); resolve({ type: 'video', src: vid, offset: 0, idx: index }); };
+        vid.onerror   = () => { clearTimeout(timeout); vid._loadFailed = true; resolve({ type: 'video', src: vid, offset: 0, idx: index }); };
+        vid.load();
       });
-      vid.play().catch(() => {});
-      await new Promise(r => {
-        if (vid.readyState >= 2) return r();
-        const t = setTimeout(r, 3000);
-        vid.oncanplay = () => { clearTimeout(t); r(); };
-        vid.onerror = () => {
-          vid._loadFailed = true; clearTimeout(t); r();
-        };
-      });
-      loaded.push({ type: 'video', src: vid, offset: 0 });
     }
-  }
-  return loaded;
+  });
+  const loaded = await Promise.all(loadPromises);
+  return loaded.sort((a, b) => a.idx - b.idx);
 }

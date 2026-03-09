@@ -30,11 +30,11 @@ export default function VideoPlayer() {
     if (!isImage && videoRef.current) {
       const video = videoRef.current;
       const onMetadata = () => {
-        // 클립 길이 ÷ 씬 duration → 슬로우모션(0.25x) ~ 정속(1.0x) 사이로 자동 조율
-        // 0.25 미만은 freeze frame(loop=false)으로 처리되므로 최저 0.25로 고정
+        // 클립 길이 ÷ 씬 duration → 슬로우모션(0.2x) ~ 정속(1.0x) 사이로 자동 조율
+        // 0.2 미만은 freeze frame(loop=false)으로 처리되므로 최저 0.2로 고정
         if (video.duration && isFinite(video.duration) && currentScene?.duration) {
           const rate = video.duration / currentScene.duration;
-          video.playbackRate = Math.max(0.25, Math.min(1.0, rate));
+          video.playbackRate = Math.max(0.2, Math.min(1.0, rate));
         }
       };
       video.addEventListener('loadedmetadata', onMetadata);
@@ -42,7 +42,7 @@ export default function VideoPlayer() {
       video.play().catch(() => {});
       return () => video.removeEventListener('loadedmetadata', onMetadata);
     }
-  }, [scene, isImage]);
+  }, [scene, isImage, currentScene?.duration]); // duration 변경 시에도 대응
 
   // ── 씬 자동 진행 (duration 후 다음 씬으로) ───────────────
   useEffect(() => {
@@ -90,20 +90,31 @@ export default function VideoPlayer() {
     return () => cancelAnimationFrame(raf);
   }, [playing, scene, script]);
 
-  // ── TTS 오디오 재생 ──────────────────────────────────────
+  // ── TTS 오디오 재생: 오디오 엔진 강제 재개 로직 추가 ───────────────────
   useEffect(() => {
     if (!playing || muted) return;
     const buf = audioBuffers?.[scene];
     if (!buf) return;
     const ac = getAudioCtx();
     if (!ac) return;
-    const src = ac.createBufferSource();
-    src.buffer = buf;
-    src.connect(ac.destination);
-    src.start(0);
-    audioRef.current = src;
-    return () => { try { src.stop(); } catch (_) {} };
-  }, [playing, scene, muted]);
+
+    // 브라우저 정첸: 중단된 AudioContext를 재생 직전에 다시 깨움
+    if (ac.state === 'suspended') {
+      ac.resume().then(playAudio).catch(() => {});
+    } else {
+      playAudio();
+    }
+
+    function playAudio() {
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      src.connect(ac.destination);
+      src.start(0);
+      audioRef.current = src;
+    }
+
+    return () => { try { audioRef.current?.stop(); } catch (_) {} };
+  }, [playing, scene, muted, audioBuffers]);
 
   // ── 컨트롤 핸들러 ────────────────────────────────────────
   const togglePlay = useCallback(() => {
@@ -153,7 +164,7 @@ export default function VideoPlayer() {
                 alt="scene"
                 className={`video-media-content ${effectClass}`}
                 style={{
-                  width: '100%', height: '100%', objectFit: 'contain',
+                  width: '100%', height: '100%', objectFit: 'cover',
                   '--dur': `${currentScene?.duration ?? 3}s`,
                   animationDuration: `${currentScene?.duration ?? 3}s`,
                 }}
@@ -165,10 +176,10 @@ export default function VideoPlayer() {
                 src={currentFile.url}
                 className={`video-media-content ${effectClass}`}
                 style={{
-                  width: '100%', height: '100%', objectFit: 'contain',
+                  width: '100%', height: '100%', objectFit: 'cover',
                   '--dur': `${currentScene?.duration ?? 3}s`,
                 }}
-                autoPlay muted playsInline
+                autoPlay muted playsInline loop={false}
               />
             ))}
           </div>

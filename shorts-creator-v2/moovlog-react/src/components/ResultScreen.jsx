@@ -1,28 +1,70 @@
 // src/components/ResultScreen.jsx
+import { useState } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
+import { fetchTTSWithRetry, preprocessNarration, getAudioCtx } from '../engine/tts.js';
 import VideoPlayer  from './VideoPlayer.jsx';
 import SceneList    from './SceneList.jsx';
 import ExportPanel  from './ExportPanel.jsx';
 import SNSTags      from './SNSTags.jsx';
 
-// ── 3종 훅 베리에이션 선택 UI ──────────────────────────────
+// ── 3종 훅 베리에이션 선택 UI (TTS 재합성 통합) ────────────
 function HookPicker({ variations, script, setScript, addToast }) {
+  const { updateAudioBuffer } = useVideoStore();
+  const [loading, setLoading] = useState(false);
+
   if (!variations?.length) return null;
   const LABELS = { shock: '🔥 충격형', info: 'ℹ️ 정보형', pov: '👤 1인칭' };
-  const handleSelect = (h) => {
-    const newScenes = script.scenes ? [...script.scenes] : [];
-    if (newScenes.length > 0) {
-      newScenes[0] = { ...newScenes[0], caption1: h.caption1, caption2: h.caption2, narration: h.narration };
+
+  const handleSelect = async (h) => {
+    if (loading) return;
+    setLoading(true);
+    addToast(`${LABELS[h.type] || h.type} 스타일로 변경 중...`, 'inf');
+    try {
+      // 1. AudioContext 재개 (브라우저 정책 대응)
+      const ac = getAudioCtx();
+      if (ac?.state === 'suspended') await ac.resume();
+
+      // 2. 새로운 나레이션 음성 합성
+      const processedText = preprocessNarration(h.narration);
+      const newBuffer = await fetchTTSWithRetry(processedText, 0);
+
+      // 3. 자막 + 음성 + 씬 시간 동시 업데이트
+      const newScenes = script.scenes ? [...script.scenes] : [];
+      if (newScenes.length > 0) {
+        newScenes[0] = {
+          ...newScenes[0],
+          caption1: h.caption1,
+          caption2: h.caption2,
+          narration: h.narration,
+          duration: Math.max(2.0, Math.round((newBuffer.duration + 0.4) * 10) / 10),
+        };
+      }
+      updateAudioBuffer(0, newBuffer);
+      setScript({ ...script, scenes: newScenes });
+      addToast(`${LABELS[h.type] || h.type} 훅 & 음성 교체 완료! ✨`, 'ok');
+    } catch (err) {
+      console.error('[HookPicker] 재합성 실패:', err);
+      addToast('음성 재합성 실패: 자막만 교체합니다.', 'err');
+      // 음성 실패해도 자막은 교체
+      const newScenes = script.scenes ? [...script.scenes] : [];
+      if (newScenes.length > 0) {
+        newScenes[0] = { ...newScenes[0], caption1: h.caption1, caption2: h.caption2, narration: h.narration };
+      }
+      setScript({ ...script, scenes: newScenes });
+    } finally {
+      setLoading(false);
     }
-    setScript({ ...script, scenes: newScenes });
-    addToast(`${LABELS[h.type] || h.type} 훅으로 교체 완료! ✨`, 'ok');
   };
+
   return (
-    <div className="hook-picker-wrap">
-      <p className="marketing-title"><i className="fas fa-fish" /> AI PD의 3종 훅 전략</p>
+    <div className="hook-picker-wrap" style={{ opacity: loading ? 0.7 : 1 }}>
+      <p className="marketing-title">
+        <i className={`fas ${loading ? 'fa-spinner fa-spin' : 'fa-fish'}`} />
+        {loading ? ' AI가 목소리 만드는 중...' : ' AI PD의 3종 훅 전략'}
+      </p>
       <div className="hook-grid">
         {variations.map((h, i) => (
-          <div key={i} className="hook-card" onClick={() => handleSelect(h)}>
+          <div key={i} className={`hook-card${loading ? ' disabled' : ''}`} onClick={() => handleSelect(h)}>
             <span className="hook-type">{LABELS[h.type] || h.type}</span>
             <p className="hook-cap">{h.caption1}</p>
           </div>
