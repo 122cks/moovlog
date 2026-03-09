@@ -14,10 +14,35 @@ function loadScript(src) {
   });
 }
 
+const TOKEN_KEY  = 'moovlog_gdrive_token';
+const EXPIRY_KEY = 'moovlog_gdrive_expiry';
+const TTL_MS     = 55 * 60 * 1000; // 55분 (구글 access_token 만료 1시간 - 5분 여유)
+
+function saveToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(EXPIRY_KEY, String(Date.now() + TTL_MS));
+}
+function loadToken() {
+  const t = localStorage.getItem(TOKEN_KEY);
+  const e = parseInt(localStorage.getItem(EXPIRY_KEY) || '0', 10);
+  return (t && Date.now() < e) ? t : null;
+}
+function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(EXPIRY_KEY);
+}
+
 export default function DrivePicker() {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cachedToken, setCachedToken] = useState(null);
   const { addFiles, addToast } = useVideoStore();
+
+  // 앱 시작 시 저장된 토큰 복원
+  useEffect(() => {
+    const t = loadToken();
+    if (t) setCachedToken(t);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -52,14 +77,28 @@ export default function DrivePicker() {
     const clientId = getClientId();
     if (!clientId) { addToast('클라이언트 ID가 필요합니다.', 'err'); return; }
 
+    // 유효한 토큰 캐시가 있으면 재로그인 없이 바로 피커 열기
+    if (cachedToken) {
+      openPicker(cachedToken, clientId);
+      return;
+    }
+
     window.google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: 'https://www.googleapis.com/auth/drive.readonly',
       callback: (resp) => {
-        if (resp.error) { addToast('Google 로그인 실패: ' + resp.error, 'err'); return; }
+        if (resp.error) {
+          // 토큰이 만료됨 — 저장된 토큰 지우고 다시 시도
+          clearToken();
+          setCachedToken(null);
+          addToast('Google 로그인 실패: ' + resp.error, 'err');
+          return;
+        }
+        saveToken(resp.access_token);
+        setCachedToken(resp.access_token);
         openPicker(resp.access_token, clientId);
       },
-    }).requestAccessToken({ prompt: 'consent' });
+    }).requestAccessToken({ prompt: '' }); // prompt:'' → 이미 승인된 계정은 팝업 없이 조용히 재발급
   };
 
   const openPicker = (accessToken, clientId) => {

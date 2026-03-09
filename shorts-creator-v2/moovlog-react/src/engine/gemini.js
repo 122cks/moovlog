@@ -391,6 +391,11 @@ ${imgSummary || '분석 없음'}
 씬4 감정 피크(3~4.5s): 맛·경험 최고조 → 가장 인상적인 컷
 마지막 씬 CTA(3~4s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption1에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.${exteriorInfo}
 
+[⏱ Duration 규칙 — 반드시 준수]
+• 모든 씬의 duration은 2.0초 이상 4.5초 이하로 설정하세요.
+• 0.5초, 1초처럼 2초 미만의 짧은 duration은 영상 로딩 전 화면이 넘어가 깜박임의 원인이 됩니다. 절대 사용 금지.
+• trendInstruction의 duration 배열이 제시되더라도 2.0초 미만 값은 2.0초로 올려서 사용하세요.
+
 [나레이션 스타일 — 담백하고 진정성 있는 현실 톤]
 • '실화', '미쳤다', '대박', '기절', '폼 미쳤다' 같은 억지스러운 숏폼 과장어 절대 금지
 • 호들갑 떨지 말고, 차분하지만 몰입감 있는 "진짜 맛잘알"의 현실적인 구어체를 사용하세요
@@ -450,6 +455,11 @@ JSON만 반환:
     const _s = raw.indexOf('{'), _e = raw.lastIndexOf('}');
     const obj = JSON.parse(_s >= 0 && _e > _s ? raw.slice(_s, _e + 1) : raw.replace(/```json|```/g, '').trim());
     if (!Array.isArray(obj.scenes) || !obj.scenes.length) throw new Error('스크립트 오류');
+    // duration 클램핑: Gemini가 짧게 주더라도 최소 2.0초 / 최대 4.5초 보장
+    obj.scenes = obj.scenes.map(sc => ({
+      ...sc,
+      duration: Math.max(2.0, Math.min(4.5, Number(sc.duration) || 3.0)),
+    }));
     return obj;
   };
   try { return await makeReq(getApiUrl('gemini-2.5-pro')); }

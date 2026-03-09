@@ -149,7 +149,7 @@ export default function VideoPlayer() {
             ) : (
               <video
                 ref={videoRef}
-                key={`vid-${fileIdx}`}
+                key={`vid-${scene}-${fileIdx}`}
                 src={currentFile.url}
                 className={`video-media-content ${effectClass}`}
                 style={{
