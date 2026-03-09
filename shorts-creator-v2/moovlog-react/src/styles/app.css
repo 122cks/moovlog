@@ -242,7 +242,13 @@ html, body {
 .effect-pan-left  { animation: kenBurnsPanLeft  linear forwards; }
 .effect-pan-right { animation: kenBurnsPanRight linear forwards; }
 .video-media-container { overflow: hidden; position: relative; width: 100%; height: 100%; }
-.video-media-content   { width: 100%; height: 100%; object-fit: cover; transform-origin: center center; }
+.video-media-content   {
+  width: 100%; height: 100%; object-fit: cover; transform-origin: center center;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: high-quality;
+  backface-visibility: hidden;
+  will-change: transform;
+}
 
 /* ── SNS Tags ────────────────────────────────────────────── */
 .sns-wrap { margin-bottom: 14px; }

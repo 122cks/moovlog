@@ -106,11 +106,12 @@ function encodeWav(f32, SR) {
 async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnText, addToast) {
   const { loaded, aspectRatio } = useVideoStore.getState();
   const { CW, CH } = ASPECT_MAP_EX[aspectRatio] || ASPECT_MAP_EX['9:16'];
-  const FPS = 30;
+  const FPS = 60;                       // 60fps — 유틜브 쇼츠/릴스 권장 사양
   const sceneDurs = script.scenes.map(s => (s.duration > 0 && isFinite(s.duration)) ? s.duration : 3);
   const totalDur  = sceneDurs.reduce((a, b) => a + b, 0);
   const nFrames   = Math.ceil(totalDur * FPS);
-  const VBR = 16_000_000, ABR = 192_000;
+  const VBR = 20_000_000;               // 20Mbps — 60fps 고화질 권장 비트레이트
+  const ABR = 192_000;
 
   setBtnText('코덱 확인 중...');
 
