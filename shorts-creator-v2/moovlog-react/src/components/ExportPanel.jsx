@@ -335,7 +335,7 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
         }
       }
 
-      renderFrameToCtx(snapCtx, renderCtx, si, prog, Math.min(prog, 1));
+      renderFrameToCtx(snapCtx, renderCtx, si, prog, Math.min(prog, 1), true); // isExporting=true: play() 호출 차단
 
       const vf = new VideoFrame(snapCanvas, {
         timestamp: Math.round(globalFrame * 1_000_000 / FPS),

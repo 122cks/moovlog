@@ -353,12 +353,13 @@ function YtInfoOverlay({ script }) {
 
 function ease(t) { return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2; }
 
-function drawMedia(ctx, media, effect, prog, CW, CH, SCALE) {
+function drawMedia(ctx, media, effect, prog, CW, CH, SCALE, isExporting = false) {
   if (!media) { ctx.fillStyle = '#111'; ctx.fillRect(0, 0, CW, CH); return; }
   if (media.type === 'video') {
     const vid = media.src;
     if (vid._loadFailed || vid.readyState < 2) { ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, CW, CH); return; }
-    if (vid.paused) vid.play().catch(() => {});
+    // 내보내기 중에는 play() 호출 금지 — seek(currentTime) 와 충돌하여 프레임 어긋남 발생
+    if (!isExporting && vid.paused) vid.play().catch(() => {});
   }
   const e = ease(prog);
   let sc = 1, ox = 0, oy = 0;
@@ -598,7 +599,7 @@ export const ASPECT_MAP_EX = {
   '16:9':  { CW: 1920, CH: 1080 },
 };
 
-export function renderFrameToCtx(ctx, { script, loaded, aspectRatio, restaurantName }, si, prog, subAnim) {
+export function renderFrameToCtx(ctx, { script, loaded, aspectRatio, restaurantName }, si, prog, subAnim, isExporting = false) {
   const { CW, CH } = ASPECT_MAP_EX[aspectRatio] || ASPECT_MAP_EX['9:16'];
   const SCALE = Math.min(CW, CH) / 720;
   const sc = script?.scenes?.[si];
@@ -607,7 +608,7 @@ export function renderFrameToCtx(ctx, { script, loaded, aspectRatio, restaurantN
   const media = loaded?.[mediaIdx % Math.max(loaded?.length || 1, 1)] || null;
 
   ctx.clearRect(0, 0, CW, CH);
-  drawMedia(ctx, media, sc.effect, prog, CW, CH, SCALE);
+  drawMedia(ctx, media, sc.effect, prog, CW, CH, SCALE, isExporting);
   drawVignetteGrad(ctx, CW, CH);
   drawChannelTop(ctx, restaurantName, CW, CH, SCALE);
   drawSubtitle(ctx, sc, subAnim, CW, CH, SCALE);

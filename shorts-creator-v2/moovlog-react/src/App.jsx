@@ -29,7 +29,7 @@ export default function App() {
     const gKey = import.meta.env.VITE_GEMINI_KEY || localStorage.getItem('moovlog_gemini_key') || '';
     setGeminiKey(gKey);
 
-    const tcKeys = [1,2,3,4,5,6,7].map(n => {
+    const tcKeys = [1,2,3,4,5,6,7,8].map(n => {
       const envKey = import.meta.env[`VITE_TYPECAST_KEY${n > 1 ? '_' + n : ''}`] || '';
       const lsKey  = localStorage.getItem(`moovlog_typecast_key${n > 1 ? n : ''}`) || '';
       return envKey || lsKey;
