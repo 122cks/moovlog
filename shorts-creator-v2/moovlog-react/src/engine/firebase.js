@@ -72,7 +72,7 @@ export async function firebaseSaveSession(script, restaurantName) {
       template:   'auto',
       sceneCount: script.scenes.length,
       title:      script.title || '',
-      version:    'v2.0-react',
+      version:    'v2.6-react',
       videoUrl:   null,
       ext:        null,
       createdAt:  serverTimestamp(),
@@ -89,11 +89,11 @@ export async function firebaseUploadVideo(blob, ext, restaurantName, pipelineSes
   const session = pipelineSessionId || `${Date.now()}_${(restaurantName || 'noname').replace(/\s+/g, '_')}`;
   const url = await fbUpload(blob, `generated/${session}/video.${ext}`);
   if (!url) return;
-  try {
+    try {
     await addDoc(collection(db, 'generations'), {
       restaurant: restaurantName || '',
       videoUrl: url, ext,
-      version: 'v2.0-react',
+      version: 'v2.6-react',
       createdAt: serverTimestamp(),
     });
     if (sessionDocId) {
