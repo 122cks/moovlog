@@ -3,6 +3,7 @@ import { useCallback, useRef } from 'react';
 import { useVideoStore, TEMPLATE_NAMES, TEMPLATE_HINTS } from '../store/videoStore.js';
 import { startMake } from '../engine/pipeline.js';
 import { setGeminiKey } from '../engine/gemini.js';
+import DrivePicker from './DrivePicker.jsx';
 
 export default function UploadSection() {
   const {
@@ -94,6 +95,10 @@ export default function UploadSection() {
             onChange={onFileChange}
           />
           <p className="drop-hint">JPG · PNG · MP4 · MOV</p>
+        </div>
+
+        <div className="drive-row">
+          <DrivePicker />
         </div>
 
         {/* 썸네일 그리드 */}

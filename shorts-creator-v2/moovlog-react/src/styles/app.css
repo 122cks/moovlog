@@ -361,3 +361,23 @@ html, body {
   .scard { padding: 10px; }
   .scard-sub { font-size: .84rem; }
 }
+
+/* ── Google Drive Picker ─────────────────────────────── */
+.drive-row { display: flex; justify-content: center; margin: 10px 0 4px; }
+.drive-import-btn {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 18px;
+  background: rgba(255,255,255,0.05);
+  color: var(--text2);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: .83rem; font-weight: 600; font-family: inherit;
+  transition: background .2s, border-color .2s, color .2s;
+}
+.drive-import-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+  color: #fff;
+}
+.drive-import-btn:disabled { opacity: .5; cursor: not-allowed; }

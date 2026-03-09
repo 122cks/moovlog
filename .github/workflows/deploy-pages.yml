@@ -44,6 +44,7 @@ jobs:
           VITE_TYPECAST_KEY_5: ${{ secrets.VITE_TYPECAST_KEY_5 }}
           VITE_TYPECAST_KEY_6: ${{ secrets.VITE_TYPECAST_KEY_6 }}
           VITE_TYPECAST_KEY_7: ${{ secrets.VITE_TYPECAST_KEY_7 }}
+          VITE_GOOGLE_DRIVE_API: ${{ secrets.GOOGLE_DRIVE_API }}
         run: |
           echo "Node: $(node --version), npm: $(npm --version)"
           npm install --prefer-offline=false
