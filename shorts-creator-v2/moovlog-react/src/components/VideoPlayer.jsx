@@ -139,7 +139,7 @@ export default function VideoPlayer() {
                 alt="scene"
                 className={`video-media-content ${effectClass}`}
                 style={{
-                  width: '100%', height: '100%', objectFit: 'cover',
+                  width: '100%', height: '100%', objectFit: 'contain',
                   animationDuration: `${currentScene?.duration ?? 3}s`,
                 }}
               />
@@ -149,7 +149,7 @@ export default function VideoPlayer() {
                 key={`vid-${fileIdx}`}
                 src={currentFile.url}
                 className="video-media-content"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                 autoPlay muted loop playsInline
               />
             ))}
