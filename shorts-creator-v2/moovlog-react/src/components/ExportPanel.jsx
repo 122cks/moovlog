@@ -327,11 +327,14 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
     for (let f = 0; f < nSceneFrames; f++) {
       const prog = nSceneFrames > 1 ? f / (nSceneFrames - 1) : 0;
 
-      // 비디오 프레임 seek (비율 기준)
+      // 비디오 프레임 seek — 영상이 자막보다 짧을 때 마지막 프레임에 멈춤
       if (media?.type === 'video' && media.src && !media.src._loadFailed) {
-        const targetTime = (media.src.duration || dur) * Math.min(prog, 0.99);
+        const vDur = media.src.duration;
+        const targetTime = (vDur && isFinite(vDur))
+          ? Math.min(prog * vDur, vDur - 0.1)  // 영상 끝을 초과하지 않도록 제한
+          : prog * dur;
         if (Math.abs(media.src.currentTime - targetTime) > 0.08) {
-          await new Promise(r => { media.src.currentTime = targetTime; media.src.onseeked = r; setTimeout(r, 120); });
+          await new Promise(r => { media.src.currentTime = targetTime; media.src.onseeked = r; setTimeout(r, 150); });
         }
       }
 
