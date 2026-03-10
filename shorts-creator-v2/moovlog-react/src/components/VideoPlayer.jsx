@@ -179,7 +179,10 @@ export default function VideoPlayer() {
                   width: '100%', height: '100%', objectFit: 'cover',
                   '--dur': `${currentScene?.duration ?? 3}s`,
                 }}
-                autoPlay muted playsInline loop={false}
+                autoPlay
+                // 나레이션 버퍼 없는 비디오 씬 → 현장음(ASMR) 재생
+                muted={audioBuffers?.[scene] ? true : !!muted}
+                playsInline loop={false}
               />
             ))}
           </div>

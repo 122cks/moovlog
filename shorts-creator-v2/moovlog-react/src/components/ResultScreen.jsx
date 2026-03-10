@@ -2,10 +2,161 @@
 import { useState } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 import { fetchTTSWithRetry, preprocessNarration, getAudioCtx } from '../engine/tts.js';
+import { extractThumbnail } from '../engine/VideoRenderer.js';
 import VideoPlayer  from './VideoPlayer.jsx';
 import SceneList    from './SceneList.jsx';
 import ExportPanel  from './ExportPanel.jsx';
 import SNSTags      from './SNSTags.jsx';
+
+// ── 🔴 Auto-Recovery: 빈 오디오 씬 감지 + 개별 재합성 ────
+function AutoRecovery({ scenes, audioBuffers, addToast }) {
+  const { updateAudioBuffer, updateScene } = useVideoStore();
+  const [recovering, setRecovering] = useState({}); // { [sceneIdx]: true }
+
+  // 나레이션은 있는데 버퍼가 null인 씬만 추출
+  const failedScenes = (scenes || [])
+    .map((sc, i) => ({ sc, i }))
+    .filter(({ sc, i }) => sc.narration?.trim() && !audioBuffers?.[i]);
+
+  if (!failedScenes.length) return null;
+
+  const handleResynth = async (sc, i) => {
+    if (recovering[i]) return;
+    setRecovering(r => ({ ...r, [i]: true }));
+    addToast(`씬 ${i + 1} 음성 재합성 중...`, 'inf');
+    try {
+      const ac = getAudioCtx();
+      if (ac?.state === 'suspended') await ac.resume();
+      const text = preprocessNarration(sc.narration);
+      const buf  = await fetchTTSWithRetry(text, i, sc.energy_level ?? 3);
+      updateAudioBuffer(i, buf);
+      // 오디오 길이에 맞게 씬 duration도 동기화
+      const newDur = Math.max(2.0, Math.round((buf.duration + 0.4) * 10) / 10);
+      updateScene(i, { duration: newDur });
+      addToast(`씬 ${i + 1} 음성 복구 완료 ✅`, 'ok');
+    } catch (e) {
+      addToast(`씬 ${i + 1} 재합성 실패: ${e.message}`, 'err');
+    } finally {
+      setRecovering(r => ({ ...r, [i]: false }));
+    }
+  };
+
+  return (
+    <div className="marketing-assets-box" style={{ border: '1px solid rgba(255,80,80,0.4)', background: 'rgba(255,50,50,0.07)' }}>
+      <p className="marketing-title" style={{ color: '#ff6b6b' }}>
+        <i className="fas fa-exclamation-triangle" /> {failedScenes.length}개 씬 음성 누락 — 자동 복구
+      </p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+        {failedScenes.map(({ sc, i }) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '8px 12px' }}>
+            <span style={{ flex: 1, fontSize: '0.8rem', color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              씬 {i + 1}: {sc.caption1 || sc.narration?.substring(0, 20) || '(내용 없음)'}
+            </span>
+            <button
+              onClick={() => handleResynth(sc, i)}
+              disabled={!!recovering[i]}
+              style={{
+                padding: '6px 14px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                background: recovering[i] ? '#555' : '#e74c3c', color: '#fff',
+                fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap',
+              }}
+            >
+              <i className={`fas ${recovering[i] ? 'fa-spinner fa-spin' : 'fa-redo'}`} />
+              {recovering[i] ? ' 합성 중...' : ' 음성 복구'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 🎯 플랫폼 최적화 선택기 ────────────────────────────────
+function PlatformOptimizer({ target, setTarget, addToast }) {
+  const PLATFORMS = [
+    { id: 'reels',  label: '◎ 릴스',  color: '#E1306C', desc: '9:16 세이프존 적용' },
+    { id: 'shorts', label: '▶ 쇼츠',  color: '#FF0000', desc: 'YT UI 하단 회피' },
+    { id: 'tiktok', label: '♪ 틱톡',  color: '#6FC2F5', desc: '하단 버튼 영역 확보' },
+  ];
+  return (
+    <div className="marketing-assets-box">
+      <p className="marketing-title"><i className="fas fa-layer-group" /> 플랫폼 최적화 (세이프 존)</p>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
+        {PLATFORMS.map(p => (
+          <button
+            key={p.id}
+            onClick={() => { setTarget(p.id); addToast(`${p.label} 세이프존 모드 적용됨`, 'ok'); }}
+            style={{
+              flex: 1, padding: '10px 6px', borderRadius: '12px', border: `1.5px solid ${target === p.id ? p.color : '#333'}`,
+              background: target === p.id ? `${p.color}22` : '#1a1a1a', color: target === p.id ? p.color : '#aaa',
+              fontSize: '0.8rem', fontWeight: target === p.id ? 800 : 500, cursor: 'pointer',
+              transition: 'all 0.18s', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+            }}
+          >
+            <span>{p.label}</span>
+            <span style={{ fontSize: '0.65rem', opacity: 0.7 }}>{p.desc}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── 📸 AI 썸네일 팩토리 ───────────────────────────────────
+function ThumbnailMaker({ scenes, files, script, addToast }) {
+  const [loading, setLoading] = useState(false);
+  const [thumbUrl, setThumbUrl] = useState(null);
+
+  const handleCreate = async () => {
+    if (loading) return;
+    setLoading(true);
+    addToast('AI가 가장 식욕 자극 프레임을 찾는 중...', 'inf');
+    try {
+      const blob = await extractThumbnail(scenes, files, script, msg => console.log('[Thumb]', msg));
+      if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+      setThumbUrl(URL.createObjectURL(blob));
+      addToast('바이럴 썸네일 생성 완료! ✨', 'ok');
+    } catch (err) {
+      addToast('썸네일 생성 실패: ' + err.message, 'err');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="marketing-assets-box" style={{ marginTop: '12px' }}>
+      <p className="marketing-title"><i className="fas fa-camera-retro" /> AI 썸네일 팩토리</p>
+      <button
+        className="make-btn"
+        onClick={handleCreate}
+        disabled={loading}
+        style={{ marginTop: '10px', height: '44px', fontSize: '0.88rem', opacity: loading ? 0.7 : 1 }}
+      >
+        <i className={loading ? 'fas fa-spinner fa-spin' : 'fas fa-magic'} />
+        {loading ? ' 베스트 프레임 분석 중...' : ' 고대비 바이럴 썸네일 추출'}
+      </button>
+      {thumbUrl && (
+        <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <img src={thumbUrl} alt="썸네일" style={{ width: '80px', height: '142px', objectFit: 'cover', borderRadius: '8px', border: '2px solid #FF2D55' }} />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <p style={{ color: '#aaa', fontSize: '0.75rem', margin: 0 }}>저장 후 릴스 표지로 직접 업로드하세요!</p>
+            <a
+              href={thumbUrl}
+              download="moovlog_thumb.jpg"
+              style={{
+                display: 'inline-block', padding: '8px 16px', borderRadius: '8px',
+                background: '#FF2D55', color: '#fff', fontSize: '0.85rem',
+                fontWeight: 700, textDecoration: 'none', textAlign: 'center',
+              }}
+            >
+              <i className="fas fa-download" /> 이미지 저장
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── 3종 훅 베리에이션 선택 UI (TTS 재합성 통합) ────────────
 function HookPicker({ variations, script, setScript, addToast }) {
@@ -125,7 +276,8 @@ function MarketingAssets({ marketing, addToast }) {
 }
 
 export default function ResultScreen() {
-  const { script, audioBuffers, reset, setShowResult, addToast, setScript } = useVideoStore();
+  const { script, audioBuffers, files, targetPlatform, setTargetPlatform,
+          reset, setShowResult, addToast, setScript } = useVideoStore();
 
   const totalSec = script?.scenes?.reduce((a, s) => a + (s.duration || 0), 0) || 0;
   const hasAudio = audioBuffers?.some(b => b);
@@ -155,6 +307,15 @@ export default function ResultScreen() {
 
         {/* 영상 플레이어 */}
         <VideoPlayer />
+
+        {/* 🔴 음성 누락 씬 자동 복구 */}
+        <AutoRecovery scenes={script?.scenes} audioBuffers={audioBuffers} addToast={addToast} />
+
+        {/* 🎯 플랫폼 최적화 */}
+        <PlatformOptimizer target={targetPlatform} setTarget={setTargetPlatform} addToast={addToast} />
+
+        {/* 📸 AI 썸네일 */}
+        <ThumbnailMaker scenes={script?.scenes || []} files={files} script={script} addToast={addToast} />
 
         {/* 씬 목록 */}
         <SceneList />

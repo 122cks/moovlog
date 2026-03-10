@@ -156,6 +156,73 @@ function getSubtitleFilter(scene, fontPath) {
  * @param {Function} onProgress  - (msg: string, pct: number) => void
  * @returns {Blob} 최종 video/mp4 Blob
  */
+/**
+ * aesthetic_score 기준 베스트 프레임을 Canvas로 추출하여 Blob 반환
+ * FFmpeg 없이 프론트엔드 Canvas API만 사용 (빠름 + 디바이스 지원)
+ */
+export async function extractThumbnail(scenes, files, script, onProgress) {
+  onProgress?.('썸네일 프레임 선정 중...');
+
+  // aesthetic_score 가장 높은 씬 찾기
+  let bestIdx = 0, bestScore = -1;
+  (scenes || []).forEach((sc, i) => {
+    const score = sc.aesthetic_score ?? sc.foodie_score ?? 0;
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  });
+
+  const scene    = scenes[bestIdx];
+  const fileIdx  = scene?.media_idx ?? bestIdx;
+  const fileItem = files?.[fileIdx] ?? files?.[0];
+  if (!fileItem) throw new Error('썸네일용 파일 없음');
+
+  const canvas  = document.createElement('canvas');
+  canvas.width  = 720;
+  canvas.height = 1280;
+  const ctx     = canvas.getContext('2d');
+
+  if (fileItem.type === 'image') {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = fileItem.url; });
+    const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
+    const sw = img.width * scale, sh = img.height * scale;
+    ctx.drawImage(img, (canvas.width - sw) / 2, (canvas.height - sh) / 2, sw, sh);
+  } else {
+    // 비디오: best_start_pct 시점으로 Seek
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.src = fileItem.url;
+    video.muted = true;
+    await new Promise(res => { video.onloadedmetadata = res; video.load(); });
+    const seekTo = (scene?.best_start_pct ?? 0.25) * video.duration;
+    video.currentTime = Math.max(0, Math.min(seekTo, video.duration - 0.1));
+    await new Promise(res => { video.onseeked = res; });
+    const scale = Math.max(canvas.width / video.videoWidth, canvas.height / video.videoHeight);
+    const sw = video.videoWidth * scale, sh = video.videoHeight * scale;
+    ctx.drawImage(video, (canvas.width - sw) / 2, (canvas.height - sh) / 2, sw, sh);
+  }
+
+  // 자막 레이어 (미리보기용)
+  if (scene?.caption1) {
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, canvas.height - 340, canvas.width, 180);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 64px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(scene.caption1.substring(0, 14), canvas.width / 2, canvas.height - 278);
+    if (scene?.caption2) {
+      ctx.fillStyle = script?.vibe_color || '#FFEA00';
+      ctx.font = 'bold 40px sans-serif';
+      ctx.fillText(scene.caption2.substring(0, 10), canvas.width / 2, canvas.height - 208);
+    }
+  }
+
+  onProgress?.(`씬 ${bestIdx + 1}번 썸네일 완료 (aesthetic ${bestScore})`);
+  return new Promise((res, rej) =>
+    canvas.toBlob(b => b ? res(b) : rej(new Error('Blob 변환 실패')), 'image/jpeg', 0.92)
+  );
+}
+
 export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
   const report = (msg, pct) => {
     console.log('[FFmpeg]', msg);
@@ -283,38 +350,4 @@ export async function renderCinematicFinish(blob, theme, onProgress) {
   return new Blob([data.buffer], { type: 'video/mp4' });
 }
 
-/**
- * 절상 aesthetic_score 씬에서 1프레임 연동 썸네일 추출
- */
-export async function extractThumbnail(scenes, files, script, onProgress) {
-  const ff = await getFFmpeg();
-  // 가장 높은 aesthetic_score 씬 선택
-  let bestIdx = 0, bestScore = -1;
-  for (let i = 0; i < scenes.length; i++) {
-    const s = scenes[i].aesthetic_score ?? 0;
-    if (s > bestScore) { bestScore = s; bestIdx = i; }
-  }
-  const bestScene = scenes[bestIdx];
-  const fileItem  = files[bestScene.media_idx ?? bestIdx] ?? files[0];
-  if (!fileItem) throw new Error('썸네일 추출 실패: 파일 없음');
-  onProgress?.('썸네일 추출 중...', 20);
-  const ext = fileItem.type === 'video' ? 'mp4' : 'jpg';
-  const inputName = `thumb_in.${ext}`;
-  const fileData = fileItem.file ? await fetchFile(fileItem.file) : await fetchFile(fileItem.url);
-  await ff.writeFile(inputName, fileData);
-  const theme = script?.theme || 'hansik';
-  const lut = getColorLUT(theme);
-  const inputLoopArgs = fileItem.type !== 'video' ? ['-loop', '1'] : [];
-  await ff.exec([
-    ...inputLoopArgs, '-i', inputName,
-    '-ss', '0', '-vframes', '1',
-    '-vf', `scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,${lut},unsharp=3:3:1.0:3:3:0.0`,
-    'thumbnail.jpg',
-  ]);
-  const data = await ff.readFile('thumbnail.jpg');
-  ff.deleteFile(inputName).catch(() => {});
-  ff.deleteFile('thumbnail.jpg').catch(() => {});
-  onProgress?.('썸네일 완료!', 100);
-  return new Blob([data.buffer], { type: 'image/jpeg' });
-}
 

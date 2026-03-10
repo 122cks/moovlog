@@ -147,6 +147,9 @@ const INITIAL = {
   // 유저 프롬프트
   userPrompt: '',
 
+  // 플랫폼 최적화
+  targetPlatform: 'reels', // 'reels' | 'shorts' | 'tiktok'
+
   // Firebase 세션
   sessionDocId: null,
   pipelineSessionId: null,  // startMake 시작 시 생성 — originals·video 동일 경로
@@ -246,6 +249,9 @@ export const useVideoStore = create(
       // ── Firebase ───────────────────────────────────────────
       setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),
       setPipelineSessionId: (pipelineSessionId) => set({ pipelineSessionId }, false, 'setPipelineSessionId'),
+
+      // ── 플랫폼 ──────────────────────────────────────────────
+      setTargetPlatform: (targetPlatform) => set({ targetPlatform }, false, 'setTargetPlatform'),
 
       // ── Analysis 저장 (Vision 결과 — focus_coords·aesthetic_score 포함) ──
       setAnalysis: (analysis) => set({ analysis }, false, 'setAnalysis'),
