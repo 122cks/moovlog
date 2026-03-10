@@ -206,7 +206,7 @@ export async function fetchTTSWithRetry(text, sceneIdx, energyLevel = 3) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text }] }],
-            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } }, speakingRate: 1.15 } },
+            generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } } },
           }),
         },
         42000   // TTS 응답은 최대 42초 대기
