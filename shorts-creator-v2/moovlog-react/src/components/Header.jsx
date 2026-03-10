@@ -11,7 +11,7 @@ export default function Header({ activeTab, onTabChange, tabs }) {
               <span className="logo-sub">{activeTab === 'blog' ? 'Blog Writer' : 'Shorts Creator'}</span>
             </div>
           </div>
-          <span className="header-version">v2.28</span>
+          <span className="header-version">v2.29</span>
         </div>
 
         {/* 앱 탭 내비게이션 */}
