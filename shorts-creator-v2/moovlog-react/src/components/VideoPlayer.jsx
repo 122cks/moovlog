@@ -35,7 +35,16 @@ export default function VideoPlayer({ isExporting = false }) {
   const isImage      = currentFile?.type === 'image';
   const effectClass  = currentScene?.effect ? `effect-${currentScene.effect}` : '';
   const vibeColor    = script?.vibe_color || null;  // Gemini 테마 컬러 (null 시 기본 스타일 유지)
-
+  // 🔊 블록 내 첫 번째 컷 인덱스 (TTS 오디오가 매우 위치)
+  const audioSceneIdx = (() => {
+    if (currentScene?.blockIdx !== undefined && script?.scenes) {
+      const idx = script.scenes.findIndex(s => s.blockIdx === currentScene.blockIdx);
+      return idx >= 0 ? idx : scene;
+    }
+    return scene;
+  })();
+  // 오디오 블록 식별자: blockIdx 가 바뀌면 새 오디오 트릭 시작 (= 블록 내 화면만 바뀌는 동안 이어제생)
+  const currentAudioKey = currentScene?.blockIdx ?? scene;
   // ── 비디오: 씬 전환 시 0초로 되감고 재생 + Adaptive Sync ─
   useEffect(() => {
     if (!isImage && videoRef.current) {
@@ -129,22 +138,17 @@ export default function VideoPlayer({ isExporting = false }) {
     return () => cancelAnimationFrame(raf);
   }, [playing, scene, script]);
 
-  // ── TTS 오디오 재생: 오디오 엔진 강제 재개 로직 추가 ───────────────────
+  // ── TTS 오디오 재생: 블록 내 컷 전환 시 오디오 이어가기 ───────────────────
   useEffect(() => {
     if (!playing || muted) return;
-    const buf = audioBuffers?.[scene];
+    // 블록의 첫 번째 컷에 할당된 TTS 버퍼 사용 (블록 전체 동안 끊김 없이 재생)
+    const buf = audioBuffers?.[audioSceneIdx];
     if (!buf) return;
     const ac = getAudioCtx();
     if (!ac) return;
 
-    // 브라우저 정첸: 중단된 AudioContext를 재생 직전에 다시 깨움
-    if (ac.state === 'suspended') {
-      ac.resume().then(playAudio).catch(() => {});
-    } else {
-      playAudio();
-    }
-
     function playAudio() {
+      try { audioRef.current?.stop(); } catch (_) {}
       const src = ac.createBufferSource();
       src.buffer = buf;
       src.connect(ac.destination);
@@ -152,8 +156,14 @@ export default function VideoPlayer({ isExporting = false }) {
       audioRef.current = src;
     }
 
+    if (ac.state === 'suspended') {
+      ac.resume().then(playAudio).catch(() => {});
+    } else {
+      playAudio();
+    }
+    // currentAudioKey(블록 ID)가 바뀔 때만 재시작 → 같은 블록 내 컷 전환 시 이어짐
     return () => { try { audioRef.current?.stop(); } catch (_) {} };
-  }, [playing, scene, muted, audioBuffers]);
+  }, [playing, muted, currentAudioKey, audioBuffers]);
 
   // ── 컨트롤 핸들러 ────────────────────────────────────────
   const togglePlay = useCallback(() => {
@@ -193,37 +203,56 @@ export default function VideoPlayer({ isExporting = false }) {
         <div className="phone-notch" />
         <div className="phone-screen" onClick={togglePlay}>
 
-          {/* ── 미디어 레이어 ── */}
-          <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', backgroundColor: '#000' }}>
-            <div className="vignette-overlay" />
-            {currentFile && (isImage ? (
-              <img
-                key={`img-${scene}`}
-                src={currentFile.url}
-                alt="scene"
-                className={`video-media-content ${effectClass}`}
-                style={{
-                  width: '100%', height: '100%', objectFit: 'cover',
-                  '--dur': `${currentScene?.duration ?? 3}s`,
-                  animationDuration: `${currentScene?.duration ?? 3}s`,
-                }}
-              />
-            ) : (
-              <video
-                ref={videoRef}
-                key={`vid-${scene}-${fileIdx}`}
-                src={currentFile.url}
-                className="video-media-content"
-                style={{
-                  width: '100%', height: '100%', objectFit: 'cover',
-                  '--dur': `${currentScene?.duration ?? 3}s`,
-                }}
-                autoPlay
-                // 나레이션 버퍼 없는 비디오 씬 → 현장음(ASMR) 재생
-                muted={audioBuffers?.[scene] ? true : !!muted}
-                playsInline loop={false}
-              />
-            ))}
+          {/* ── 미디어 레이어 (블러 배경 + 원본 비율 풀샷) ── */}
+          <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', backgroundColor: '#111' }}>
+            <div className="vignette-overlay" style={{ zIndex: 10 }} />
+            {currentFile && (
+              <>
+                {/* 블러 배경: 가로형 풀샷이 들어와도 여백 없이 꿽 채우는 레이어 */}
+                {isImage && (
+                  <img
+                    src={currentFile.url}
+                    style={{
+                      position: 'absolute', width: '100%', height: '100%',
+                      objectFit: 'cover',
+                      filter: 'blur(30px) brightness(0.4)',
+                      transform: 'scale(1.2)',
+                    }}
+                    alt="bg-blur"
+                  />
+                )}
+                {/* 전경: contain으로 비율 완벽 보존 — 왜돌까스 현상 차단 */}
+                {isImage ? (
+                  <img
+                    key={`img-${scene}`}
+                    src={currentFile.url}
+                    alt="scene"
+                    className={`video-media-content ${effectClass}`}
+                    style={{
+                      position: 'relative', width: '100%', height: '100%',
+                      objectFit: 'contain', zIndex: 5,
+                      '--dur': `${currentScene?.duration ?? 3}s`,
+                      animationDuration: `${currentScene?.duration ?? 3}s`,
+                    }}
+                  />
+                ) : (
+                  <video
+                    ref={videoRef}
+                    key={`vid-${scene}-${fileIdx}`}
+                    src={currentFile.url}
+                    className="video-media-content"
+                    style={{
+                      position: 'relative', width: '100%', height: '100%',
+                      objectFit: 'contain', zIndex: 5,
+                      '--dur': `${currentScene?.duration ?? 3}s`,
+                    }}
+                    autoPlay
+                    muted={audioBuffers?.[audioSceneIdx] ? true : !!muted}
+                    playsInline loop={false}
+                  />
+                )}
+              </>
+            )}
           </div>
 
           {/* ── 자막 오버레이 ── */}

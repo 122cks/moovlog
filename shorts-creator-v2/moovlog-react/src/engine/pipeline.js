@@ -94,6 +94,37 @@ export async function startMake() {
     // ── STEP 3: Script Generation ─────────────────────────────
     setPipeline(3, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');
     const script = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData);
+
+    // 🚀 [1 Audio : N Video] blocks → scenes 평탄화 로직
+    // AI가 blocks 형식으로 주면 시각 컷을 베고, 오디오는 첫 컷에만 연결
+    if (Array.isArray(script.blocks) && script.blocks.length && !script.scenes?.length) {
+      let flatScenes = [];
+      let globalMediaIdx = 0;
+      script.blocks.forEach((block, bIdx) => {
+        const cuts = (block.video_cuts && block.video_cuts.length > 0)
+          ? block.video_cuts
+          : [{ duration: block.total_duration || 3.0, media_idx: block.media_idx }];
+        cuts.forEach((cut, cIdx) => {
+          flatScenes.push({
+            ...cut,
+            blockIdx:       bIdx,
+            isFirstInBlock: cIdx === 0,
+            media_idx:      cut.media_idx !== undefined ? cut.media_idx
+                            : (block.media_idx !== undefined ? block.media_idx : globalMediaIdx++),
+            caption1:          cIdx === 0 ? (block.caption || block.caption1 || '') : '',
+            caption2:          cIdx === 0 ? (block.caption2 || '') : '',
+            narration:         cIdx === 0 ? (block.narration || '') : '',
+            effect:            cut.effect || block.effect || 'zoom-in',
+            subtitle_style:    block.subtitle_style || 'hero',
+            energy_level:      block.energy_level || 3,
+            retention_strategy: block.retention_strategy || 'build',
+          });
+        });
+      });
+      script.scenes = flatScenes;
+      console.log(`[Pipeline] blocks 평탄화: ${script.blocks.length}블록 → ${flatScenes.length}씬`);
+    }
+
     setScript(script);
     donePipelineStep(3);
 
@@ -117,7 +148,12 @@ export async function startMake() {
     const finalScenes = script.scenes.map((sc, i) => {
       const buf = audioBuffers[i];
       let duration;
-      if (isTrend && isTrend.durations[i] !== undefined) {
+      const isBlockCut = sc.blockIdx !== undefined;
+
+      if (isBlockCut) {
+        // 블록 분리형 컷: AI가 설계한 duration 보존 (TTS는 첫 컷에 독립적으로 재생)
+        duration = Math.max(0.4, sc.duration || 0.5);
+      } else if (isTrend && isTrend.durations[i] !== undefined) {
         const trendDur = isTrend.durations[i];
         // 트렌드 길이와 실제 오디오 길이 중 더 긴 쪽 선택 → 나레이션 잘림 방지
         duration = (buf && buf.duration > 0)
@@ -129,10 +165,10 @@ export async function startMake() {
       } else {
         duration = Math.max(2.0, sc.duration || 3.0);
       }
-      // 128 BPM 퀀타이징 (0.46초 단위 스냅)
-      // 11번: 128 BPM(0.46875초) 단위 컷으로 트렌디한 비트 동기화
+      // 128 BPM 쿨타이징: 블록 컷은 BPM_BEAT 이상 보장 / 일반 씬 최소 2.0초
       const BPM_BEAT = 0.46875;
-      duration = Math.max(2.0, Math.round(duration / BPM_BEAT) * BPM_BEAT);
+      const minDur = isBlockCut ? BPM_BEAT : 2.0;
+      duration = Math.max(minDur, Math.round(duration / BPM_BEAT) * BPM_BEAT);
 
       // caption 분할 (AI caption 없을 때 폴백)
       let caption1 = sc.caption1, caption2 = sc.caption2;

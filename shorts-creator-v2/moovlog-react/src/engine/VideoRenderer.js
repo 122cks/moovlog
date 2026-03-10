@@ -49,9 +49,8 @@ function getColorLUT(theme) {
 export { getColorLUT };
 
 // ─── 비디오용 마스터 필터 (색감 + Flash 전환) ────────────
-function getVideoFilter(scene, theme, dur, isLastScene) {
+function getVideoFilter(scene, theme, dur, isLastScene, sceneIndex = 0) {
   const f = [];
-  const flashDur = Math.min(0.12, dur * 0.05).toFixed(3);
 
   // 기본 해상도 / 크롭
   f.push('scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1');
@@ -63,15 +62,26 @@ function getVideoFilter(scene, theme, dur, isLastScene) {
   // ★ 업스케일러: 선명도 강화 + 노이즈 감소
   f.push('unsharp=5:5:1.0:5:5:0.0,hqdn3d=1.5:1.5:4.5:4.5');
   
-  // Flash 플래시 대신, 마지막 장면에만 블랙 아웃 (눈 피로 방지)
-  if (isLastScene) {
+  // 첫 씬 제외: 짧은 컷 화이트 플래시 / 긴 컷 블랙 페이드인
+  if (sceneIndex > 0) {
+    if (dur < 1.0) {
+      f.push('fade=t=in:st=0:d=0.15:color=white');
+    } else {
+      f.push('fade=t=in:st=0:d=0.2:color=black');
+    }
+  }
+
+  // 마지막 씩에만 블랙 아웃 (눈 피로 방지)
+  if (isLastScene && dur >= 0.6) {
     f.push(`fade=t=out:st=${(dur - 0.5).toFixed(3)}:d=0.5:color=black`);
+  } else if (isLastScene) {
+    f.push(`fade=t=out:st=0:d=${dur.toFixed(3)}:color=black`);
   }
   return f.join(',');
 }
 
 // ─── 이미지용 마스터 필터 (Ken Burns + 색감 + Flash 전환) ─
-function getImageFilter(scene, theme, dur, fps, focusCoords, isLastScene) {
+function getImageFilter(scene, theme, dur, fps, focusCoords, isLastScene, sceneIndex = 0) {
   const f = [];
   const frames = Math.ceil(dur * fps);
   const cx = (focusCoords?.x ?? 0.5).toFixed(4);
@@ -93,10 +103,21 @@ function getImageFilter(scene, theme, dur, fps, focusCoords, isLastScene) {
   // 선명도 향상
   f.push('unsharp=3:3:1.0:3:3:0.0');
   f.push('setsar=1');
-  
-  // 화이트 플래시 삭제 → 마지막 씬에만 블랙 페이드
-  if (isLastScene) {
+
+  // 첫 씬 제외: 짧은 컷 화이트 플래시 / 긴 컷 블랙 페이드인
+  if (sceneIndex > 0) {
+    if (dur < 1.0) {
+      f.push('fade=t=in:st=0:d=0.15:color=white');
+    } else {
+      f.push('fade=t=in:st=0:d=0.2:color=black');
+    }
+  }
+
+  // 마지막 씬에만 블랙 페이드아웃
+  if (isLastScene && dur >= 0.6) {
     f.push(`fade=t=out:st=${(dur - 0.5).toFixed(3)}:d=0.5:color=black`);
+  } else if (isLastScene) {
+    f.push(`fade=t=out:st=0:d=${dur.toFixed(3)}:color=black`);
   }
   return f.join(',');
 }
@@ -241,7 +262,10 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
     const ext        = isVideo ? 'mp4' : 'jpg';
     const inputName  = `in_${i}.${ext}`;
     const outputName = `part_${i}.mp4`;
-    const dur        = Math.max(2.0, scene.duration || 3.0);
+    // 블록 분리형 짧은 컷(0.5초 등)는 AI 설계 duration 보존
+    const dur        = (scene.blockIdx !== undefined)
+      ? Math.max(0.4, scene.duration || 0.5)
+      : Math.max(2.0, scene.duration || 3.0);
     const isLast     = (i === scenes.length - 1);
 
     // 파일 가상 FS 기록
@@ -250,11 +274,11 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
       : await fetchFile(fileItem.url);
     await ff.writeFile(inputName, fileData);
 
-    // 필터 체인 구성
+    // 필터 체인 구성 (씬 인덱스 i 전달 → 트랜지션 효과)
     const focusCoords = scene.focus_coords || null;
     let vf = isVideo
-      ? getVideoFilter(scene, theme, dur, isLast)
-      : getImageFilter(scene, theme, dur, FPS, focusCoords, isLast);
+      ? getVideoFilter(scene, theme, dur, isLast, i)
+      : getImageFilter(scene, theme, dur, FPS, focusCoords, isLast, i);
 
     // 자막 오버레이 (폰트 로드 성공 시)
     const subtitleF = getSubtitleFilter(scene, fontPath, isLast);
