@@ -29,12 +29,15 @@ export default function App() {
     const gKey = import.meta.env.VITE_GEMINI_KEY || localStorage.getItem('moovlog_gemini_key') || '';
     setGeminiKey(gKey);
 
-    const tcKeys = [1,2,3,4,5,6,7,8].map(n => {
+    const tcKeys = [1,2,3,4,5,6,7,8].flatMap(n => {
       const envKey = import.meta.env[`VITE_TYPECAST_KEY${n > 1 ? '_' + n : ''}`] || '';
       const lsKey  = localStorage.getItem(`moovlog_typecast_key${n > 1 ? n : ''}`) || '';
-      return envKey || lsKey;
-    });
+      const raw = envKey || lsKey;
+      // 혹시 콤마/줄바꿈으로 여러 키가 하나의 문자열로 저장된 경우 분리
+      return raw ? raw.split(/[,\n]/).map(s => s.trim()).filter(Boolean) : [];
+    }).slice(0, 8);
     setTypeCastKeys(tcKeys);
+    console.log(`[App] TypeCast 키 로드: ${tcKeys.length}개`);
 
     initFirebase();
 

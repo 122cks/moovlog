@@ -3,6 +3,7 @@ import { useCallback, useRef } from 'react';
 import { useVideoStore, TEMPLATE_NAMES, TEMPLATE_HINTS } from '../store/videoStore.js';
 import { startMake } from '../engine/pipeline.js';
 import { setGeminiKey } from '../engine/gemini.js';
+import { setTypeCastKeys } from '../engine/tts.js';
 import DrivePicker from './DrivePicker.jsx';
 import PromptInput from './PromptInput.jsx';
 
@@ -37,7 +38,34 @@ export default function UploadSection() {
     if (key !== null) {
       localStorage.setItem('moovlog_gemini_key', key);
       setGeminiKey(key);
-      addToast('API 키 저장 완료', 'ok');
+      addToast('Gemini API 키 저장 완료', 'ok');
+    }
+
+    // TypeCast 키 8개 입력
+    const existingKeys = [1,2,3,4,5,6,7,8]
+      .map(n => localStorage.getItem(`moovlog_typecast_key${n > 1 ? n : ''}`) || '')
+      .join('\n');
+    const tcInput = prompt(
+      'TypeCast API 키를 입력하세요 (한 줄에 하나씩, 여러 줄 또는 콤마 구분 가능, 최대 8개):',
+      existingKeys
+    );
+    if (tcInput !== null) {
+      // 콤마 또는 줄바꽔으로 구분하여 개별 키 배열 생성
+      const parsed = tcInput
+        .split(/[,\n]/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+      parsed.forEach((k, i) => {
+        const lsName = `moovlog_typecast_key${i > 0 ? i + 1 : ''}`;
+        localStorage.setItem(lsName, k);
+      });
+      // 사용하지 않는 키 슬롯 코사
+      for (let i = parsed.length + 1; i <= 8; i++) {
+        localStorage.removeItem(`moovlog_typecast_key${i > 1 ? i : ''}`);
+      }
+      setTypeCastKeys(parsed);
+      addToast(`TypeCast 키 ${parsed.length}개 로테이션 설정 완료 ✅`, 'ok');
     }
   }, [addToast]);
 

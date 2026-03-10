@@ -147,8 +147,6 @@ export default function VideoPlayer({ isExporting = false }) {
     function playAudio() {
       const src = ac.createBufferSource();
       src.buffer = buf;
-      // 2026 숏폼 트렌드: 1.15배속으로 재생 (빠릿한 템포)
-      src.playbackRate.value = 1.15;
       src.connect(ac.destination);
       src.start(0);
       audioRef.current = src;
