@@ -45,14 +45,10 @@ export async function apiPost(url, body, timeoutMs = 60000) {
 }
 
 // ─── 모델 목록 (2026-03 v1beta 확인된 유효 모델만) ────────
-// 404: preview-05-06, preview-05-20, 1.5-pro, 1.5-flash (모두 deprecated/미지원)
-// 403: 누출 키 문제 (새 키 사용 시 정상 동작)
-// ⚡ 병렬 그룹: 같은 그룹은 동시 요청 → 가장 빠른 응답 사용
+// 2.0 시리즈(gemini-2.0-flash, gemini-2.0-flash-lite)는 Legacy 처리 → 제거
 export const TEXT_MODELS = [
-  'gemini-2.5-flash',     // 최신 2.5 Flash (안정, 무료 티어)
-  'gemini-2.5-pro',       // 최신 2.5 Pro (고품질)
-  'gemini-2.0-flash',     // 2.0 Flash (안정, 빠름)
-  'gemini-2.0-flash-lite', // 2.0 Flash Lite (초고속 폴백)
+  'gemini-2.5-flash',  // 1순위: 속도·비용 균형
+  'gemini-2.5-pro',    // 2순위: 고품질 폴백
 ];
 
 // ─── 순차 폴백 (기본) ─────────────────────────────────────
@@ -311,7 +307,7 @@ export async function researchRestaurant(restaurantName) {
 
 없는 정보는 생략하고, 확인된 사실만 간결하게 요약하세요.`;
 
-  const searchModels = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'];
+  const searchModels = ['gemini-2.5-flash', 'gemini-2.5-pro'];
   for (const model of searchModels) {
     try {
       const data = await apiPost(getApiUrl(model), {
