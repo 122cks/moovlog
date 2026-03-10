@@ -113,7 +113,7 @@ export async function startMake() {
                             : (block.media_idx !== undefined ? block.media_idx : globalMediaIdx++),
             caption1:          cIdx === 0 ? (block.caption || block.caption1 || '') : '',
             caption2:          cIdx === 0 ? (block.caption2 || '') : '',
-            narration:         cIdx === 0 ? (block.narration || '') : '',
+            narration:         cIdx === 0 ? (block.narration || '').replace(/[,.]/g, ' ').replace(/\s{2,}/g, ' ').trim() : '',
             effect:            cut.effect || block.effect || 'zoom-in',
             subtitle_style:    block.subtitle_style || 'hero',
             energy_level:      block.energy_level || 3,
@@ -139,54 +139,92 @@ export async function startMake() {
       addToast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
     }
 
-    // 오디오 길이로 씬 duration 동기화
+    // 오디오 길이로 씬 duration 동기화 (while 루프 — 블록 오디오 잘림 방지)
     const isTrend = VIRAL_TRENDS[useVideoStore.getState().selectedTemplate];
     // analysis.per_image 인덱스 맵 (focus_coords, aesthetic_score 씬에 주입)
     const analysisMap = {};
     for (const p of (analysis.per_image || [])) analysisMap[p.idx] = p;
 
-    const finalScenes = script.scenes.map((sc, i) => {
-      const buf = audioBuffers[i];
-      let duration;
+    const BPM_BEAT   = 0.46875;  // 128 BPM 한 비트
+    const finalScenes = [];
+    let sceneIdx = 0;
+    while (sceneIdx < script.scenes.length) {
+      let sc      = script.scenes[sceneIdx];
+      const buf   = audioBuffers[sceneIdx];
       const isBlockCut = sc.blockIdx !== undefined;
 
       if (isBlockCut) {
-        // 블록 분리형 컷: AI가 설계한 duration 보존 (TTS는 첫 컷에 독립적으로 재생)
-        duration = Math.max(0.4, sc.duration || 0.5);
-      } else if (isTrend && isTrend.durations[i] !== undefined) {
-        const trendDur = isTrend.durations[i];
-        // 트렌드 길이와 실제 오디오 길이 중 더 긴 쪽 선택 → 나레이션 잘림 방지
-        duration = (buf && buf.duration > 0)
-          ? Math.max(trendDur, Math.round((buf.duration + 0.3) * 10) / 10)
-          : trendDur;
-        if (!sc.effect && isTrend.effect) sc = { ...sc, effect: isTrend.effect[i % isTrend.effect.length] };
-      } else if (buf && buf.duration > 0) {
-        duration = Math.max(2.0, Math.round((buf.duration + 0.4) * 10) / 10);
+        // ── 블록 그룹: 같은 blockIdx 컷 전체를 한 번에 처리 ──
+        const blockStart = sceneIdx;
+        const blockIdx   = sc.blockIdx;
+        while (sceneIdx < script.scenes.length && script.scenes[sceneIdx].blockIdx === blockIdx) sceneIdx++;
+        const blockScenes = script.scenes.slice(blockStart, sceneIdx);
+        const audioDur    = (buf && buf.duration > 0) ? buf.duration : 0;
+
+        // 각 컷 AI 설계 duration 합산
+        const rawTotal = blockScenes.reduce((sum, s) => sum + Math.max(BPM_BEAT, s.duration || BPM_BEAT), 0);
+        // 필요 최소 총 길이 = audioDur + 0.1s 여백 (타이트 컷오프 방지)
+        const minTotal = audioDur > 0 ? audioDur + 0.1 : rawTotal;
+        const deficit  = Math.max(0, minTotal - rawTotal);
+
+        // 각 컷 BPM 스냅
+        let durations = blockScenes.map(s =>
+          Math.max(BPM_BEAT, Math.round(Math.max(BPM_BEAT, s.duration || BPM_BEAT) / BPM_BEAT) * BPM_BEAT)
+        );
+        // deficit → 마지막 컷에 보정
+        if (deficit > 0) durations[durations.length - 1] += Math.ceil(deficit / BPM_BEAT) * BPM_BEAT;
+
+        // BPM 스냅 후에도 부족하면 재보정
+        const snappedTotal = durations.reduce((s, d) => s + d, 0);
+        if (audioDur > 0 && snappedTotal < audioDur + 0.1) {
+          durations[durations.length - 1] += Math.ceil((audioDur + 0.1 - snappedTotal) / BPM_BEAT) * BPM_BEAT;
+        }
+
+        blockScenes.forEach((s, j) => {
+          let caption1 = s.caption1, caption2 = s.caption2;
+          if (!caption1?.trim()) {
+            const [c1, c2] = splitCaptions(s.narration || s.subtitle || '');
+            caption1 = c1; caption2 = c2;
+          }
+          const imgMeta = analysisMap[s.media_idx ?? (blockStart + j)] || {};
+          finalScenes.push({ ...s, duration: durations[j], caption1, caption2, subtitle: caption1 || s.subtitle || '',
+            focus_coords:    imgMeta.focus_coords    || null,
+            aesthetic_score: imgMeta.aesthetic_score || null,
+            foodie_score:    imgMeta.foodie_score    || null,
+            best_start_pct:  imgMeta.best_start_pct  || 0,
+          });
+        });
       } else {
-        duration = Math.max(2.0, sc.duration || 3.0);
-      }
-      // 128 BPM 쿨타이징: 블록 컷은 BPM_BEAT 이상 보장 / 일반 씬 최소 2.0초
-      const BPM_BEAT = 0.46875;
-      const minDur = isBlockCut ? BPM_BEAT : 2.0;
-      duration = Math.max(minDur, Math.round(duration / BPM_BEAT) * BPM_BEAT);
+        // ── 일반 씬 ──
+        let duration;
+        if (isTrend && isTrend.durations[sceneIdx] !== undefined) {
+          const trendDur = isTrend.durations[sceneIdx];
+          duration = (buf && buf.duration > 0)
+            ? Math.max(trendDur, Math.round((buf.duration + 0.1) * 10) / 10)
+            : trendDur;
+          if (!sc.effect && isTrend.effect) sc = { ...sc, effect: isTrend.effect[sceneIdx % isTrend.effect.length] };
+        } else if (buf && buf.duration > 0) {
+          duration = Math.max(2.0, Math.round((buf.duration + 0.1) * 10) / 10);
+        } else {
+          duration = Math.max(2.0, sc.duration || 3.0);
+        }
+        duration = Math.max(2.0, Math.round(duration / BPM_BEAT) * BPM_BEAT);
 
-      // caption 분할 (AI caption 없을 때 폴백)
-      let caption1 = sc.caption1, caption2 = sc.caption2;
-      if (!caption1?.trim()) {
-        const [c1, c2] = splitCaptions(sc.narration || sc.subtitle || '');
-        caption1 = c1; caption2 = c2;
+        let caption1 = sc.caption1, caption2 = sc.caption2;
+        if (!caption1?.trim()) {
+          const [c1, c2] = splitCaptions(sc.narration || sc.subtitle || '');
+          caption1 = c1; caption2 = c2;
+        }
+        const imgMeta = analysisMap[sc.media_idx ?? sceneIdx] || {};
+        finalScenes.push({ ...sc, duration, caption1, caption2, subtitle: caption1 || sc.subtitle || '',
+          focus_coords:    imgMeta.focus_coords    || null,
+          aesthetic_score: imgMeta.aesthetic_score || null,
+          foodie_score:    imgMeta.foodie_score    || null,
+          best_start_pct:  imgMeta.best_start_pct  || 0,
+        });
+        sceneIdx++;
       }
-      const subtitle = caption1 || sc.subtitle || '';
-
-      // focus_coords, aesthetic_score, foodie_score, best_start_pct 씨에 주입 (VideoRenderer 활용)
-      const imgMeta = analysisMap[sc.media_idx ?? i] || {};
-      return { ...sc, duration, caption1, caption2, subtitle,
-        focus_coords:    imgMeta.focus_coords    || null,
-        aesthetic_score: imgMeta.aesthetic_score || null,
-        foodie_score:    imgMeta.foodie_score    || null,
-        best_start_pct:  imgMeta.best_start_pct  || 0,
-      };
-    });
+    }
 
     // script 업데이트
     setScript({ ...script, scenes: finalScenes });

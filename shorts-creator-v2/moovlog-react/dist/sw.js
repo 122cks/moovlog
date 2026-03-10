@@ -1,7 +1,7 @@
 // MOOVLOG Shorts Creator — Service Worker
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
-const CACHE_NAME = 'moovlog-v2.32';
+const CACHE_NAME = 'moovlog-v2.33';
 const STATIC_ASSETS = [
   '/moovlog/shorts-creator/',
   '/moovlog/shorts-creator/index.html',
