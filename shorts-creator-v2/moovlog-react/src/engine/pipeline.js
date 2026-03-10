@@ -105,6 +105,15 @@ export async function startMake() {
           ? block.video_cuts
           : [{ duration: block.total_duration || 3.0, media_idx: block.media_idx }];
         cuts.forEach((cut, cIdx) => {
+          // ⚡ [인간화 TTS 튜닝] 단일 마침표·쉼표만 제거, 느낌표·물음표·말줄임표는 보존 (억양 유지)
+          let humanNarration = '';
+          if (cIdx === 0 && block.narration) {
+            humanNarration = block.narration
+              .replace(/\.(?!\.)/g, ' ')  // 단일 마침표만 제거 (말줄임표 ... 보존)
+              .replace(/,/g, ' ')          // 쉼표 제거 (숨 안 쉬고 랩하게)
+              .replace(/\s{2,}/g, ' ')
+              .trim();
+          }
           flatScenes.push({
             ...cut,
             blockIdx:       bIdx,
@@ -113,7 +122,7 @@ export async function startMake() {
                             : (block.media_idx !== undefined ? block.media_idx : globalMediaIdx++),
             caption1:          cIdx === 0 ? (block.caption || block.caption1 || '') : '',
             caption2:          cIdx === 0 ? (block.caption2 || '') : '',
-            narration:         cIdx === 0 ? (block.narration || '').replace(/[,.]/g, ' ').replace(/\s{2,}/g, ' ').trim() : '',
+            narration:         humanNarration,
             effect:            cut.effect || block.effect || 'zoom-in',
             subtitle_style:    block.subtitle_style || 'hero',
             energy_level:      block.energy_level || 3,
