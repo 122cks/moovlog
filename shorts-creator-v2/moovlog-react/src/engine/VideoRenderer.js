@@ -81,11 +81,11 @@ function getImageFilter(scene, theme, dur, fps, focusCoords, isLastScene) {
   f.push('scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560');
   
   if (scene.type === 'hook') {
-    // 1번: 훅 씬에서는 0.5초만에 1.2배로 팍! 당겨지는 임팩트 줌
-    f.push(`zoompan=z='if(lte(on,15),1.2,min(zoom+0.001,1.5))':d=${frames}:x='iw*${cx}-ow/zoom/2':y='ih*${cy}-oh/zoom/2':s=720x1280:fps=${fps}`);
+    // 훅 씬: 초반 임팩트 줌 — 최대 1.1배로 제한하여 음식 전체 샷 유지
+    f.push(`zoompan=z='if(lte(on,10),1.1,min(zoom+0.0005,1.1))':d=${frames}:x='iw*${cx}-ow/zoom/2':y='ih*${cy}-oh/zoom/2':s=720x1280:fps=${fps}`);
   } else {
-    // 10번: 포커스 좌표(음식 중앙)를 향해 부드럽게 빨려 들어가는 켄 번즈
-    f.push(`zoompan=z='min(zoom+0.0015,1.3)':d=${frames}:x='iw*${cx}-ow/zoom/2':y='ih*${cy}-oh/zoom/2':s=720x1280:fps=${fps}`);
+    // 일반 씬: 아주 미세하게 움직여 정지 화면 느낌 방지, 전체 샷 보존
+    f.push(`zoompan=z='min(zoom+0.0002,1.1)':d=${frames}:x='iw*${cx}-ow/zoom/2':y='ih*${cy}-oh/zoom/2':s=720x1280:fps=${fps}`);
   }
   
   // 색감 LUT
