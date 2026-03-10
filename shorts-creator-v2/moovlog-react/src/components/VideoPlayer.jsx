@@ -21,6 +21,7 @@ const renderFormattedText = (text) => {
 export default function VideoPlayer({ isExporting = false }) {
   const videoRef  = useRef(null);
   const audioRef  = useRef(null);
+  const [safeZone, setSafeZone] = useState(false);
 
   const {
     script, files, playing, muted, scene,
