@@ -4,6 +4,7 @@
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { useVideoStore } from '../store/videoStore.js';
 
 const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
 // 자막용 폰트 (NotoSans KR Bold .ttf — CDN에서 최초 1회 다운로드)
@@ -36,9 +37,9 @@ async function getFFmpeg(onLog) {
 function getColorLUT(theme) {
   const LUTs = {
     cafe:    'curves=preset=vintage,eq=saturation=1.2:brightness=0.03:contrast=1.08,unsharp=3:3:0.8:3:3:0.0',
-    grill:   'eq=contrast=1.3:saturation=1.6:brightness=-0.05,unsharp=5:5:1.5:5:5:0.0',
+    grill:   'eq=contrast=1.1:saturation=1.5:brightness=0.02,unsharp=5:5:1.5:5:5:0.0',
     hansik:  'eq=saturation=1.15:contrast=1.08,unsharp=3:3:0.8:3:3:0.0',
-    premium: 'eq=contrast=1.12:saturation=0.90:brightness=0.05,curves=r=\'0/0 0.5/0.46 1/0.9\',unsharp=2:2:0.6:2:2:0.0',
+    premium: 'eq=contrast=1.05:saturation=1.3:brightness=0.04,curves=preset=lighter,unsharp=5:5:1.0:5:5:0.0',
     pub:     'eq=saturation=1.4:contrast=1.15:brightness=-0.02,unsharp=3:3:0.9:3:3:0.0',
     seafood: 'eq=saturation=1.3:hue=3:brightness=0.03,unsharp=3:3:1.0:3:3:0.0',
     chinese: 'eq=saturation=1.5:contrast=1.2:brightness=-0.03,unsharp=3:3:0.8:3:3:0.0',
@@ -56,23 +57,15 @@ function getVideoFilter(scene, theme, dur, isLastScene) {
   f.push('scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1');
   // ★ Freeze Frame
   f.push('tpad=stop_mode=clone:stop_duration=30');
-  // ★ Dynamic Speed Ramping: 30~60% 구간 1.5배 슬로우모션 (3초 이상 비디오에만 적용)
-  if (dur > 3.0) {
-    const rampS = (dur * 0.3).toFixed(2);
-    const rampE = (dur * 0.6).toFixed(2);
-    f.push(`setpts=if(between(t\\,${rampS}\\,${rampE})\\,1.5*PTS\\,0.9*PTS)`);
-  }
+  
   // 색감 LUT
   f.push(getColorLUT(theme));
   // ★ 업스케일러: 선명도 강화 + 노이즈 감소
   f.push('unsharp=5:5:1.0:5:5:0.0,hqdn3d=1.5:1.5:4.5:4.5');
-  // Flash 전환 — 씬 시작 화이트 플래시 인
-  f.push(`fade=t=in:st=0:d=${flashDur}:color=white`);
-  // Flash 전환 — 씬 끝 화이트 플래시 아웃 (마지막 씬은 블랙 페이드아웃)
+  
+  // Flash 플래시 대신, 마지막 장면에만 블랙 아웃 (눈 피로 방지)
   if (isLastScene) {
     f.push(`fade=t=out:st=${(dur - 0.5).toFixed(3)}:d=0.5:color=black`);
-  } else {
-    f.push(`fade=t=out:st=${(dur - flashDur).toFixed(3)}:d=${flashDur}:color=white`);
   }
   return f.join(',');
 }
@@ -81,67 +74,53 @@ function getVideoFilter(scene, theme, dur, isLastScene) {
 function getImageFilter(scene, theme, dur, fps, focusCoords, isLastScene) {
   const f = [];
   const frames = Math.ceil(dur * fps);
-  const flashDur = Math.min(0.12, dur * 0.05).toFixed(3);
-  // 중심점 (focus_coords || 화면 중앙 약간 위)
   const cx = (focusCoords?.x ?? 0.5).toFixed(4);
   const cy = (focusCoords?.y ?? 0.45).toFixed(4);
 
   // Ken Burns: 1440x2560으로 업스케일 후 zoompan으로 720x1280 출력
   f.push('scale=1440:2560:force_original_aspect_ratio=increase,crop=1440:2560');
-  f.push(
-    `zoompan=z='min(zoom+0.0008,1.3)':` +
-    `d=${frames}:` +
-    `x='iw*${cx}-ow/zoom/2':` +
-    `y='ih*${cy}-oh/zoom/2':` +
-    `s=720x1280:fps=${fps}`
-  );
+  
+  if (scene.type === 'hook') {
+    // 1번: 훅 씬에서는 0.5초만에 1.2배로 팍! 당겨지는 임팩트 줌
+    f.push(`zoompan=z='if(lte(on,15),1.2,min(zoom+0.001,1.5))':d=${frames}:x='iw*${cx}-ow/zoom/2':y='ih*${cy}-oh/zoom/2':s=720x1280:fps=${fps}`);
+  } else {
+    // 10번: 포커스 좌표(음식 중앙)를 향해 부드럽게 빨려 들어가는 켄 번즈
+    f.push(`zoompan=z='min(zoom+0.0015,1.3)':d=${frames}:x='iw*${cx}-ow/zoom/2':y='ih*${cy}-oh/zoom/2':s=720x1280:fps=${fps}`);
+  }
+  
   // 색감 LUT
   f.push(getColorLUT(theme));
   // 선명도 향상
   f.push('unsharp=3:3:1.0:3:3:0.0');
   f.push('setsar=1');
-  // Flash 전환
-  f.push(`fade=t=in:st=0:d=${flashDur}:color=white`);
+  
+  // 화이트 플래시 삭제 → 마지막 씬에만 블랙 페이드
   if (isLastScene) {
     f.push(`fade=t=out:st=${(dur - 0.5).toFixed(3)}:d=0.5:color=black`);
-  } else {
-    f.push(`fade=t=out:st=${(dur - flashDur).toFixed(3)}:d=${flashDur}:color=white`);
   }
   return f.join(',');
 }
 
 // ─── 자막 오버레이 필터 (fontPath 있을 때만) ─────────────
-function getSubtitleFilter(scene, fontPath) {
+function getSubtitleFilter(scene, fontPath, isLastScene) {
   if (!fontPath || !scene.caption1) return null;
+  const platform = useVideoStore.getState().targetPlatform || 'reels';
+  
   // 특수문자 이스케이프 (ffmpeg drawtext)
-  const esc = (s) => String(s || '')
-    .replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-    .replace(/:/g, '\\:').replace(/\[/g, '\\[').replace(/\]/g, '\\]')
-    .substring(0, 25);
-
+  const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/:/g, '\\:');
   const fp = fontPath.replace(/\\/g, '/');
+  
+  // 9번: 플랫폼 버튼 높이에 따른 Y좌표 절대 방어 (틱톡은 더 높게)
+  const bottomMargin = platform === 'tiktok' ? 580 : platform === 'shorts' ? 400 : 500;
+  const safeY = 1280 - bottomMargin; 
+
   const filters = [];
-  // 자막 배경 그라데이션 박스 (세이프 졸)
-  filters.push(`drawbox=y=ih-440:color=black@0.55:width=iw:height=290:t=fill`);
-  // caption1 (메인)
-  filters.push(
-    `drawtext=fontfile='${fp}':text='${esc(scene.caption1)}':` +
-    `fontsize=54:fontcolor=white:x=(w-text_w)/2:y=h-415:` +
-    `borderw=2:bordercolor=black@0.8`
-  );
-  // caption2 (서브)
-  if (scene.caption2) {
-    filters.push(
-      `drawtext=fontfile='${fp}':text='${esc(scene.caption2)}':` +
-      `fontsize=36:fontcolor=yellow:x=(w-text_w)/2:y=h-330:` +
-      `borderw=1:bordercolor=black@0.8`
-    );
-  }
-  // ★ Visual Cue: focus_coords 위치에 반짝임 효과 (detail/food 타입 씼)
-  if (scene.focus_coords && (scene.type === 'detail' || scene.type === 'food')) {
-    const sx = (scene.focus_coords.x * 720).toFixed(0);
-    const sy = (scene.focus_coords.y * 1280).toFixed(0);
-    filters.push(`drawtext=fontfile='${fp}':text='\u2728':x=${sx}-30:y=${sy}-30:fontsize=60:fontcolor=yellow@0.9:enable='between(t\,0.3\,1.2)'`);
+  filters.push(`drawbox=y=${safeY - 40}:color=black@0.65:width=iw:height=200:t=fill`); // 다이내믹 섀도우 반영
+  filters.push(`drawtext=fontfile='${fp}':text='${esc(scene.caption1.replace(/\*\*/g, ''))}':fontsize=54:fontcolor=white:x=(w-text_w)/2:y=${safeY}`);
+
+  // 12번: 마지막 씬(구독 유도)일 경우 커다란 CTA 이모지 팝업 애니메이션 
+  if (isLastScene) {
+    filters.push(`drawtext=fontfile='${fp}':text='💖':fontsize=120:x=(w-text_w)/2:y=(h-text_h)/2-100:enable='between(t,0.5,5)'`);
   }
   return filters.join(',');
 }
@@ -278,7 +257,7 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
       : getImageFilter(scene, theme, dur, FPS, focusCoords, isLast);
 
     // 자막 오버레이 (폰트 로드 성공 시)
-    const subtitleF = getSubtitleFilter(scene, fontPath);
+    const subtitleF = getSubtitleFilter(scene, fontPath, isLast);
     if (subtitleF) vf = vf + ',' + subtitleF;
 
     const inputLoopArgs = isVideo ? [] : ['-loop', '1'];

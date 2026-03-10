@@ -41,7 +41,7 @@ html, body {
 .header-version { font-size: .65rem; color: #555; }
 
 /* ── Feature Tags ────────────────────────────────────────── */
-.feature-tags { display: flex; gap: 8px; padding: 10px 16px; overflow-x: auto; scrollbar-width: none; }
+.feature-tags { display: flex; gap: 8px; padding: 10px 16px; overflow-x: auto; scrollbar-width: none; justify-content: center; }
 .feature-tags::-webkit-scrollbar { display: none; }
 .ftag { white-space: nowrap; font-size: .72rem; padding: 4px 10px; border-radius: 20px; background: rgba(124,58,237,.15); border: 1px solid rgba(124,58,237,.3); color: var(--accent2); }
 

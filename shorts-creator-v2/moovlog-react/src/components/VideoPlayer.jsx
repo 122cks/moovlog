@@ -7,10 +7,20 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 import { getAudioCtx } from '../engine/tts.js';
 
-export default function VideoPlayer() {
+const renderFormattedText = (text) => {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*)/g).filter(Boolean);
+  return parts.map((p, i) => {
+    if (p.startsWith('**') && p.endsWith('**')) {
+      return <span key={i} style={{ color: '#FF2D55', fontWeight: 900 }}>{p.slice(2, -2)}</span>;
+    }
+    return <span key={i}>{p}</span>;
+  });
+};
+
+export default function VideoPlayer({ isExporting = false }) {
   const videoRef  = useRef(null);
   const audioRef  = useRef(null);
-  const [safeZone, setSafeZone] = useState(false); // 인스타 세이프 존 가이드 토글
 
   const {
     script, files, playing, muted, scene,
@@ -31,10 +41,10 @@ export default function VideoPlayer() {
       const video = videoRef.current;
       const onMetadata = () => {
         // 클립 길이 ÷ 씬 duration → 슬로우모션(0.2x) ~ 정속(1.0x) 사이로 자동 조율
-        // 0.2 미만은 freeze frame(loop=false)으로 처리되므로 최저 0.2로 고정
+        // 너무 느리면 끊김이 발생하므로 최하 0.6으로 방어 (눈이 편안한 최소 배속)
         if (video.duration && isFinite(video.duration) && currentScene?.duration) {
           const rate = video.duration / currentScene.duration;
-          video.playbackRate = Math.max(0.2, Math.min(1.0, rate));
+          video.playbackRate = Math.max(0.6, Math.min(1.0, rate));
         }
       };
       video.addEventListener('loadedmetadata', onMetadata);
@@ -43,6 +53,34 @@ export default function VideoPlayer() {
       return () => video.removeEventListener('loadedmetadata', onMetadata);
     }
   }, [scene, isImage, currentScene?.duration]); // duration 변경 시에도 대응
+
+  // ── 오디오 더킹 & 타이포그래피 SFX ───────────────────────
+  useEffect(() => {
+    if (!playing) return;
+
+    // 5. 오디오 더킹: 나레이션이 있으면 현장음을 15%로, 없으면 100%로
+    if (!isImage && videoRef.current) {
+      const hasAudio = !!audioBuffers?.[scene];
+      videoRef.current.volume = hasAudio ? 0.15 : 1.0; 
+      videoRef.current.muted = muted;
+    }
+
+    // 6. 타이포그래피 SFX: 씬이 바뀔 때 (자막이 뜰 때) 경쾌한 '팝' 소리 발생
+    if (!muted) {
+      const ac = getAudioCtx();
+      if (ac && ac.state === 'running') {
+        const osc = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, ac.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1500, ac.currentTime + 0.08); // 팝핑 사운드
+        gain.gain.setValueAtTime(0.08, ac.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.08);
+        osc.connect(gain); gain.connect(ac.destination);
+        osc.start(); osc.stop(ac.currentTime + 0.1);
+      }
+    }
+  }, [scene, playing, isImage, audioBuffers, muted]);
 
   // ── 씬 자동 진행 (duration 후 다음 씬으로) ───────────────
   useEffect(() => {
@@ -174,7 +212,7 @@ export default function VideoPlayer() {
                 ref={videoRef}
                 key={`vid-${scene}-${fileIdx}`}
                 src={currentFile.url}
-                className={`video-media-content ${effectClass}`}
+                className="video-media-content"
                 style={{
                   width: '100%', height: '100%', objectFit: 'cover',
                   '--dur': `${currentScene?.duration ?? 3}s`,
@@ -213,7 +251,7 @@ export default function VideoPlayer() {
                   textShadow: vibeColor ? `0 0 18px ${vibeColor}99` : undefined,
                   wordBreak: 'keep-all', lineHeight: '1.2',
                 }}>
-                  {currentScene.caption1}
+                  {renderFormattedText(currentScene.caption1)}
                 </div>
               )}
               {currentScene.caption2 && (

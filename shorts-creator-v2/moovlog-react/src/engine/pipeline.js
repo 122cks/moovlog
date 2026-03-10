@@ -130,7 +130,9 @@ export async function startMake() {
         duration = Math.max(2.0, sc.duration || 3.0);
       }
       // 128 BPM 퀀타이징 (0.46초 단위 스냅)
-      duration = Math.max(2.0, Math.round(duration / 0.46) * 0.46);
+      // 11번: 128 BPM(0.46875초) 단위 컷으로 트렌디한 비트 동기화
+      const BPM_BEAT = 0.46875;
+      duration = Math.max(2.0, Math.round(duration / BPM_BEAT) * BPM_BEAT);
 
       // caption 분할 (AI caption 없을 때 폴백)
       let caption1 = sc.caption1, caption2 = sc.caption2;

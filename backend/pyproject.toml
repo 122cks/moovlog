@@ -1,0 +1,30 @@
+[project]
+name = "moovlog-backend"
+version = "0.1.0"
+description = "무브먼트 Shorts Creator — FastAPI 백엔드 (Gemini 프록시 + FFmpeg 인코딩)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "python-multipart>=0.0.9",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.7.0",
+    "aiofiles>=23.2.1",
+]
+
+[project.optional-dependencies]
+ffmpeg = [
+    "ffmpeg-python>=0.2.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.2.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.27.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
