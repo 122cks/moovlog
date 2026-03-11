@@ -187,7 +187,6 @@ function safeExtractText(data) {
 // ─── STEP 1: Vision Analysis (2-pass) ────────────────────
 export async function visionAnalysis(restaurantName, researchData = '') {
   const { files } = useVideoStore.getState();
-  const parts = [];
 
   // 미디어 변환 병렬 처리 (최대 6개 — 순차 대비 수 배 빠름, payload 절감)
   const _mediaPartsArr = await Promise.all(
