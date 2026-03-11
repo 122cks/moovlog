@@ -83,7 +83,7 @@ export async function geminiRace(body, models = TEXT_MODELS, timeoutMs = 28000) 
 }
 
 // ─── 파일 → Base64 변환 (PC 전용 스마트 압축: 화질 보존 + 속도 떡상) ────
-const MAX_IMG_SIZE = 1920; // Gemini Vision은 FHD급으로 내부 리사이즈 → 4K 원본 전송은 데이터 낭비
+const MAX_IMG_SIZE = 1280; // Gemini Vision은 내부 리사이즈 → 1280px 이상은 payload 낭비
 export function toB64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -114,14 +114,19 @@ export function toB64(file) {
 }
 
 // ─── 비디오 → 프레임 추출 ────────────────────────────────
-export function extractVideoFramesB64(file, count = 4) {
+// count 기본값 2: 4프레임은 payload 낭비, 2프레임으로도 분석 충분
+export function extractVideoFramesB64(file, count = 2) {
   return new Promise(resolve => {
+    // 전체 함수 최대 대기 시간 — onloadedmetadata 미발화 포함 모든 hang 방지
+    const globalTimer = setTimeout(() => { resolve([]); }, 15000);
+
     const vid = Object.assign(document.createElement('video'), {
       muted: true, playsInline: true, preload: 'metadata',
     });
     const url = URL.createObjectURL(file);
 
     const cleanup = (canvas) => {
+      clearTimeout(globalTimer);
       URL.revokeObjectURL(url);
       vid.pause();
       vid.src = '';
@@ -129,27 +134,26 @@ export function extractVideoFramesB64(file, count = 4) {
       vid.remove();
       if (canvas) { canvas.width = 0; canvas.height = 0; }
     };
+    const done = (frames, canvas) => { cleanup(canvas); resolve(frames); };
 
-    vid.onerror = () => { cleanup(null); resolve([]); };
+    vid.onerror = () => { done([], null); };
+
+    // onloadedmetadata 자체 타임아웃 (8초) — 일부 포맷에서 메타데이터 이벤트가 발화 안 함
+    const metaTimer = setTimeout(() => { vid.onloadedmetadata = null; done([], null); }, 8000);
+
     vid.onloadedmetadata = () => {
+      clearTimeout(metaTimer);
       const dur = isFinite(vid.duration) ? vid.duration : 0;
-      if (!dur) { cleanup(null); resolve([]); return; }
+      if (!dur) { done([], null); return; }
       const offscreen = document.createElement('canvas');
       offscreen.width = 640; offscreen.height = 360;
       const octx = offscreen.getContext('2d');
       const frames = [];
       const times = Array.from({ length: count }, (_, i) => dur * (i + 0.5) / count);
       const captureAt = idx => {
-        if (idx >= times.length) {
-          cleanup(offscreen);
-          resolve(frames);
-          return;
-        }
-        // onseeked 가 발화하지 않는 브라우저/포맷 대응: 5초 타임아웃 후 해당 프레임 스킵
-        const seekTimer = setTimeout(() => {
-          vid.onseeked = null;
-          captureAt(idx + 1);
-        }, 5000);
+        if (idx >= times.length) { done(frames, offscreen); return; }
+        // onseeked 미발화 대응: 5초 후 해당 프레임 스킵
+        const seekTimer = setTimeout(() => { vid.onseeked = null; captureAt(idx + 1); }, 5000);
         vid.currentTime = times[idx];
         vid.onseeked = () => {
           clearTimeout(seekTimer);
@@ -185,19 +189,25 @@ export async function visionAnalysis(restaurantName, researchData = '') {
   const { files } = useVideoStore.getState();
   const parts = [];
 
-  for (let i = 0; i < Math.min(files.length, 8); i++) {
-    const m = files[i];
-    parts.push({ text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` });
-    if (m.type === 'image') {
-      const b64 = await toB64(m.file);
-      parts.push({ inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } });
-    } else {
-      try {
-        const frames = await extractVideoFramesB64(m.file, 4);
-        for (const fr of frames) parts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
-      } catch (_) {}
-    }
-  }
+  // 미디어 변환 병렬 처리 (최대 6개 — 순차 대비 수 배 빠름, payload 절감)
+  const _mediaPartsArr = await Promise.all(
+    Array.from({ length: Math.min(files.length, 6) }, async (_, i) => {
+      const m = files[i];
+      const textPart = { text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` };
+      if (m.type === 'image') {
+        try {
+          const b64 = await toB64(m.file);
+          return [textPart, { inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } }];
+        } catch (_) { return [textPart]; }
+      } else {
+        try {
+          const frames = await extractVideoFramesB64(m.file, 2);
+          return [textPart, ...frames.map(fr => ({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } }))];
+        } catch (_) { return [textPart]; }
+      }
+    })
+  );
+  const parts = _mediaPartsArr.flat();
 
   if (!parts.length) {
     return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
@@ -352,20 +362,25 @@ export async function generateScript(restaurantName, analysis, userPrompt = '', 
     ? isTrend.durations.reduce((a, v) => a + v, 0)
     : Math.min(Math.max(files.length * 4 + 8, 30), 55);
 
-  const imgParts = [];
-  for (let i = 0; i < Math.min(files.length, 8); i++) {
-    const m = files[i];
-    imgParts.push({ text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` });
-    if (m.type === 'image') {
-      const b64 = await toB64(m.file);
-      imgParts.push({ inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } });
-    } else {
-      try {
-        const frames = await extractVideoFramesB64(m.file, 4);
-        for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
-      } catch (_) {}
-    }
-  }
+  // 미디어 변환 병렬 처리 (최대 6개 — visionAnalysis와 동일한 전략)
+  const _imgPartsArr = await Promise.all(
+    Array.from({ length: Math.min(files.length, 6) }, async (_, i) => {
+      const m = files[i];
+      const textPart = { text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` };
+      if (m.type === 'image') {
+        try {
+          const b64 = await toB64(m.file);
+          return [textPart, { inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } }];
+        } catch (_) { return [textPart]; }
+      } else {
+        try {
+          const frames = await extractVideoFramesB64(m.file, 2);
+          return [textPart, ...frames.map(fr => ({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } }))];
+        } catch (_) { return [textPart]; }
+      }
+    })
+  );
+  const imgParts = _imgPartsArr.flat();
 
   const trendInstruction = isTrend ? `
 [🚨 바이럴 트렌드 템플릿 강제 규칙 🚨]
