@@ -79,31 +79,37 @@ export async function generateScript(
   analysis: VisionAnalysis,
   template: TemplateKey,
   hook: HookKey,
+  mediaCount: number,
 ): Promise<GeneratedScript> {
   const tplHint  = template !== 'auto' ? TEMPLATE_HINTS[template] : TEMPLATE_HINTS.aesthetic;
   const hookHint = HOOK_HINTS[hook] ?? HOOK_HINTS.question;
-  const order    = analysis.recommended_order.length
-    ? analysis.recommended_order
-    : analysis.per_image.map((_: unknown, i: number) => i);
-
-  const imgSummary = analysis.per_image
-    .map((p: VisionAnalysis['per_image'][number]) => `이미지${p.idx}(${p.type}/감성${p.emotional_score}점): 효과=${p.best_effect}, ${p.suggested_duration}s, "${p.focus}"`)
-    .join('\n');
+  const maxIdx   = Math.max(0, mediaCount - 1);
 
   const prompt = `당신은 인스타그램 Reels 전문 편집 감독입니다.
 음식점: "${restaurantName}"
 스타일: ${tplHint}
 훅 스타일: ${hookHint}
+
+=== 업체 비주얼 분석 결과 ===
 분위기: ${analysis.mood}
+키워드: ${analysis.keywords.join(', ')}
 메뉴: ${analysis.menu.join(', ')}
-이미지 분석:\n${imgSummary}
-추천 순서: [${order.join(', ')}]
+비주얼 핵심: ${analysis.visual_hook}
+사용 가능한 미디어: ${mediaCount}개 (인덱스 0 ~ ${maxIdx})
 
-위 정보로 쇼츠 스크립트를 작성하세요. 각 씬은 추천 순서대로. 
-narration은 2~10초 분량(자연스러운 1인칭 나레이션). caption1·caption2는 틱톡 자막(6~14자).
-effect/transition은 분위기에 맞게. subtitle_position: 0.75~0.88(하단).
+=== 작성 지침 ===
+1. 이 음식점의 브랜드 스토리를 자연스럽게 전달하는 쇼츠를 기획하세요.
+2. 씬 구성: 훅(시선 포착) → 특징 소개 → 감성/분위기 → 여운/CTA
+3. narration: TTS로 읽힐 자연스러운 1인칭 나레이션, 한 문장 (2~8초 분량)
+4. caption1: 틱톡 스타일 핵심 자막 6~14자, caption2: 보조 자막 선택
+5. media_idx: 0~${maxIdx} 사이에서 씬의 분위기와 위치에 맞게 자유 선택
+   - 첫 씬: 가장 임팩트 있는 미디어
+   - 중반 씬: 메뉴/분위기가 잘 보이는 미디어 다양하게
+   - 마지막 씬: 여운이 남는 감성적 미디어
+   - 미디어는 다시 써도 되고, 굳이 순서대로 쓸 필요 없음
+6. effect/transition은 스타일에 맞게, subtitle_position 0.75~0.88, duration 2.0~6.0
 
-JSON만 반환 (마크다운 금지):
+JSON만 반환 (마크다운 없이):
 {
   "hook": "첫 씬 훅 문구",
   "summary": "전체 요약 1줄",
@@ -127,7 +133,7 @@ JSON만 반환 (마크다운 금지):
 
   const data = await geminiPost({
     contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.75, responseMimeType: 'application/json' },
+    generationConfig: { temperature: 0.80, responseMimeType: 'application/json' },
   });
   return parseGeneratedScript(extractText(data));
 }
@@ -196,9 +202,26 @@ function base64ToArrayBuffer(b64: string): ArrayBuffer {
 
 function buildVisionPrompt(restaurantName: string, mediaCount: number): string {
   return `당신은 인스타그램 Reels 전문 비주얼 디렉터입니다.
-음식점: "${restaurantName}" / 미디어 ${mediaCount}개
+음식점: "${restaurantName}" / 미디어 ${mediaCount}개 (인덱스 0~${mediaCount - 1})
 
-각 이미지를 순서대로 정밀 분석하세요.
-JSON만 반환:
-{"keywords":["k1"],"mood":"감성","menu":["메뉴"],"visual_hook":"훅","recommended_order":[0],"recommended_template":"aesthetic","recommended_hook":"question","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":8,"suggested_duration":3,"focus":"설명","focus_coords":{"x":0.5,"y":0.45}}]}`;
+각 이미지/영상을 순서대로 정밀 분석하여 아래 JSON을 반환하세요.
+
+분석 기준:
+- type: "hook"(강렬한 첫인상) / "hero"(대표 메뉴·공간) / "detail"(디테일 클로즈업) / "ambiance"(분위기·인테리어) / "process"(조리·서빙 과정) / "wide"(전경·외관)
+- best_effect: 해당 미디어에 가장 어울리는 Ken Burns 효과
+- emotional_score: 1~10 (시청자 감정 반응 예상치)
+- suggested_duration: 씬 권장 재생 시간(초)
+- focus: 이 미디어의 핵심 피사체 설명
+- recommended_order: 영상에서 미디어를 쓸 최적 순서 (같은 idx 반복 가능)
+
+전체 분석:
+- keywords: 이 음식점을 대표하는 감성 키워드 3~6개
+- mood: 전반적인 분위기 한 문장
+- menu: 보이는 메뉴 목록
+- visual_hook: 이 음식점의 가장 강렬한 비주얼 포인트 한 문장
+- recommended_template: cinematic/viral/aesthetic/mukbang/vlog/review/story/info 중 최적
+- recommended_hook: question/shock/challenge/secret/ranking/pov 중 최적
+
+JSON만 반환 (마크다운 없이):
+{"keywords":["k1","k2"],"mood":"분위기","menu":["메뉴1"],"visual_hook":"핵심 훅","recommended_order":[0,1,2],"recommended_template":"aesthetic","recommended_hook":"question","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":8,"suggested_duration":3,"focus":"설명","focus_coords":{"x":0.5,"y":0.45}}]}`;
 }

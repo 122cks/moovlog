@@ -1,7 +1,7 @@
 /* ============================================================
    api/tts.ts — 모든 씬 TTS 일괄 처리 + AudioBuffer 디코딩
    ============================================================ */
-import { fetchTypeCastTTS, rotateTypeCastKey } from './typecast';
+import { fetchTypeCastTTS, rotateTypeCastKey, getKeyPoolSize } from './typecast';
 import type { SceneData } from '@/schemas/scriptSchema';
 
 export async function generateAllTTS(
@@ -22,20 +22,31 @@ export async function generateAllTTS(
     let arrayBuf: ArrayBuffer | null = null;
     let lastErr: Error | null = null;
 
-    // 최대 2회 시도 (키 로테이션)
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // 등록된 키 전체를 순환하며 시도 (최대 8회)
+    const maxAttempts = Math.max(getKeyPoolSize(), 1);
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         arrayBuf = await fetchTypeCastTTS(text);
+        // 성공 시 다음 씬을 위해 키 로테이션 (부하 분산)
+        rotateTypeCastKey();
         break;
       } catch (err) {
         lastErr = err instanceof Error ? err : new Error(String(err));
-        console.warn(`[TTS] 씬${i} 시도${attempt + 1} 실패 — 키 로테이션:`, lastErr.message);
+        const isRateLimit = (err as Error & { isRateLimit?: boolean }).isRateLimit === true;
+        console.warn(
+          `[TTS] 씬${i} 시도${attempt + 1}/${maxAttempts} 실패${isRateLimit ? ' (429 Rate Limit)' : ''} — 키 로테이션:`,
+          lastErr.message,
+        );
         rotateTypeCastKey();
+        // 429 Rate Limit 이면 잠깐 대기 후 다음 키로 재시도
+        if (isRateLimit && attempt < maxAttempts - 1) {
+          await sleep(600);
+        }
       }
     }
 
     if (!arrayBuf) {
-      console.error(`[TTS] 씬${i} 최종 실패:`, lastErr?.message);
+      console.error(`[TTS] 씬${i} 최종 실패 (${maxAttempts}회 시도):`, lastErr?.message);
       results.push(null);
     } else {
       try {
@@ -51,4 +62,8 @@ export async function generateAllTTS(
   }
 
   return results;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }

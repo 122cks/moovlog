@@ -1,5 +1,5 @@
 /* ============================================================
-   api/typecast.ts — Typecast v1 API (7-key 풀 + 로테이션)
+   api/typecast.ts — Typecast v1 API (8-key 풀 + 로테이션)
    Authorization: Bearer 헤더 사용 (X-API-KEY 아님)
    ============================================================ */
 import { fetchWithTimeout } from './client';
@@ -14,6 +14,7 @@ function buildKeyPool(): string[] {
     import.meta.env.VITE_TYPECAST_API_KEY_5,
     import.meta.env.VITE_TYPECAST_API_KEY_6,
     import.meta.env.VITE_TYPECAST_API_KEY_7,
+    import.meta.env.VITE_TYPECAST_API_KEY_8,  // 8번째 키
   ] as (string | undefined)[];
   return keys.filter((k): k is string => typeof k === 'string' && k.length > 0);
 }
@@ -34,14 +35,20 @@ export function rotateTypeCastKey(): void {
 /** 로컬 스토리지에서 수동 등록한 키 로드 (개발 환경) */
 export function loadKeysFromLocalStorage(): void {
   const fromStorage: string[] = [];
-  for (let i = 1; i <= 7; i++) {
+  for (let i = 1; i <= 8; i++) {
     const key = localStorage.getItem(i === 1 ? 'moovlog_typecast_key' : `moovlog_typecast_key${i}`);
     if (key) fromStorage.push(key);
   }
   if (fromStorage.length) {
     _keys = fromStorage;
     _keyIdx = 0;
+    console.debug(`[Typecast] 로컬스토리지 키 ${fromStorage.length}개 로드`);
   }
+}
+
+/** 현재 등록된 키 개수 반환 */
+export function getKeyPoolSize(): number {
+  return _keys.length;
 }
 
 /* ── Typecast 음성 합성 ── */
@@ -78,7 +85,14 @@ export async function fetchTypeCastTTS(text: string): Promise<ArrayBuffer> {
 
   if (!speakRes.ok) {
     const errBody = await speakRes.json().catch(() => ({})) as { message?: string };
-    throw new Error(`Typecast speak 오류 (${speakRes.status}): ${errBody?.message ?? speakRes.statusText}`);
+    const errMsg  = `Typecast speak 오류 (${speakRes.status}): ${errBody?.message ?? speakRes.statusText}`;
+    // 429 Rate Limit — 상위 재시도 로직에서 키 로테이션 처리
+    if (speakRes.status === 429) {
+      const rateLimitErr = new Error(errMsg);
+      (rateLimitErr as Error & { isRateLimit: boolean }).isRateLimit = true;
+      throw rateLimitErr;
+    }
+    throw new Error(errMsg);
   }
 
   const speakData = await speakRes.json() as { result?: { speak_v2_url?: string; speak_url?: string } };

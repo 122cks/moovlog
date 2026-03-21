@@ -121,19 +121,47 @@ const SUBTITLE_SHRINK_THRESHOLD = 7;
 const SUBTITLE_MIN_SCALE        = 0.50;
 const SAFE_WIDTH                = CW - SCALE * 120;
 
+/**
+ * 자막 알파 — 빠른 페이드인 → 유지 → 빠른 페이드아웃
+ * prog 0~0.18: 0→1, 0.18~0.82: 1.0 유지, 0.82~1.0: 1→0
+ */
+function calcSubtitleAlpha(prog: number): number {
+  const fadeIn  = 0.18;
+  const fadeOut = 0.82;
+  if (prog < fadeIn)  return prog / fadeIn;
+  if (prog > fadeOut) return Math.max(0, (1.0 - prog) / (1.0 - fadeOut));
+  return 1.0;
+}
+
+/**
+ * 자막 Y 오프셋 — 페이드인 구간만 아래에서 위로 슬라이드
+ */
+function calcSubtitleSlideY(prog: number): number {
+  const fadeIn = 0.18;
+  if (prog >= fadeIn) return 0;
+  const t = prog / fadeIn;
+  // easeOutQuad: 천천히 올라와서 자리잡기
+  const ease = 1 - Math.pow(1 - t, 2);
+  return (1 - ease) * 30 * SCALE;
+}
+
 export function drawSubtitle(
   ctx: CanvasRenderingContext2D,
   scene: Scene,
   captionStyle: CaptionStyle,
-  subAnimProg: number,  // 0..1
+  prog: number,  // 씬 전체 진행률 0..1
 ): void {
   if (!scene.caption1) return;
 
+  const alpha  = calcSubtitleAlpha(prog);
+  const slideY = calcSubtitleSlideY(prog);
+  if (alpha <= 0) return;
+
   const y = scene.subtitle_position * CH;
-  const animY = y + (1 - subAnimProg) * 40;
+  const animY = y + slideY;
 
   ctx.save();
-  ctx.globalAlpha = subAnimProg;
+  ctx.globalAlpha = alpha;
 
   const lines = [scene.caption1, scene.caption2].filter(Boolean) as string[];
   const lineH = SCALE * 80;
