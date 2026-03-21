@@ -68,11 +68,12 @@ export default function VideoPlayer({ isExporting = false }) {
   useEffect(() => {
     if (!playing) return;
 
-    // 5. 오디오 더킹: 나레이션이 있으면 현장음을 15%로, 없으면 100%로
+    // 5. 오디오 더킹: TTS 버퍼가 있으면 영상음을 15%로 + 묵음, 없으면 100%로
     if (!isImage && videoRef.current) {
-      const hasAudio = !!audioBuffers?.[scene];
-      videoRef.current.volume = hasAudio ? 0.15 : 1.0; 
-      videoRef.current.muted = muted;
+      const hasAudio = !!audioBuffers?.[audioSceneIdx]; // audioSceneIdx 사용(블록 첫 컷 기준)
+      videoRef.current.volume = hasAudio ? 0.15 : 1.0;
+      // TTS 버퍼가 있으면 반드시 영상음 묵음 (JSX prop과 일치시킬)
+      videoRef.current.muted = hasAudio || muted;
     }
 
     // 6. 타이포그래피 SFX: 씬이 바뀔 때 (자막이 뜰 때) 경쾌한 '팝' 소리 발생
@@ -147,14 +148,18 @@ export default function VideoPlayer({ isExporting = false }) {
     const ac = getAudioCtx();
     if (!ac) return;
 
-    function playAudio() {
+    // race condition 방지: ac.resume() 응답 전에 씬이 넘어가면 취소
+    let cancelled = false;
+
+    const playAudio = () => {
+      if (cancelled) return; // stale async 콜백 차단 — 이중 재생 방지
       try { audioRef.current?.stop(); } catch (_) {}
       const src = ac.createBufferSource();
       src.buffer = buf;
       src.connect(ac.destination);
       src.start(0);
       audioRef.current = src;
-    }
+    };
 
     if (ac.state === 'suspended') {
       ac.resume().then(playAudio).catch(() => {});
@@ -162,7 +167,10 @@ export default function VideoPlayer({ isExporting = false }) {
       playAudio();
     }
     // currentAudioKey(블록 ID)가 바뀔 때만 재시작 → 같은 블록 내 컷 전환 시 이어짐
-    return () => { try { audioRef.current?.stop(); } catch (_) {} };
+    return () => {
+      cancelled = true; // 늦게 도착하는 .then(playAudio) 실행 차단
+      try { audioRef.current?.stop(); } catch (_) {}
+    };
   }, [playing, muted, currentAudioKey, audioBuffers]);
 
   // ── 컨트롤 핸들러 ────────────────────────────────────────
