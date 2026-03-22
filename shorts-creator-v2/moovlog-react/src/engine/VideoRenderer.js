@@ -61,6 +61,8 @@ function getVideoFilter(scene, theme, dur, isLastScene, sceneIndex = 0) {
   f.push(getColorLUT(theme));
   // ★ 업스케일러: 선명도 강화 + 노이즈 감소
   f.push('unsharp=5:5:1.0:5:5:0.0,hqdn3d=1.5:1.5:4.5:4.5');
+  // 필름 그레인 텍스처 (uniform noise — 디지털 날것 느낌 제거)
+  f.push('noise=alls=8:allf=u');
   
   // 첫 씬 제외: 짧은 컷 화이트 플래시 / 긴 컷 블랙 페이드인
   if (sceneIndex > 0) {
@@ -102,6 +104,8 @@ function getImageFilter(scene, theme, dur, fps, focusCoords, isLastScene, sceneI
   f.push(getColorLUT(theme));
   // 선명도 향상
   f.push('unsharp=3:3:1.0:3:3:0.0');
+  // 필름 그레인 텍스처 (uniform noise)
+  f.push('noise=alls=8:allf=u');
   f.push('setsar=1');
 
   // 첫 씬 제외: 짧은 컷 화이트 플래시 / 긴 컷 블랙 페이드인

@@ -87,13 +87,18 @@ export default function VideoPlayer({ isExporting = false }) {
       if (ac && ac.state === 'running') {
         const osc = ac.createOscillator();
         const gain = ac.createGain();
+        const filt = ac.createBiquadFilter();
+        // 씬 전환 Swoosh: 1500Hz → 100Hz 하강 주파수 (바람 가르는 효과)
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, ac.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1500, ac.currentTime + 0.08); // 팝핑 사운드
-        gain.gain.setValueAtTime(0.08, ac.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.08);
-        osc.connect(gain); gain.connect(ac.destination);
-        osc.start(); osc.stop(ac.currentTime + 0.1);
+        osc.frequency.setValueAtTime(1500, ac.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, ac.currentTime + 0.25);
+        filt.type = 'lowpass';
+        filt.frequency.value = 2000;
+        gain.gain.setValueAtTime(0, ac.currentTime);
+        gain.gain.linearRampToValueAtTime(0.18, ac.currentTime + 0.05);
+        gain.gain.linearRampToValueAtTime(0, ac.currentTime + 0.25);
+        osc.connect(filt); filt.connect(gain); gain.connect(ac.destination);
+        osc.start(); osc.stop(ac.currentTime + 0.25);
       }
     }
   }, [scene, playing, isImage, audioBuffers, muted]);
@@ -219,6 +224,13 @@ export default function VideoPlayer({ isExporting = false }) {
           {/* ── 미디어 레이어 (블러 배경 + 원본 비율 풀샷) ── */}
           <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', backgroundColor: '#111' }}>
             <div className="vignette-overlay" style={{ zIndex: 10 }} />
+            {/* 필름 그레인 텍스처 오버레이 — 디지털 날것 느낌 제거 */}
+            <div style={{
+              position: 'absolute', inset: 0, zIndex: 13, pointerEvents: 'none',
+              backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22n%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.85%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22/%3E%3C/svg%3E")',
+              opacity: 0.12,
+              mixBlendMode: 'overlay',
+            }} />
             {currentFile && (
               <>
                 {/* 블러 배경: 가로형 풀샷이 들어와도 여백 없이 꿽 채우는 레이어 */}
@@ -529,7 +541,10 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
   const text = showCap2 ? cap2 : cap1;
   if (!text) { ctx.restore(); return; }
 
-  const tw   = ctx.measureText(text).width;
+  // **keyword** 마크업 파싱 — 정리된 텍스트로 bg 박스 측정
+  const cleanText = text.replace(/\*\*/g, '');
+  const hasKwHl   = cleanText !== text;
+  const tw   = ctx.measureText(hasKwHl ? cleanText : text).width;
   const padX = Math.round(30 * SCALE);
   const padY = Math.round(14 * SCALE);
   const bw   = Math.min(tw + padX * 2, CW * 0.92);
@@ -584,29 +599,61 @@ function drawSubtitle(ctx, sc, animProg, CW, CH, SCALE) {
   }
 
   const strokeW = S.bg === 'minimal' ? Math.round(9 * SCALE) : Math.round(7 * SCALE);
-  ctx.strokeStyle = 'rgba(0,0,0,0.95)';
   ctx.lineWidth   = strokeW;
   ctx.lineJoin    = 'round';
-  ctx.strokeText(text, CW / 2, baseY);
 
-  ctx.fillStyle = showCap2 ? S.main : (style !== 'detail' && style !== 'minimal' && style !== 'elegant' ? S.hl : S.main);
-  ctx.fillText(text, CW / 2, baseY);
-
-  if (style === 'bold_drop' || style === 'hook') {
-    const words = text.split(' ');
-    if (words.length > 1) {
-      const firstWord = words[0];
-      const rest      = ' ' + words.slice(1).join(' ');
-      const fw   = ctx.measureText(firstWord).width;
-      const rw   = ctx.measureText(rest).width;
-      const startX = CW/2 - (fw + rw)/2;
-      ctx.font = `600 ${fs}px 'Noto Sans KR', sans-serif`;
-      ctx.strokeText(firstWord, startX + fw/2, baseY);
-      ctx.fillStyle = S.hl;
-      ctx.fillText(firstWord, startX + fw/2, baseY);
-      ctx.strokeText(rest, startX + fw + rw/2, baseY);
-      ctx.fillStyle = S.main;
-      ctx.fillText(rest, startX + fw + rw/2, baseY);
+  if (hasKwHl) {
+    // 키워드 형광펜 하이라이트 렌더링 (**...**)
+    const segs = text.split(/(\*\*.*?\*\*)/g).filter(Boolean).map(w => {
+      const isHl = w.startsWith('**') && w.endsWith('**');
+      const str  = isHl ? w.slice(2, -2) : w;
+      ctx.font = isHl
+        ? `900 ${Math.round(fs * 1.12)}px 'Noto Sans KR', sans-serif`
+        : `500 ${fs}px 'Noto Sans KR', sans-serif`;
+      return { str, isHl, width: ctx.measureText(str).width };
+    });
+    const totalW = segs.reduce((a, s) => a + s.width, 0);
+    let curX = CW / 2 - totalW / 2;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    segs.forEach(seg => {
+      ctx.font = seg.isHl
+        ? `900 ${Math.round(fs * 1.12)}px 'Noto Sans KR', sans-serif`
+        : `500 ${fs}px 'Noto Sans KR', sans-serif`;
+      if (seg.isHl) {
+        // 퀌핑크 형광펜 직사각형 (text 하렀부)
+        ctx.fillStyle = '#FF2D55';
+        ctx.fillRect(curX, baseY + fs * 0.06, seg.width, fs * 0.36);
+        ctx.fillStyle = '#FFFFFF';
+      } else {
+        ctx.fillStyle = showCap2 ? S.main : (style !== 'detail' && style !== 'minimal' && style !== 'elegant' ? S.hl : S.main);
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.strokeText(seg.str, curX, baseY);
+      ctx.fillText(seg.str, curX, baseY);
+      curX += seg.width;
+    });
+  } else {
+    ctx.strokeStyle = 'rgba(0,0,0,0.95)';
+    ctx.strokeText(text, CW / 2, baseY);
+    ctx.fillStyle = showCap2 ? S.main : (style !== 'detail' && style !== 'minimal' && style !== 'elegant' ? S.hl : S.main);
+    ctx.fillText(text, CW / 2, baseY);
+    if (style === 'bold_drop' || style === 'hook') {
+      const words = text.split(' ');
+      if (words.length > 1) {
+        const firstWord = words[0];
+        const rest      = ' ' + words.slice(1).join(' ');
+        const fw   = ctx.measureText(firstWord).width;
+        const rw   = ctx.measureText(rest).width;
+        const startX = CW/2 - (fw + rw)/2;
+        ctx.font = `600 ${fs}px 'Noto Sans KR', sans-serif`;
+        ctx.strokeText(firstWord, startX + fw/2, baseY);
+        ctx.fillStyle = S.hl;
+        ctx.fillText(firstWord, startX + fw/2, baseY);
+        ctx.strokeText(rest, startX + fw + rw/2, baseY);
+        ctx.fillStyle = S.main;
+        ctx.fillText(rest, startX + fw + rw/2, baseY);
+      }
     }
   }
   ctx.restore();

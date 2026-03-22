@@ -37,7 +37,7 @@ export async function startMake() {
     _osc.connect(_gain); _gain.connect(audioCtx.destination);
     _osc.start(0); _osc.stop(audioCtx.currentTime + 0.05);
   } catch (_) {}
-  if ('speechSynthesis' in window) {
+  if (window.speechSynthesis) {
     const _u = new SpeechSynthesisUtterance(''); _u.volume = 0; speechSynthesis.speak(_u);
   }
 
@@ -51,7 +51,7 @@ export async function startMake() {
   // 화면 꺼짐 방지 (Wake Lock API) — 생성 중 휴대폰 꺼져도 계속 진행
   let _wakeLock = null;
   try {
-    if ('wakeLock' in navigator) {
+    if (navigator.wakeLock) {
       _wakeLock = await navigator.wakeLock.request('screen');
       console.log('[WakeLock] 화면 잠금 방지 활성화');
     }

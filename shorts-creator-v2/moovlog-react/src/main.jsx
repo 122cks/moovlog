@@ -11,7 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 // Service Worker 등록 — COOP/COEP 헤더 주입 + 첫 활성화 시 한 번 리로드
 // GitHub Pages는 커스텀 헤더 불가 → SW가 document 응답에 헤더를 추가함
-if ('serviceWorker' in navigator) {
+if (navigator.serviceWorker) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('./sw.js', { scope: '/moovlog/shorts-creator/' })
