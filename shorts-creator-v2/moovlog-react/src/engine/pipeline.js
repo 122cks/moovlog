@@ -5,7 +5,7 @@ import { useVideoStore, VIRAL_TRENDS } from '../store/videoStore.js';
 import { visionAnalysis, generateScript, researchRestaurant } from './gemini.js';
 import { generateAllTTS, ensureAudio, sleep, preprocessNarration } from './tts.js';
 import { splitCaptions } from './utils.js';
-import { firebaseUploadOriginals, firebaseSaveSession } from './firebase.js';
+import { firebaseUploadOriginals, firebaseSaveSession, saveMarketingKit } from './firebase.js';
 // firebaseUploadVideo는 VideoPlayer에서 직접 사용 — pipeline에서 pipelineSessionId 노출
 
 // ─── 자막 분할 ────────────────────────────────────────────
@@ -235,6 +235,32 @@ export async function startMake() {
       }
     }
 
+    // ── 영상 우선 배치: 사용 없는 영상을 이미지 새으로 교체 (이미지 최대 35%) ──────
+    {
+      const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
+      if (videoIdxs.length > 0) {
+        const usedVideos = new Set(finalScenes.filter(s => files[s.media_idx]?.type === 'video').map(s => s.media_idx));
+        const unusedVideos = videoIdxs.filter(i => !usedVideos.has(i));
+        if (unusedVideos.length > 0) {
+          const maxImages = Math.ceil(finalScenes.length * 0.35);
+          const imageScenes = finalScenes.reduce((acc, s, i) => { if (files[s.media_idx]?.type === 'image') acc.push(i); return acc; }, []);
+          const excess = imageScenes.length - maxImages;
+          if (excess > 0) {
+            let pool = [...unusedVideos], swapped = 0;
+            for (let i = 0; i < finalScenes.length && swapped < excess && pool.length; i++) {
+              if (files[finalScenes[i].media_idx]?.type === 'image') {
+                const vidIdx = pool.shift();
+                const meta = analysisMap[vidIdx] || {};
+                finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
+                swapped++;
+              }
+            }
+            if (swapped > 0) console.log(`[Pipeline] 영상 우선: ${swapped}개 이미지 사이년 → 영상으로 교체`);
+          }
+        }
+      }
+    }
+
     // script 업데이트
     setScript({ ...script, scenes: finalScenes });
     setAudioBuffers(audioBuffers);
@@ -249,6 +275,23 @@ export async function startMake() {
 
     // Firebase 세션 저장
     firebaseSaveSession({ ...script, scenes: finalScenes }, restaurantName).catch(() => {});
+
+    // 마케팅 키트 자동 저장 (Firebase)
+    saveMarketingKit({
+      restaurant:        restaurantName,
+      hook_title:        script.marketing?.hook_title || '',
+      caption:           script.marketing?.caption || '',
+      hashtags_30:       script.marketing?.hashtags_30 || '',
+      receipt_review:    script.marketing?.receipt_review || '',
+      hook_variations:   script.hook_variations || [],
+      naver_clip_tags:   script.naver_clip_tags || '',
+      youtube_shorts_tags: script.youtube_shorts_tags || '',
+      instagram_caption: script.instagram_caption || '',
+      tiktok_tags:       script.tiktok_tags || '',
+      hashtags:          script.hashtags || '',
+      theme:             script.theme || '',
+      vibe_color:        script.vibe_color || '',
+    }).catch(() => {});
 
     await sleep(300);
     hidePipeline();

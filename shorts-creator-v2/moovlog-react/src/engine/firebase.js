@@ -199,3 +199,66 @@ export async function saveSNSTags(tagsData) {
     return null;
   }
 }
+
+// ─── 마케팅 키트 저장 (숏폼 생성 후 자동 저장) ────────────
+export async function saveMarketingKit(data) {
+  if (!db) return null;
+  try {
+    const docRef = await addDoc(collection(db, 'marketing_kits'), {
+      restaurant:        data.restaurant || '',
+      hookTitle:         data.hook_title || '',
+      caption:           data.caption || '',
+      hashtags30:        data.hashtags_30 || '',
+      receiptReview:     data.receipt_review || '',
+      hookVariations:    data.hook_variations || [],
+      naverClipTags:     data.naver_clip_tags || '',
+      youtubeShortsTags: data.youtube_shorts_tags || '',
+      instagramCaption:  data.instagram_caption || '',
+      tiktokTags:        data.tiktok_tags || '',
+      hashtags:          data.hashtags || '',
+      theme:             data.theme || '',
+      vibeColor:         data.vibe_color || '',
+      createdAt:         serverTimestamp(),
+    });
+    console.log('[Firebase] 마케팅 키트 저장:', docRef.id);
+    return docRef.id;
+  } catch (e) {
+    console.warn('[Firebase] 마케팅 키트 저장 실패:', e.message);
+    return null;
+  }
+}
+
+export async function getMarketingKits(limitN = 20) {
+  if (!db) return [];
+  try {
+    const q    = query(collection(db, 'marketing_kits'), orderBy('createdAt', 'desc'), limit(limitN));
+    const snap = await getDocs(q);
+    const results = [];
+    snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+    return results;
+  } catch (e) {
+    console.warn('[Firebase] 마케팅 키트 목록 실패:', e.message);
+    return [];
+  }
+}
+
+export async function searchMarketingKits(keyword) {
+  if (!db || !keyword?.trim()) return [];
+  const kw = keyword.trim();
+  try {
+    const q = query(
+      collection(db, 'marketing_kits'),
+      orderBy('restaurant'),
+      where('restaurant', '>=', kw),
+      where('restaurant', '<=', kw + '\uf8ff'),
+      limit(30),
+    );
+    const snap = await getDocs(q);
+    const results = [];
+    snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+    return results;
+  } catch (e) {
+    console.warn('[Firebase] 마케팅 키트 검색 실패:', e.message);
+    return [];
+  }
+}

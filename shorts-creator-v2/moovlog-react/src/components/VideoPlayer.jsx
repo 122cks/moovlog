@@ -50,11 +50,16 @@ export default function VideoPlayer({ isExporting = false }) {
     if (!isImage && videoRef.current) {
       const video = videoRef.current;
       const onMetadata = () => {
-        // 클립 길이 ÷ 씬 duration → 슬로우모션(0.2x) ~ 정속(1.0x) 사이로 자동 조율
-        // 너무 느리면 끊김이 발생하므로 최하 0.6으로 방어 (눈이 편안한 최소 배속)
-        if (video.duration && isFinite(video.duration) && currentScene?.duration) {
-          const rate = video.duration / currentScene.duration;
-          video.playbackRate = Math.max(0.6, Math.min(1.0, rate));
+        if (video.duration && isFinite(video.duration)) {
+          // best_start_pct: Gemini 분석 하이라이트 시작점 비율 (0~0.95)
+          const startPct = currentScene?.best_start_pct || 0;
+          if (startPct > 0 && startPct < 0.95) {
+            video.currentTime = startPct * video.duration;
+          }
+          if (currentScene?.duration) {
+            const avail = video.duration - video.currentTime;
+            video.playbackRate = Math.max(0.6, Math.min(1.0, Math.max(0.01, avail) / currentScene.duration));
+          }
         }
       };
       video.addEventListener('loadedmetadata', onMetadata);
@@ -62,7 +67,7 @@ export default function VideoPlayer({ isExporting = false }) {
       video.play().catch(() => {});
       return () => video.removeEventListener('loadedmetadata', onMetadata);
     }
-  }, [scene, isImage, currentScene?.duration]); // duration 변경 시에도 대응
+  }, [scene, isImage, currentScene?.duration, currentScene?.best_start_pct]);
 
   // ── 오디오 더킹 & 타이포그래피 SFX ───────────────────────
   useEffect(() => {

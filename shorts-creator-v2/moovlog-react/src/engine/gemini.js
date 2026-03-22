@@ -692,47 +692,90 @@ JSON만 반환:
   }
 }
 
-// ─── 블로그 포스팅 생성 ───────────────────────────────────
+// ─── 블로그 포스팅 생성 (10+10 배치 분석 → 통합 작성) ─────────────────────
 export async function generateBlogPost({ name, location, keywords, extra, imageFiles }) {
-  const imgParts = [];
-  for (const f of (imageFiles || []).slice(0, 8)) {
-    if (f.type.startsWith('image/')) {
-      const b64 = await toB64(f);
-      imgParts.push({ inline_data: { mime_type: f.type || 'image/jpeg', data: b64 } });
-    } else if (f.type.startsWith('video/')) {
-      try {
-        const frames = await extractVideoFramesB64(f, 4);
-        for (const fr of frames) imgParts.push({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } });
-      } catch (_) {}
-    }
-  }
+  const allFiles = (imageFiles || []).slice(0, 20);
 
-  const mediaList = (imageFiles || []).map((m, i) =>
-    m.type.startsWith('video/') ? `[영상 ${i + 1}]` : `[사진 ${i + 1}]`
-  ).join(', ');
+  // ── 파일 → base64 parts 그룹 빌드 헬퍼 ──
+  const buildBatchParts = async (fileSlice, baseIdx) =>
+    Promise.all(fileSlice.map(async (f, li) => {
+      const label = { text: `\n--- [파일 ${baseIdx + li + 1}: ${f.type.startsWith('video/') ? '영상' : '사진'}] ---` };
+      if (f.type.startsWith('image/')) {
+        try { return [label, { inline_data: { mime_type: f.type, data: await toB64(f) } }]; }
+        catch (_) { return [label]; }
+      } else {
+        try {
+          const frames = await extractVideoFramesB64(f, 2);
+          return [label, ...frames.map(fr => ({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } }))];
+        } catch (_) { return [label]; }
+      }
+    }));
+
+  const BATCH = 10;
+  const slice0 = allFiles.slice(0, BATCH);
+  const slice1 = allFiles.slice(BATCH);
+
+  // ── Step 1: 배치별 파일 분석 (병렬) ──
+  const [partGroups0, partGroups1] = await Promise.all([
+    buildBatchParts(slice0, 0),
+    slice1.length ? buildBatchParts(slice1, BATCH) : Promise.resolve([]),
+  ]);
+  const parts0 = partGroups0.flat();
+  const parts1 = partGroups1.flat();
+
+  const analysisPrompt = `음식점 "${name}" 관련 이미지/영상입니다. 각 파일의 내용을 파악하세요.
+JSON 배열만 반환: [{"file":1,"desc":"화면에 보이는 것 1~2문장","type":"food|interior|exterior|menu|process","placement":"도입|음식소개|음식디테일|분위기|마무리"}]`;
+
+  const runAnalysis = async (parts) => {
+    if (!parts.length) return [];
+    try {
+      const data = await geminiWithFallback({
+        contents: [{ parts: [...parts, { text: analysisPrompt }] }],
+        generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+      }, 90000);
+      const raw = safeExtractText(data);
+      const s = raw.indexOf('['), e = raw.lastIndexOf(']');
+      return JSON.parse(s >= 0 && e > s ? raw.slice(s, e + 1) : '[]');
+    } catch { return []; }
+  };
+
+  const [analysis0, analysis1] = await Promise.all([
+    runAnalysis(parts0),
+    slice1.length ? runAnalysis(parts1) : Promise.resolve([]),
+  ]);
+  const combined = [...analysis0, ...analysis1];
+
+  // ── Step 2: 통합 분석 → 블로그 작성 ──
+  const mediaContext = allFiles.map((f, i) => {
+    const a = combined.find(c => c.file === i + 1);
+    const tag = f.type.startsWith('video/') ? `[영상 ${i + 1}]` : `[사진 ${i + 1}]`;
+    return `${tag} ${a?.desc || ''} → 추천 위치: ${a?.placement || '자유 삽입'}`;
+  }).join('\n');
 
   const prompt = `당신은 한국에서 가장 인기 있는 맛집 블로거 "무브먼트(moovlog)"입니다.
-다음 정보와 이미지를 바탕으로 네이버 블로그 포스팅을 작성해주세요.
+다음 정보와 이미지 분석 결과를 바탕으로 네이버 블로그 포스팅을 작성해주세요.
 
 음식점: ${name}
 위치: ${location || '(이미지에서 파악)'}
-첨부 파일: ${mediaList || '없음'} (총 ${(imageFiles || []).length}개)
+첨부 파일: 총 ${allFiles.length}개
 ${keywords ? `본문에 자연스럽게 녹여야 할 키워드: ${keywords}` : ''}
 ${extra ? `추가 지시사항: ${extra}` : ''}
 
+[파일별 분석 결과 — 이 내용 기반으로 본문 작성]
+${mediaContext || '없음'}
+
 [무브먼트 블로그 스타일 — 2026 네이버 상위 노출 최적화]
-① 도입: 방문 동기·설레는 기대감 (친근한 구어체, 이모지 활용) → [사진 1]
-② 외관·입구 소개 → [사진/영상 2]
-③ 대표 메뉴 소개·메뉴판, 가격 정보 → [사진/영상 3]
-④ 음식 디테일 묘사 (구체적 맛·식감·비주얼) → 추가 사진 삽입
+① 도입: 방문 동기·설레는 기대감 (친근한 구어체, 이모지 활용)
+② 외관·입구 소개
+③ 대표 메뉴 소개·메뉴판·가격 정보
+④ 음식 디테일 묘사 (구체적 맛·식감·비주얼)
 ⑤ 분위기·서비스·웨이팅 언급
 ⑥ 재방문 의사 + 결론 + 위치·영업시간 정보
-⑦ 해시태그 (지역명 키워드 2~3개 포함, 최대 30개)
 
 [중요 규칙]
-- 첨부 파일이 있으면 본문의 적절한 위치에 [사진 N] 또는 [영상 N] 마커 반드시 삽입
+- 파일 분석의 "추천 위치"에 따라 [사진 N] 또는 [영상 N] 마커를 본문에 배치 (총 ${allFiles.length}개까지 사용)
 - 키워드는 한 문장에 자연스럽게 (광고성 나열 금지)
-- 단락 구분은 빈줄로, 구어체 사용, 이모지 적당히
+- 단락 구분은 빈줄, 구어체, 이모지 적당히
 - 네이버 상위 노출을 위해 첫 문단에 핵심 키워드 포함
 
 JSON만 반환:
@@ -745,11 +788,12 @@ JSON만 반환:
   "tiktok_tags": "#태그1 #태그2 #태그3 #태그4 #태그5"
 }`;
 
+  // 작성 호출: 1차 배치 이미지 최대 4개만 포함 (payload 최적화)
+  const topParts = partGroups0.slice(0, 4).flat();
   const body = {
-    contents: [{ parts: [...imgParts, { text: prompt }] }],
+    contents: [{ parts: [...topParts, { text: prompt }] }],
     generationConfig: { temperature: 0.85, responseMimeType: 'application/json' },
   };
-
   const parseJson = raw => {
     const _s = raw.indexOf('{'), _e = raw.lastIndexOf('}');
     return JSON.parse(_s >= 0 && _e > _s ? raw.slice(_s, _e + 1) : raw.replace(/```json|```/g, '').trim());

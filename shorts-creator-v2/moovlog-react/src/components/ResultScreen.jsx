@@ -7,6 +7,7 @@ import VideoPlayer  from './VideoPlayer.jsx';
 import SceneList    from './SceneList.jsx';
 import ExportPanel  from './ExportPanel.jsx';
 import SNSTags      from './SNSTags.jsx';
+import { getMarketingKits, searchMarketingKits } from '../engine/firebase.js';
 
 // ── 🔴 Auto-Recovery: 빈 오디오 씬 감지 + 개별 재합성 ────
 function AutoRecovery({ scenes, audioBuffers, addToast }) {
@@ -282,6 +283,43 @@ export default function ResultScreen() {
   const totalSec = script?.scenes?.reduce((a, s) => a + (s.duration || 0), 0) || 0;
   const hasAudio = audioBuffers?.some(b => b);
 
+  // 마케팅 키트 이력
+  const [kitHistory,     setKitHistory]     = useState([]);
+  const [kitSearch,      setKitSearch]      = useState('');
+  const [showKitHistory, setShowKitHistory] = useState(false);
+  const [kitLoading,     setKitLoading]     = useState(false);
+
+  const loadKitHistory = async (kw = '') => {
+    setKitLoading(true);
+    try {
+      const results = kw.trim()
+        ? await searchMarketingKits(kw.trim())
+        : await getMarketingKits(20);
+      setKitHistory(results);
+    } catch (e) { addToast('이력 로드 실패: ' + e.message, 'err'); }
+    finally { setKitLoading(false); }
+  };
+
+  const loadKitFromHistory = (item) => {
+    setScript({
+      ...script,
+      marketing: {
+        hook_title:   item.hookTitle   || '',
+        caption:      item.caption     || '',
+        hashtags_30:  item.hashtags30  || '',
+        receipt_review: item.receiptReview || '',
+      },
+      hook_variations:     item.hookVariations   || [],
+      naver_clip_tags:     item.naverClipTags    || '',
+      youtube_shorts_tags: item.youtubeShortsTags || '',
+      instagram_caption:   item.instagramCaption  || '',
+      tiktok_tags:         item.tiktokTags        || '',
+      hashtags:            item.hashtags          || '',
+    });
+    setShowKitHistory(false);
+    addToast(`"${item.restaurant}" 마케팅 키트 로드 완료 ✓`, 'ok');
+  };
+
   const goBack = () => { setShowResult(false); };
   const doReset = () => { reset(); };
 
@@ -325,6 +363,62 @@ export default function ResultScreen() {
 
         {/* 마케팅 에셋 키트 */}
         {script?.marketing && <MarketingAssets marketing={script.marketing} addToast={addToast} />}
+
+        {/* 마케팅 키트 이력 */}
+        <div className="marketing-assets-box" style={{ marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <p className="marketing-title" style={{ margin: 0 }}>
+              <i className="fas fa-history" /> 마케팅 키트 이력
+            </p>
+            <button
+              onClick={() => { setShowKitHistory(p => !p); if (!showKitHistory && !kitHistory.length) loadKitHistory(); }}
+              style={{ background: 'none', color: '#aaa', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              {showKitHistory ? '닫기' : '불러오기'}
+            </button>
+          </div>
+          {showKitHistory && (
+            <>
+              <div style={{ display: 'flex', gap: 8, margin: '10px 0' }}>
+                <input
+                  className="name-input"
+                  style={{ flex: 1, fontSize: '0.85rem', padding: '8px 12px' }}
+                  placeholder="음식점 이름으로 검색..."
+                  value={kitSearch}
+                  onChange={e => setKitSearch(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && loadKitHistory(kitSearch)}
+                />
+                <button className="re-btn" style={{ minWidth: 44 }} onClick={() => loadKitHistory(kitSearch)} disabled={kitLoading}>
+                  {kitLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-search" />}
+                </button>
+              </div>
+              {kitHistory.length === 0 && !kitLoading && (
+                <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>
+                  저장된 이력이 없습니다
+                </p>
+              )}
+              {kitHistory.map(item => (
+                <div
+                  key={item.id}
+                  onClick={() => loadKitFromHistory(item)}
+                  style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 10, padding: '10px 14px', marginBottom: 6, cursor: 'pointer' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{item.restaurant || '—'}</span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-sub)' }}>
+                      {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
+                    </span>
+                  </div>
+                  {item.hookTitle && (
+                    <p style={{ fontSize: '0.73rem', color: '#aaa', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      🎣 {item.hookTitle}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
 
         {/* 3종 훅 빆리에이션 */}
         {script?.hook_variations?.length > 0 && (

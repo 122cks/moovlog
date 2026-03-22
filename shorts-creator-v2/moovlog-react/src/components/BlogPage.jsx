@@ -1,6 +1,6 @@
 // src/components/BlogPage.jsx
 // 블로그 포스팅 생성기 페이지 — index2.html을 React로 이식
-import { useState, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { generateBlogPost } from '../engine/gemini.js';
 import { saveBlogPost, saveSNSTags, getRecentBlogPosts, searchBlogPosts } from '../engine/firebase.js';
 import { useVideoStore } from '../store/videoStore.js';
@@ -28,11 +28,10 @@ export default function BlogPage() {
   const [loadLabel, setLoadLabel] = useState('');
   const [activeTab, setActiveTab] = useState('blog');
 
-  // ── 검색 기록 ─────────────────────────────────────────────
+  // ── 이전 포스팅 목록 ──────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
+  const [recentPosts, setRecentPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
 
   const fileInputRef = useRef();
   const dropRef      = useRef();
@@ -40,7 +39,7 @@ export default function BlogPage() {
   // ── 파일 추가 ─────────────────────────────────────────────
   const addFiles = useCallback((list) => {
     const ok = f => f.type.startsWith('image/') || f.type.startsWith('video/');
-    const valid = list.filter(ok).slice(0, 10 - files.length);
+    const valid = list.filter(ok).slice(0, 20 - files.length);
     const items = valid.map(f => ({
       file: f,
       url: URL.createObjectURL(f),
@@ -132,46 +131,43 @@ export default function BlogPage() {
     copyText(text, '제목 + 본문');
   };
 
-  // ── 검색 실행 ─────────────────────────────────────────────
-  const handleSearch = async (q) => {
-    const kw = (q ?? searchQuery).trim();
-    setSearchLoading(true);
+  // ── 포스팅 검색/목록 로드 ───────────────────────────────
+  const loadPosts = useCallback(async (kw = '') => {
+    setPostsLoading(true);
     try {
-      const results = kw
-        ? await searchBlogPosts(kw)
-        : await getRecentBlogPosts(20);
-      setSearchResults(results);
+      const results = kw.trim()
+        ? await searchBlogPosts(kw.trim())
+        : await getRecentBlogPosts(30);
+      setRecentPosts(results);
     } catch (e) {
-      addToast('검색 실패: ' + e.message, 'err');
+      addToast('포스팅 목록 로드 실패: ' + e.message, 'err');
     } finally {
-      setSearchLoading(false);
+      setPostsLoading(false);
     }
-  };
+  }, [addToast]);
 
-  // 검색 탭 진입 시 최근 기록 자동 로드
+  // 컴포넌트 마운트 시 목록 자동 로드
+  useEffect(() => { loadPosts(); }, [loadPosts]);
+
+  // 검색 탭 진입 시 재로드
   const handleTabChange = async (id) => {
     setActiveTab(id);
-    if (id === 'search' && searchResults.length === 0) handleSearch('');
+    if (id === 'search') loadPosts(searchQuery);
   };
 
-  // ── 검색 결과에서 불러오기 ────────────────────────────────
+  // ── 이전 포스팅 불러오기 ──────────────────────────────────
   const loadFromHistory = (item) => {
     setResult({
-      title:           item.title || '',
-      body:            item.body || '',
-      naver_clip_tags: item.naverClipTags || '',
+      title:               item.title || '',
+      body:                item.body || '',
+      naver_clip_tags:     item.naverClipTags || '',
       youtube_shorts_tags: item.youtubeTags || '',
       instagram_caption:   item.instagramCaption || '',
       tiktok_tags:         item.tiktokTags || '',
     });
+    setName(item.restaurant || '');
+    setLocation(item.location || '');
     setActiveTab('blog');
-  };
-
-  // ── 입력화면 검색 패널 토글 ──────────────────────────────
-  const toggleSearch = async () => {
-    const next = !showSearch;
-    setShowSearch(next);
-    if (next && searchResults.length === 0) handleSearch('');
   };
 
   // ── 다시 작성 ─────────────────────────────────────────────
@@ -300,21 +296,21 @@ export default function BlogPage() {
                 className="name-input"
                 style={{ flex: 1 }}
                 type="text"
-                placeholder="음식점 이름으로 검색 (비우면 최근 20개)"
+                placeholder="음식점 이름으로 검색 (비우면 최근 30개)"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                onKeyDown={e => { setSearchQuery(e.target.value); if (e.key === 'Enter') loadPosts(e.target.value); }}
               />
-              <button className="re-btn" onClick={() => handleSearch()} disabled={searchLoading}>
-                {searchLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-search" />}
+              <button className="re-btn" onClick={() => loadPosts(searchQuery)} disabled={postsLoading}>
+                {postsLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-search" />}
               </button>
             </div>
-            {searchResults.length === 0 && !searchLoading && (
+            {recentPosts.length === 0 && !postsLoading && (
               <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '24px 0' }}>
-                검색 결과가 없습니다
+                저장된 포스팅이 없습니다
               </p>
             )}
-            {searchResults.map(item => (
+            {recentPosts.map(item => (
               <div key={item.id} className="sns-card" style={{ marginBottom: 8, cursor: 'pointer' }}
                 onClick={() => loadFromHistory(item)}>
                 <div className="sns-card-head">
@@ -339,73 +335,58 @@ export default function BlogPage() {
   return (
     <main className="app-main">
 
-      {/* 기존 포스팅 불러오기 버튼 */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-        <button
-          className="re-btn"
-          onClick={toggleSearch}
-          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-        >
-          <i className={`fas fa-${showSearch ? 'times' : 'history'}`} />
-          {showSearch ? '닫기' : '포스팅 불러오기'}
-        </button>
-      </div>
-
-      {/* 검색 패널 (입력화면) */}
-      {showSearch && (
-        <section className="card" style={{ marginBottom: 16 }}>
-          <div className="card-label" style={{ marginBottom: 10 }}>
-            <span className="num"><i className="fas fa-history" /></span>
-            <div>
-              <h2>기존 포스팅 불러오기</h2>
-              <p>결과를 클릭하면 편집 화면으로 바로 이동됩니다</p>
-            </div>
+      {/* 이전 포스팅 목록 (상시 표시) */}
+      <section className="card" style={{ marginBottom: 14 }}>
+        <div className="card-label" style={{ marginBottom: 10 }}>
+          <span className="num"><i className="fas fa-history" /></span>
+          <div>
+            <h2>이전 포스팅 불러오기</h2>
+            <p>음식점 이름 클릭 → 바로 불러오기</p>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input
-              className="name-input"
-              style={{ flex: 1 }}
-              type="text"
-              placeholder="음식점 이름으로 검색 (비우면 최근 20개)"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-            />
-            <button className="re-btn" onClick={() => handleSearch()} disabled={searchLoading}>
-              {searchLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-search" />}
-            </button>
-          </div>
-          {searchLoading && (
-            <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0' }}>
-              <i className="fas fa-spinner fa-spin" /> 불러오는 중...
-            </p>
-          )}
-          {!searchLoading && searchResults.length === 0 && (
-            <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0' }}>
-              검색 결과가 없습니다
-            </p>
-          )}
-          {searchResults.map(item => (
-            <div
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <input
+            className="name-input"
+            style={{ flex: 1 }}
+            type="text"
+            placeholder="음식점 이름으로 검색..."
+            value={searchQuery}
+            onChange={e => { setSearchQuery(e.target.value); if (!e.target.value.trim()) loadPosts(''); }}
+            onKeyDown={e => e.key === 'Enter' && loadPosts(searchQuery)}
+          />
+          <button className="re-btn" onClick={() => loadPosts(searchQuery)} disabled={postsLoading}>
+            {postsLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-search" />}
+          </button>
+        </div>
+        {postsLoading && (
+          <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '8px 0', fontSize: 12 }}>
+            <i className="fas fa-spinner fa-spin" /> 불러오는 중...
+          </p>
+        )}
+        {!postsLoading && recentPosts.length === 0 && (
+          <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '8px 0', fontSize: 12 }}>
+            저장된 포스팅이 없습니다 (Firebase 미연동 시 비어 있음)
+          </p>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 200, overflowY: 'auto' }}>
+          {recentPosts.map(item => (
+            <button
               key={item.id}
-              className="sns-card"
-              style={{ marginBottom: 8, cursor: 'pointer' }}
-              onClick={() => { loadFromHistory(item); setShowSearch(false); }}
+              onClick={() => loadFromHistory(item)}
+              style={{
+                background: '#1c1c1e', border: '1px solid #333', borderRadius: 10,
+                padding: '9px 14px', cursor: 'pointer', textAlign: 'left',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}
             >
-              <div className="sns-card-head">
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{item.restaurant || '—'}</span>
-                <span className="sns-limit">{item.location || ''}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-sub)', marginLeft: 'auto' }}>
-                  {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
-                </span>
-              </div>
-              <div className="sns-text" style={{ fontSize: 12, marginTop: 4, color: 'var(--text-sub)' }}>
-                {item.title || '제목 없음'}
-              </div>
-            </div>
+              <span style={{ fontWeight: 700, fontSize: 13, color: '#eee' }}>{item.restaurant || '—'}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-sub)', flexShrink: 0, marginLeft: 8 }}>
+                {item.location ? `${item.location} · ` : ''}{item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
+              </span>
+            </button>
           ))}
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* 업로드 영역 */}
       <section className="card">
@@ -413,7 +394,7 @@ export default function BlogPage() {
           <span className="num">01</span>
           <div>
             <h2>이미지 · 영상 업로드</h2>
-            <p>음식점 사진과 영상을 올려주세요 (최대 10개)</p>
+            <p>음식점 사진과 영상을 올려주세요 (최대 20개)</p>
           </div>
         </div>
         <div
