@@ -72,9 +72,14 @@ export default function ExportPanel() {
     }
   };
 
-  // COOP/COEP 격리가 안 된 경우 → SW 재활성화를 위해 리로드
+  // COOP/COEP 격리 확인 — 스크립트 있을 때는 reload 금지(데이터 손실 방지)
   const ensureIsolation = () => {
     if (crossOriginIsolated) return true;
+    // 스크립트가 이미 생성된 상태라면 reload하면 데이터 전체 손실
+    if (script?.scenes?.length > 0) {
+      addToast('FFmpeg는 페이지 첫 로드 시 격리가 필요합니다. 기본 저장 버튼을 사용하거나, 새로고침 후 다시 시도해주세요.', 'err');
+      return false;
+    }
     addToast('FFmpeg 보안 격리를 활성화합니다. 잠시 후 자동 재시작...', 'inf');
     sessionStorage.removeItem('_coi_r');
     setTimeout(() => location.reload(), 700);
@@ -186,9 +191,9 @@ export default function ExportPanel() {
         <i className={`fas ${ffmpegBusy ? 'fa-spinner fa-spin' : 'fa-film'}`} /> {ffmpegText}
       </button>      <button className="dl-audio-btn" onClick={doExportThumbnail} disabled={thumbBusy}
         style={{ marginTop: '6px' }}
-        title="최고등급 씨 썸네일 추출"
+        title="최고화질 썸네일 추출"
       >
-        <i className={`fas ${thumbBusy ? 'fa-spinner fa-spin' : 'fa-image'}`} /> {thumbBusy ? '썸네일 추출 중...' : '파래 썸네일 저장 (최고관)'}
+        <i className={`fas ${thumbBusy ? 'fa-spinner fa-spin' : 'fa-image'}`} /> {thumbBusy ? '썸네일 추출 중...' : '베스트 썸네일 저장'}
       </button>      {ffmpegBusy && (
         <div style={{ margin: '6px 0 2px', background: 'rgba(255,255,255,0.08)', borderRadius: '6px', overflow: 'hidden', height: '6px' }}>
           <div style={{

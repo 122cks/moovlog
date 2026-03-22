@@ -1,5 +1,5 @@
 // src/components/ResultScreen.jsx
-import { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 import { fetchTTSWithRetry, preprocessNarration, getAudioCtx } from '../engine/tts.js';
 import { extractThumbnail } from '../engine/VideoRenderer.js';
@@ -7,7 +7,7 @@ import VideoPlayer  from './VideoPlayer.jsx';
 import SceneList    from './SceneList.jsx';
 import ExportPanel  from './ExportPanel.jsx';
 import SNSTags      from './SNSTags.jsx';
-import { getMarketingKits, searchMarketingKits } from '../engine/firebase.js';
+import { getMarketingKits, searchMarketingKits, deleteMarketingKit } from '../engine/firebase.js';
 
 // ── 🔴 Auto-Recovery: 빈 오디오 씬 감지 + 개별 재합성 ────
 function AutoRecovery({ scenes, audioBuffers, addToast }) {
@@ -288,7 +288,9 @@ export default function ResultScreen() {
   const [kitSearch,      setKitSearch]      = useState('');
   const [showKitHistory, setShowKitHistory] = useState(false);
   const [kitLoading,     setKitLoading]     = useState(false);
-  const [loadedKit,      setLoadedKit]      = useState(null); // 로드된 키트 인라인 표시용
+  const [loadedKit,      setLoadedKit]      = useState(null);
+  const [kitDeleting,    setKitDeleting]    = useState(false);
+  const kitPanelRef = useRef(null);
 
   const loadKitHistory = async (kw = '') => {
     setKitLoading(true);
@@ -305,9 +307,9 @@ export default function ResultScreen() {
     setScript({
       ...script,
       marketing: {
-        hook_title:   item.hookTitle   || '',
-        caption:      item.caption     || '',
-        hashtags_30:  item.hashtags30  || '',
+        hook_title:     item.hookTitle     || '',
+        caption:        item.caption       || '',
+        hashtags_30:    item.hashtags30    || '',
         receipt_review: item.receiptReview || '',
       },
       hook_variations:     item.hookVariations   || [],
@@ -318,8 +320,26 @@ export default function ResultScreen() {
       hashtags:            item.hashtags          || '',
     });
     setShowKitHistory(false);
-    setLoadedKit(item); // 로드된 키트 저장 → 인라인 표시
+    setLoadedKit(item);
     addToast(`"${item.restaurant}" 마케팅 키트 로드 완료 ✓`, 'ok');
+    // 패널이 보이는 위치로 스크롤
+    setTimeout(() => kitPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  };
+
+  const deleteKit = async () => {
+    if (!loadedKit?.id || kitDeleting) return;
+    if (!confirm(`"​${loadedKit.restaurant}"\ 키트를 삭제할까요?`)) return;
+    setKitDeleting(true);
+    try {
+      await deleteMarketingKit(loadedKit.id);
+      setKitHistory(h => h.filter(x => x.id !== loadedKit.id));
+      setLoadedKit(null);
+      addToast('마케팅 키트 삭제 완료', 'ok');
+    } catch (e) {
+      addToast('삭제 실패: ' + e.message, 'err');
+    } finally {
+      setKitDeleting(false);
+    }
   };
 
   const goBack = () => { setShowResult(false); };
@@ -376,20 +396,47 @@ export default function ResultScreen() {
           />
         )}
 
-        {/* 마케팅 키트 이력 */}
-        <div className="marketing-assets-box" style={{ marginTop: 8 }}>
+        {/* 🗂️ 마케팅 키트 이력 / 로드된 키트 통합 패널 */}
+        <div ref={kitPanelRef} className="marketing-assets-box" style={{ marginTop: 8, ...(loadedKit ? { border: '1.5px solid #7c3aed66', background: 'rgba(124,58,237,0.07)' } : {}) }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <p className="marketing-title" style={{ margin: 0 }}>
-              <i className="fas fa-history" /> 마케팅 키트 이력
+              {loadedKit
+                ? <><i className="fas fa-check-circle" style={{ color: '#7c3aed' }} /> {loadedKit.restaurant}</>
+                : <><i className="fas fa-history" /> 마케팅 키트 이력</>
+              }
             </p>
-            <button
-              onClick={() => { setShowKitHistory(p => !p); if (!showKitHistory && !kitHistory.length) loadKitHistory(); }}
-              style={{ background: 'none', color: '#aaa', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}
-            >
-              {showKitHistory ? '닫기' : '불러오기'}
-            </button>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {loadedKit && (
+                <>
+                  <button
+                    onClick={() => { setLoadedKit(null); setShowKitHistory(true); }}
+                    style={{ background: 'none', color: '#aaa', border: '1px solid #444', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: '0.73rem' }}
+                  >
+                    ← 목록
+                  </button>
+                  <button
+                    onClick={deleteKit}
+                    disabled={kitDeleting}
+                    style={{ background: 'none', color: '#ff6b6b', border: '1px solid #ff6b6b55', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: '0.73rem' }}
+                  >
+                    {kitDeleting ? <i className="fas fa-spinner fa-spin" /> : '🗑️ 삭제'}
+                  </button>
+                  <button onClick={() => setLoadedKit(null)} style={{ background: 'none', color: '#666', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+                </>
+              )}
+              {!loadedKit && (
+                <button
+                  onClick={() => { setShowKitHistory(p => !p); if (!showKitHistory && !kitHistory.length) loadKitHistory(); }}
+                  style={{ background: 'none', color: '#aaa', border: 'none', cursor: 'pointer', fontSize: '0.8rem' }}
+                >
+                  {showKitHistory ? '닫기' : '불러오기'}
+                </button>
+              )}
+            </div>
           </div>
-          {showKitHistory && (
+
+          {/* 이력 목록 (kit 미선택 시) */}
+          {!loadedKit && showKitHistory && (
             <>
               <div style={{ display: 'flex', gap: 8, margin: '10px 0' }}>
                 <input
@@ -405,9 +452,7 @@ export default function ResultScreen() {
                 </button>
               </div>
               {kitHistory.length === 0 && !kitLoading && (
-                <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>
-                  저장된 이력이 없습니다
-                </p>
+                <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>저장된 이력이 없습니다</p>
               )}
               {kitHistory.map(item => (
                 <div
@@ -430,50 +475,53 @@ export default function ResultScreen() {
               ))}
             </>
           )}
+
+          {/* 로드된 키트 전체 데이터 표시 */}
+          {loadedKit && (
+            <div style={{ marginTop: 12 }}>
+              {[
+                { label: '🎣 훅 제목',          val: loadedKit.hookTitle },
+                { label: '✍️ 인스타 캡션',        val: loadedKit.caption },
+                { label: '🏷️ 해시태그 30개',      val: loadedKit.hashtags30 },
+                { label: '🧾 네이버 영수증 리뷰',   val: loadedKit.receiptReview },
+                { label: '📎 네이버 클립 태그',    val: loadedKit.naverClipTags },
+                { label: '◎ 릴스 캡션',          val: loadedKit.instagramCaption },
+                { label: '▶ 유튜브 쇼츠 태그',    val: loadedKit.youtubeShortsTags },
+                { label: '♪ 틱톡 태그',          val: loadedKit.tiktokTags },
+              ].filter(r => r.val).map(({ label, val }) => (
+                <div key={label} className="marketing-row" style={{ marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span className="marketing-label" style={{ margin: 0 }}>{label}</span>
+                    <button className="marketing-copy-btn" onClick={async () => {
+                      try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료!`, 'ok'); }
+                      catch { addToast('복사 실패', 'err'); }
+                    }}><i className="fas fa-copy" /> 복사</button>
+                  </div>
+                  <p className="marketing-text" style={{
+                    whiteSpace: 'pre-line', fontSize: '0.78rem', margin: 0,
+                    color: label.includes('태그') || label.includes('해시태그') ? '#a855f7' : '#ddd',
+                    background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px',
+                  }}>{val}</p>
+                </div>
+              ))}
+              {loadedKit.hookVariations?.length > 0 && (
+                <div className="marketing-row" style={{ marginBottom: 8 }}>
+                  <span className="marketing-label">🎣 3종 훅 베리에이션</span>
+                  {loadedKit.hookVariations.map((h, i) => (
+                    <div key={i} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px', marginTop: 6, fontSize: '0.75rem' }}>
+                      <span style={{ color: '#a855f7', fontWeight: 700 }}>{h.type}</span>
+                      <span style={{ color: '#fff', marginLeft: 8 }}>{h.caption1}</span>
+                      {h.caption2 && <span style={{ color: '#aaa', marginLeft: 6 }}>/ {h.caption2}</span>}
+                      {h.narration && <p style={{ color: '#888', marginTop: 4, margin: '4px 0 0', fontStyle: 'italic' }}>{h.narration}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* 🗂️ 로드된 키트 전체 표시 — 이력판 다음에 인라인으로 */}
-        {loadedKit && (
-          <div className="marketing-assets-box" style={{ marginTop: 8, border: '1px solid #7c3aed44', background: 'rgba(124,58,237,0.06)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <p className="marketing-title" style={{ margin: 0 }}>
-                <i className="fas fa-check-circle" style={{ color: '#7c3aed' }} /> {loadedKit.restaurant} 로드 완료
-              </p>
-              <button onClick={() => setLoadedKit(null)} style={{ background: 'none', color: '#888', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}>✕ 닫기</button>
-            </div>
-            {[  
-              { label: '🎣 훅 제목',           val: loadedKit.hookTitle },
-              { label: '✍️ 인스타 캐셔',         val: loadedKit.caption },
-              { label: '🏷️ 해시태그 30개',       val: loadedKit.hashtags30 },
-              { label: '🧧 네이버 영수증 리빳',     val: loadedKit.receiptReview },
-              { label: '📎 네이버 클립 태그',     val: loadedKit.naverClipTags },
-              { label: '◎ 릴스 캐션',          val: loadedKit.instagramCaption },
-              { label: '▶ 쉽츠 태그',           val: loadedKit.youtubeShortsTags },
-              { label: '♪ 틱통 태그',           val: loadedKit.tiktokTags },
-            ].filter(r => r.val).map(({ label, val }) => (
-              <div key={label} className="marketing-row" style={{ marginBottom: 10 }}>
-                <span className="marketing-label">{label}</span>
-                <button className="marketing-copy-btn" onClick={async () => {
-                  try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료!`, 'ok'); }
-                  catch { addToast('복사 실패', 'err'); }
-                }}><i className="fas fa-copy" /> 복사</button>
-                <p className="marketing-text" style={{ whiteSpace: 'pre-line', fontSize: '0.73rem', color: label.includes('해시태그') || label.includes('태그') ? '#a855f7' : undefined }}>{val}</p>
-              </div>
-            ))}
-            {loadedKit.hookVariations?.length > 0 && (
-              <div className="marketing-row">
-                <span className="marketing-label">🎣 3종 훅 베리에이션</span>
-                {loadedKit.hookVariations.map((h, i) => (
-                  <p key={i} className="marketing-text" style={{ fontSize: '0.73rem', marginBottom: 4 }}>
-                    <strong>{h.type}</strong> — {h.caption1} / <em style={{ color: '#aaa' }}>{h.narration}</em>
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 3종 훅 빆리에이션 */}
+        {/* 3종 훅 베리에이션 */}
         {script?.hook_variations?.length > 0 && (
           <HookPicker variations={script.hook_variations} script={script} setScript={setScript} addToast={addToast} />
         )}
