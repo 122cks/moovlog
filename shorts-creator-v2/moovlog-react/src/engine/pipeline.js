@@ -45,8 +45,8 @@ export async function startMake() {
   const pipelineSessionId = `${Date.now()}_${restaurantName.trim().replace(/\s+/g, '_')}`;
   setPipelineSessionId(pipelineSessionId);
 
-  // 원본 파일 Firebase 백그라운드 업로드
-  firebaseUploadOriginals(files, restaurantName, pipelineSessionId).catch(() => {});
+  // Firebase Storage 업로드 — CORS 설정(gsutil cors set) 전까지 비활성화
+  // firebaseUploadOriginals(files, restaurantName, pipelineSessionId).catch(() => {});
 
   // 화면 꺼짐 방지 (Wake Lock API) — 생성 중 휴대폰 꺼져도 계속 진행
   let _wakeLock = null;

@@ -231,7 +231,7 @@ export async function visionAnalysis(restaurantName, researchData = '') {
 - best_effect: "zoom-in"|"zoom-out"|"pan-left"|"pan-right"|"zoom-in-slow"|"float-up"
 - emotional_score: 1~10
 - suggested_duration: 0.5~5초
-- focus: 화면에 보이는 것 핵심 포인트 1문장 (존댓말, 예: "두툼한 한우 채끝이 철판 위에 올려져 있습니다.")
+- focus: 식당 인텔리전스 데이터와 대조해 음식·음료명을 정확히 식별 후 1문장 설명 (구어체. 음료·건강주스·음료수·물은 절대 소스·드레싱이라 표현 금지. 예: "시작 전 제공되는 건강주스예요.", "두툴한 채끊 스테이크가 철판 위에 올라가 있어요.")
 - focus_coords: {"x":0.5,"y":0.5}
 - viral_potential: "high"|"medium"|"low"
 - is_exterior: 가게 외관·간판·건물 입구·상호명이 보이면 true, 음식·실내·기타면 false
@@ -293,7 +293,7 @@ JSON만 반환:
     .join('\n');
 
   const prompt2 = `당신은 담백하고 세련된 2030 맛집 크리에이터입니다. 과하지 않게, 진짜 맛잘알처럼 현실적인 구어체로 각 이미지에 어울리는 나레이션 힌트를 작성하세요.
-음식점: "${restaurantName}"
+음식점: "${restaurantName}"${researchData ? `\n\n[식당 메뉴 정보 다시 참고 — 이미지 내 음식·음료명을 정확히 반영하세요. 음료·건강주스는 소스라 하지 마세요.]\n${researchData.slice(0, 800)}` : ''}
 아래 이미지들의 1차 분석 결과를 참고하여, 각 이미지에 대한 나레이션 힌트를 생성하세요.
 
 [1차 분석 요약]

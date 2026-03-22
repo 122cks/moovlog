@@ -5,6 +5,7 @@ import { initializeApp } from 'firebase/app';
 import {
   getStorage, ref, uploadBytes, getDownloadURL,
 } from 'firebase/storage';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
   getFirestore, collection, addDoc, serverTimestamp,
   query, orderBy, limit, getDocs, doc, updateDoc, where,
@@ -19,7 +20,7 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID || '',
 };
 
-let storage = null, db = null, sessionDocId = null;
+let storage = null, db = null, auth = null, sessionDocId = null;
 
 export function initFirebase() {
   if (!firebaseConfig.apiKey || !firebaseConfig.appId) {
@@ -30,6 +31,15 @@ export function initFirebase() {
     const app = initializeApp(firebaseConfig);
     storage = getStorage(app);
     db      = getFirestore(app);
+    try {
+      auth = getAuth(app);
+      // 익명 인증으로 Firestore 쓰기 권한 허용(권장: 콘솔에서 익명 로그인 활성화 필요)
+      signInAnonymously(auth).then(() => {
+        console.log('[Firebase] 익명 인증 성공');
+      }).catch((err) => {
+        console.warn('[Firebase] 익명 인증 실패:', err.message);
+      });
+    } catch (_) {}
     console.log('[Firebase] 초기화 완료 — moovlog-be7a6');
     return true;
   } catch (e) {
