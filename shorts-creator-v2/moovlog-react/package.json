@@ -1,6 +1,6 @@
 {
   "name": "moovlog-shorts-creator",
-  "version": "2.41",
+  "version": "2.42",
   "private": true,
   "type": "module",
   "scripts": {

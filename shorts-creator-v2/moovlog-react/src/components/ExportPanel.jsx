@@ -72,10 +72,19 @@ export default function ExportPanel() {
     }
   };
 
+  // COOP/COEP 격리가 안 된 경우 → SW 재활성화를 위해 리로드
+  const ensureIsolation = () => {
+    if (crossOriginIsolated) return true;
+    addToast('FFmpeg 보안 격리를 활성화합니다. 잠시 후 자동 재시작...', 'inf');
+    sessionStorage.removeItem('_coi_r');
+    setTimeout(() => location.reload(), 700);
+    return false;
+  };
+
   const doExportThumbnail = async () => {
     if (thumbBusy) return;
     if (!script?.scenes?.length || !files?.length) { addToast('시작 전 영상을 만들어주세요', 'err'); return; }
-    if (!crossOriginIsolated) { addToast('FFmpeg는 COOP/COEP 보안 격리가 필요합니다', 'err'); return; }
+    if (!ensureIsolation()) return;
     setThumbBusy(true);
     try {
       const blob = await extractThumbnail(script.scenes, files, script, (msg) => addToast(msg, 'inf'));
@@ -91,7 +100,7 @@ export default function ExportPanel() {
   const doExportHybrid = async () => {
     if (hybridBusy || exporting) return;
     if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
-    if (!crossOriginIsolated) { addToast('FFmpeg는 COOP/COEP 보안 격리가 필요합니다', 'err'); return; }
+    if (!ensureIsolation()) return;
     setHybridBusy(true);
     setExporting(true);
     try {
@@ -131,10 +140,7 @@ export default function ExportPanel() {
     if (ffmpegBusy) return;
     if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
     if (!files?.length) { addToast('미디어 파일이 없습니다', 'err'); return; }
-    if (!crossOriginIsolated) {
-      addToast('FFmpeg는 보안 격리(COOP/COEP)가 필요합니다. Chrome 환경에서 실행 중인지 확인하세요.', 'err');
-      return;
-    }
+    if (!ensureIsolation()) return;
     setFfmpegBusy(true);
     setFfmpegPct(0);
     try {
@@ -174,12 +180,12 @@ export default function ExportPanel() {
         <i className="fas fa-music" /> 음성만 저장 (WAV)
       </button>
       <button className="dl-audio-btn" onClick={doExportFFmpeg} disabled={ffmpegBusy}
-        style={{ marginTop: '8px', opacity: crossOriginIsolated ? 1 : 0.45 }}
-        title={crossOriginIsolated ? 'FFmpeg WASM 시네마틱 렌더링 (LUT·Ken Burns·자막)' : 'COOP/COEP 헤더 필요 — 로컬 개발 서버에서 지원'}
+        style={{ marginTop: '8px' }}
+        title="FFmpeg WASM 시네마틱 렌더링 (LUT·Ken Burns·자막)"
       >
         <i className={`fas ${ffmpegBusy ? 'fa-spinner fa-spin' : 'fa-film'}`} /> {ffmpegText}
       </button>      <button className="dl-audio-btn" onClick={doExportThumbnail} disabled={thumbBusy}
-        style={{ marginTop: '6px', opacity: crossOriginIsolated ? 1 : 0.45 }}
+        style={{ marginTop: '6px' }}
         title="최고등급 씨 썸네일 추출"
       >
         <i className={`fas ${thumbBusy ? 'fa-spinner fa-spin' : 'fa-image'}`} /> {thumbBusy ? '썸네일 추출 중...' : '파래 썸네일 저장 (최고관)'}

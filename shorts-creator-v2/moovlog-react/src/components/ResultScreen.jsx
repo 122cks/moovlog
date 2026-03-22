@@ -288,6 +288,7 @@ export default function ResultScreen() {
   const [kitSearch,      setKitSearch]      = useState('');
   const [showKitHistory, setShowKitHistory] = useState(false);
   const [kitLoading,     setKitLoading]     = useState(false);
+  const [loadedKit,      setLoadedKit]      = useState(null); // 로드된 키트 인라인 표시용
 
   const loadKitHistory = async (kw = '') => {
     setKitLoading(true);
@@ -317,6 +318,7 @@ export default function ResultScreen() {
       hashtags:            item.hashtags          || '',
     });
     setShowKitHistory(false);
+    setLoadedKit(item); // 로드된 키트 저장 → 인라인 표시
     addToast(`"${item.restaurant}" 마케팅 키트 로드 완료 ✓`, 'ok');
   };
 
@@ -361,8 +363,18 @@ export default function ResultScreen() {
         {/* 저장 패널 */}
         <ExportPanel />
 
-        {/* 마케팅 에셋 키트 */}
-        {script?.marketing && <MarketingAssets marketing={script.marketing} addToast={addToast} />}
+        {/* 마케팅 에셋 키트 — 파이프라인 결과에도 표시(top-level 필드 폴백) */}
+        {(script?.marketing || script?.hook_title || script?.caption) && (
+          <MarketingAssets
+            marketing={script.marketing || {
+              hook_title:     script.hook_title || '',
+              caption:        script.caption || '',
+              hashtags_30:    script.hashtags_30 || '',
+              receipt_review: script.receipt_review || '',
+            }}
+            addToast={addToast}
+          />
+        )}
 
         {/* 마케팅 키트 이력 */}
         <div className="marketing-assets-box" style={{ marginTop: 8 }}>
@@ -419,6 +431,47 @@ export default function ResultScreen() {
             </>
           )}
         </div>
+
+        {/* 🗂️ 로드된 키트 전체 표시 — 이력판 다음에 인라인으로 */}
+        {loadedKit && (
+          <div className="marketing-assets-box" style={{ marginTop: 8, border: '1px solid #7c3aed44', background: 'rgba(124,58,237,0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <p className="marketing-title" style={{ margin: 0 }}>
+                <i className="fas fa-check-circle" style={{ color: '#7c3aed' }} /> {loadedKit.restaurant} 로드 완료
+              </p>
+              <button onClick={() => setLoadedKit(null)} style={{ background: 'none', color: '#888', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}>✕ 닫기</button>
+            </div>
+            {[  
+              { label: '🎣 훅 제목',           val: loadedKit.hookTitle },
+              { label: '✍️ 인스타 캐셔',         val: loadedKit.caption },
+              { label: '🏷️ 해시태그 30개',       val: loadedKit.hashtags30 },
+              { label: '🧧 네이버 영수증 리빳',     val: loadedKit.receiptReview },
+              { label: '📎 네이버 클립 태그',     val: loadedKit.naverClipTags },
+              { label: '◎ 릴스 캐션',          val: loadedKit.instagramCaption },
+              { label: '▶ 쉽츠 태그',           val: loadedKit.youtubeShortsTags },
+              { label: '♪ 틱통 태그',           val: loadedKit.tiktokTags },
+            ].filter(r => r.val).map(({ label, val }) => (
+              <div key={label} className="marketing-row" style={{ marginBottom: 10 }}>
+                <span className="marketing-label">{label}</span>
+                <button className="marketing-copy-btn" onClick={async () => {
+                  try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료!`, 'ok'); }
+                  catch { addToast('복사 실패', 'err'); }
+                }}><i className="fas fa-copy" /> 복사</button>
+                <p className="marketing-text" style={{ whiteSpace: 'pre-line', fontSize: '0.73rem', color: label.includes('해시태그') || label.includes('태그') ? '#a855f7' : undefined }}>{val}</p>
+              </div>
+            ))}
+            {loadedKit.hookVariations?.length > 0 && (
+              <div className="marketing-row">
+                <span className="marketing-label">🎣 3종 훅 베리에이션</span>
+                {loadedKit.hookVariations.map((h, i) => (
+                  <p key={i} className="marketing-text" style={{ fontSize: '0.73rem', marginBottom: 4 }}>
+                    <strong>{h.type}</strong> — {h.caption1} / <em style={{ color: '#aaa' }}>{h.narration}</em>
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 3종 훅 빆리에이션 */}
         {script?.hook_variations?.length > 0 && (
