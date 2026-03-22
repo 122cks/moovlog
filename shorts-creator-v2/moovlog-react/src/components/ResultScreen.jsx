@@ -326,17 +326,18 @@ export default function ResultScreen() {
     setTimeout(() => kitPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   };
 
-  const deleteKit = async () => {
-    if (!loadedKit?.id || kitDeleting) return;
-    if (!confirm(`"​${loadedKit.restaurant}"\ 키트를 삭제할까요?`)) return;
+  const deleteKit = async (id, restaurantName, e) => {
+    e?.stopPropagation();
+    if (!id || kitDeleting) return;
+    if (!confirm(`"${restaurantName}" 키트를 삭제할까요?`)) return;
     setKitDeleting(true);
     try {
-      await deleteMarketingKit(loadedKit.id);
-      setKitHistory(h => h.filter(x => x.id !== loadedKit.id));
-      setLoadedKit(null);
+      await deleteMarketingKit(id);
+      setKitHistory(h => h.filter(x => x.id !== id));
+      if (loadedKit?.id === id) setLoadedKit(null);
       addToast('마케팅 키트 삭제 완료', 'ok');
-    } catch (e) {
-      addToast('삭제 실패: ' + e.message, 'err');
+    } catch (err) {
+      addToast('삭제 실패: ' + err.message, 'err');
     } finally {
       setKitDeleting(false);
     }
@@ -402,7 +403,7 @@ export default function ResultScreen() {
             <p className="marketing-title" style={{ margin: 0 }}>
               {loadedKit
                 ? <><i className="fas fa-check-circle" style={{ color: '#7c3aed' }} /> {loadedKit.restaurant}</>
-                : <><i className="fas fa-history" /> 마케팅 키트 이력</>
+                : <><i className="fas fa-history" /> 이전 마케팅 키트</>
               }
             </p>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -415,7 +416,7 @@ export default function ResultScreen() {
                     ← 목록
                   </button>
                   <button
-                    onClick={deleteKit}
+                    onClick={e => deleteKit(loadedKit.id, loadedKit.restaurant, e)}
                     disabled={kitDeleting}
                     style={{ background: 'none', color: '#ff6b6b', border: '1px solid #ff6b6b55', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: '0.73rem' }}
                   >
@@ -435,7 +436,7 @@ export default function ResultScreen() {
             </div>
           </div>
 
-          {/* 이력 목록 (kit 미선택 시) */}
+          {/* 이력 목록 — 2열 그리드 */}
           {!loadedKit && showKitHistory && (
             <>
               <div style={{ display: 'flex', gap: 8, margin: '10px 0' }}>
@@ -454,25 +455,50 @@ export default function ResultScreen() {
               {kitHistory.length === 0 && !kitLoading && (
                 <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>저장된 이력이 없습니다</p>
               )}
-              {kitHistory.map(item => (
-                <div
-                  key={item.id}
-                  onClick={() => loadKitFromHistory(item)}
-                  style={{ background: '#1e1e1e', border: '1px solid #333', borderRadius: 10, padding: '10px 14px', marginBottom: 6, cursor: 'pointer' }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>{item.restaurant || '—'}</span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-sub)' }}>
-                      {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
-                    </span>
+              {/* 2열 그리드 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 4 }}>
+                {kitHistory.map(item => (
+                  <div
+                    key={item.id}
+                    style={{
+                      background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 10,
+                      padding: '10px 12px', cursor: 'pointer', position: 'relative',
+                      transition: 'border-color 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = '#7c3aed55'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = '#2a2a2a'}
+                  >
+                    {/* 개별 삭제 버튼 */}
+                    <button
+                      onClick={e => deleteKit(item.id, item.restaurant, e)}
+                      disabled={kitDeleting}
+                      style={{
+                        position: 'absolute', top: 6, right: 6,
+                        background: 'rgba(255,107,107,0.12)', color: '#ff6b6b',
+                        border: 'none', borderRadius: 6, padding: '2px 6px',
+                        cursor: 'pointer', fontSize: '0.65rem', lineHeight: '1.4',
+                      }}
+                      title="삭제"
+                    >
+                      🗑️
+                    </button>
+                    {/* 음식점명 클릭 → 불러오기 */}
+                    <div onClick={() => loadKitFromHistory(item)}>
+                      <p style={{ fontWeight: 800, fontSize: '0.85rem', margin: '0 20px 4px 0', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.restaurant || '—'}
+                      </p>
+                      <p style={{ fontSize: '0.65rem', color: '#666', margin: '0 0 6px' }}>
+                        {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
+                      </p>
+                      {item.hookTitle && (
+                        <p style={{ fontSize: '0.7rem', color: '#888', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          🎣 {item.hookTitle}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  {item.hookTitle && (
-                    <p style={{ fontSize: '0.73rem', color: '#aaa', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      🎣 {item.hookTitle}
-                    </p>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
             </>
           )}
 
