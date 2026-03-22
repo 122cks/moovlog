@@ -17,11 +17,14 @@ function loadScript(src) {
 
 const TOKEN_KEY  = ''; // AuthService에서 관리 — 여기선 사용 안 함
 
-export default function DrivePicker() {
+
+export default function DrivePicker({ addFiles: addFilesProp }) {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cachedToken, setCachedToken] = useState(null);
-  const { addFiles, addToast } = useVideoStore();
+  // addFilesAsync: 조용히 다운스케일 + MIME 폴백 버전
+  const { addFilesAsync: storeAddFilesAsync, addToast } = useVideoStore();
+  const addFiles = addFilesProp || storeAddFilesAsync;
 
   // 앱 시작 시 저장된 토큰 복원
   useEffect(() => {

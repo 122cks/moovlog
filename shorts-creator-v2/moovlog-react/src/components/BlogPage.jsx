@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { generateBlogPost } from '../engine/gemini.js';
 import { saveBlogPost, saveSNSTags, getRecentBlogPosts, searchBlogPosts } from '../engine/firebase.js';
+
+import DrivePicker from './DrivePicker.jsx';
 import { useVideoStore } from '../store/videoStore.js';
 
 const TABS = [
@@ -36,17 +38,20 @@ export default function BlogPage() {
   const fileInputRef = useRef();
   const dropRef      = useRef();
 
-  // ── 파일 추가 ─────────────────────────────────────────────
-  const addFiles = useCallback((list) => {
-    const ok = f => f.type.startsWith('image/') || f.type.startsWith('video/');
-    const valid = list.filter(ok).slice(0, 20 - files.length);
-    const items = valid.map(f => ({
-      file: f,
-      url: URL.createObjectURL(f),
-      type: f.type.startsWith('video/') ? 'video' : 'image',
+  // ── 파일 추가 (비동기 전처리 — MIME 폴백 + 50MB 초과 영상 720p 다운스케일) ─────
+  const addFiles = useCallback(async (list) => {
+    const { preprocessMediaFiles } = await import('../engine/mediaPreprocess.js');
+    const remaining = 20 - files.length;
+    if (!remaining) return;
+    const arr = [...list].slice(0, remaining);
+    const big = arr.some(f => f.size > 50 * 1024 * 1024);
+    if (big) addToast('용량이 큰 영상을 최적화 중...', 'inf');
+    const results = await preprocessMediaFiles(arr, msg => addToast(msg, 'inf'));
+    const items = results.map(({ file: pf, mediaType }) => ({
+      file: pf, url: URL.createObjectURL(pf), type: mediaType,
     }));
     setFiles(prev => [...prev, ...items]);
-  }, [files.length]);
+  }, [files.length, addToast]);
 
   const removeFile = useCallback((idx) => {
     setFiles(prev => prev.filter((_, i) => i !== idx));
@@ -411,6 +416,10 @@ export default function BlogPage() {
           <input ref={fileInputRef} type="file" accept="image/*,video/*" multiple hidden onChange={onFileChange} />
           <p className="drop-hint">JPG · PNG · MP4 · MOV</p>
         </div>
+          <div className="drive-row" style={{ marginTop: 10, marginBottom: 0 }}>
+            {/* 구글 드라이브에서 가져오기 버튼 */}
+            <DrivePicker addFiles={addFiles} />
+          </div>
         {files.length > 0 && (
           <div className="thumb-grid" style={{ marginTop: 14 }}>
             {files.map((m, i) => (

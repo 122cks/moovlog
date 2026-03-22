@@ -163,16 +163,38 @@ export const useVideoStore = create(
 
       // ── 파일 관리 ──────────────────────────────────────────
       addFiles: (newFiles) => set(s => {
-        const valid = [...newFiles]
-          .filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'))
-          .slice(0, 20 - s.files.length);
-        const items = valid.map(f => ({
-          file: f,
-          url: URL.createObjectURL(f),
-          type: f.type.startsWith('video/') ? 'video' : 'image',
-        }));
+        // MIME 타입 없는 모바일 파일 대비 확장자 폴백 추가
+        const V = new Set(['mp4', 'mov', 'm4v', 'webm', 'avi', 'mkv']);
+        const I = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif', 'avif']);
+        const getType = f => {
+          if (f.type.startsWith('video/')) return 'video';
+          if (f.type.startsWith('image/')) return 'image';
+          const ext = (f.name || '').split('.').pop().toLowerCase();
+          if (V.has(ext)) return 'video';
+          if (I.has(ext)) return 'image';
+          return null;
+        };
+        const pairs = [...newFiles].map(f => [f, getType(f)]).filter(([, t]) => t).slice(0, 20 - s.files.length);
+        const items = pairs.map(([f, t]) => ({ file: f, url: URL.createObjectURL(f), type: t }));
         return { files: [...s.files, ...items] };
       }, false, 'addFiles'),
+
+      // 비동기 전처리 버전 — MIME 폴백 + 50MB 초과 영상 720p 다운스케일
+      addFilesAsync: async (newFiles) => {
+        const { preprocessMediaFiles } = await import('../engine/mediaPreprocess.js');
+        const { files: cur, addToast } = get();
+        const limit = 20 - cur.length;
+        if (limit <= 0) return;
+        const arr = [...newFiles].slice(0, limit);
+        const big = arr.some(f => f.size > 50 * 1024 * 1024);
+        if (big) addToast('용량이 큰 영상을 최적화 중...', 'inf');
+        const results = await preprocessMediaFiles(arr, msg => addToast(msg, 'inf'));
+        const items = results.map(({ file: pf, mediaType }) => ({
+          file: pf, url: URL.createObjectURL(pf), type: mediaType,
+        }));
+        set(s => ({ files: [...s.files, ...items] }), false, 'addFilesAsync');
+        if (big) addToast(`${items.length}개 파일 추가 완료`, 'ok');
+      },
 
       removeFile: (idx) => set(s => ({
         files: s.files.filter((_, i) => i !== idx),

@@ -27,6 +27,11 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    // FFmpeg WASM SharedArrayBuffer 요구사항 — COOP/COEP 헤더 필수
+    headers: {
+      'Cross-Origin-Opener-Policy':   'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+    },
     // FastAPI 백엔드 프록시 (uv run uvicorn main:app --port 8000)
     proxy: {
       '/api': {

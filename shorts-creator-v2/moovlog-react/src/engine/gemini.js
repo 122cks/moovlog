@@ -381,9 +381,15 @@ export async function generateScript(restaurantName, analysis, userPrompt = '', 
   const exteriorInfo = exteriorIdx !== undefined
     ? `\n• [★ 외관 강제 배치] ${exteriorIdx}번 미디어가 가게 외관으로 분석되었습니다. 마지막 씬의 media_idx는 반드시 ${exteriorIdx}로 설정하세요.`
     : '';
-  const imgSummary = pi.map(p =>
-    `이미지${p.idx}(${p.type}/감성${p.emotional_score}점${p.is_exterior ? '/🏪외관' : ''}): 효과=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ''}"`
-  ).join('\n');
+  // 영상 파일 media_idx 목록 (완전 인덱스 기준)
+  const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
+  const videoRule = videoIdxs.length
+    ? `\n[\uD83C\uDFAC \ub3d9\uc601\uc0c1 \ud30c\uc77c \ubc30\uce58 \uc6b0\uc120\uc21c\uc704 \uaddc\uce59 \u2014 \uc808\ub300 \uc900\uc218]\n\u2022 \uc5c5\ub85c\ub4dc\ub41c \ub3d9\uc601\uc0c1(\uc601\uc0c1) \ud30c\uc77c media_idx \ubaa9\ub85d: [${videoIdxs.join(', ')}]\n\u2022 \uc704 media_idx\ub4e4\uc740 \ud6c5(\uc4241)\uacfc \ud074\ub77c\uc774\ub9e5\uc2a4 \uc528\uc5d0 \ubc18\ub4dc\uc2dc 1\uc21c\uc704\ub85c \ubc30\uce58\ud558\uc138\uc694.\n\u2022 \ub3d9\uc601\uc0c1 \ud30c\uc77c\uc774 \uc788\ub294\ub370 \uc804\uccb4 \uc528\uc744 \uc815\uc9c0 \uc774\ubbf8\uc9c0\ub9cc\uc73c\ub85c \ucc44\uc6b0\ub294 \uac83\uc740 \uc808\ub300 \uae08\uc9c0\ub429\ub2c8\ub2e4.\n\u2022 \ub3d9\uc601\uc0c1\uc744 \ucd5c\ub300\ud55c \uad50\ucc28 \ubc30\uce58\ud558\uc138\uc694 (\uc0c1\ub098 2\uac1c \uc4241\ub9c8\ub2e4 \ub3d9\uc601\uc0c1 1\uac1c \uc774\uc0c1 \ub303\uc2b9).`
+    : '';
+  const imgSummary = pi.map(p => {
+    const mediaLabel = files[p.idx]?.type === 'video' ? '\uD83C\uDFAC\uc601\uc0c1' : '\uD83D\uDDBC\uFE0F\uc774\ubbf8\uc9c0';
+    return `${mediaLabel}${p.idx}(${p.type}/\uac10\uc131${p.emotional_score}\uc810${p.is_exterior ? '/\uD83C\uDFEA\uc678\uad00' : ''}): \ud6a8\uacfc=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ''}"` ;
+  }).join('\n');
 
   const isTrend = VIRAL_TRENDS[selectedTemplate];
   const totalTarget = isTrend
@@ -452,7 +458,7 @@ ${userPrompt ? userPrompt : '특별한 요청 없음. 평소체림 최고의 감
 • 고깃집 영상의 메인(hero/climax) 씬 주제는 반드시 「구이」(고기·삼겹살·갈비·목살·소고기·곱창 등)이어야 합니다.
 • 볶음밥 등 마무리 메뉴는 마지막 CTA 씬 바로 직전 씬 1개에만 짧게(2.0~2.5초) 등장시키거나 완전히 생략하세요.
 
-[비주얼 컷 분석 — narration_hint를 나레이션 작성 기반으로 활용]
+[비주얼 컷 분석 — narration_hint를 나레이션 작성 기반으로 활용]${videoRule}
 ${imgSummary || '분석 없음'}
 권장 컷 순서: [${order.join(',')}]
 
