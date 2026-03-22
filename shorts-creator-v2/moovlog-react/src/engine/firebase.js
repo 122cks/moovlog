@@ -14,7 +14,7 @@ const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || '',
   authDomain:        'moovlog-be7a6.firebaseapp.com',
   projectId:         'moovlog-be7a6',
-  storageBucket:     'moovlog-be7a6.appspot.com',
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'moovlog-be7a6.firebasestorage.app',
   messagingSenderId: '173534090692',
   appId:             import.meta.env.VITE_FIREBASE_APP_ID || '',
 };

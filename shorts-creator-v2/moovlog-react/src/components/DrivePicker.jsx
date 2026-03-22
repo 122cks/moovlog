@@ -76,17 +76,23 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
       scope: 'https://www.googleapis.com/auth/drive.readonly',
       callback: (resp) => {
         if (resp.error) {
-          // 토큰이 만료됨 — 저장된 토큰 지우고 다시 시도
           clearToken();
           setCachedToken(null);
-          addToast('Google 로그인 실패: ' + resp.error, 'err');
+          if (resp.error === 'redirect_uri_mismatch' || resp.error === 'idpiframe_initialization_failed') {
+            addToast(
+              'GCP 콘솔 > 사용자 인증 정보 > OAuth 클라이언트 ID > "Authorized JavaScript origins"에 https://122cks.github.io 를 추가해야 합니다.',
+              'err'
+            );
+          } else {
+            addToast('Google 로그인 실패: ' + resp.error, 'err');
+          }
           return;
         }
         saveToken(resp.access_token);
         setCachedToken(resp.access_token);
         openPicker(resp.access_token, clientId);
       },
-    }).requestAccessToken({ prompt: '' }); // prompt:'' → 이미 승인된 계정은 팝업 없이 조용히 재발급
+    }).requestAccessToken(); // prompt 생략 → GIS가 상황에 맞게 계정 선택창 표시, silent redirect 방지
   };
 
   const openPicker = (accessToken, clientId) => {
