@@ -1,9 +1,10 @@
 // src/components/UploadSection.jsx
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useVideoStore, TEMPLATE_NAMES, TEMPLATE_HINTS } from '../store/videoStore.js';
 import { startMake } from '../engine/pipeline.js';
 import { setGeminiKey } from '../engine/gemini.js';
 import { setTypeCastKeys } from '../engine/tts.js';
+import { getMarketingKits, searchMarketingKits } from '../engine/firebase.js';
 import DrivePicker from './DrivePicker.jsx';
 import PromptInput from './PromptInput.jsx';
 
@@ -16,6 +17,22 @@ export default function UploadSection() {
 
   const fileInputRef = useRef();
   const dropRef      = useRef();
+
+  // 마케팅 키트 이력
+  const [kitHistory, setKitHistory] = useState([]);
+  const [kitSearch,  setKitSearch]  = useState('');
+  const [kitLoading, setKitLoading] = useState(false);
+
+  const loadKits = useCallback(async (kw = '') => {
+    setKitLoading(true);
+    try {
+      const r = kw.trim() ? await searchMarketingKits(kw.trim()) : await getMarketingKits(20);
+      setKitHistory(r);
+    } catch { /* Firebase 미연결 시 조용히 실패 */ }
+    finally { setKitLoading(false); }
+  }, []);
+
+  useEffect(() => { loadKits(); }, [loadKits]);
 
   // ── 드래그앤드롭 ─────────────────────────────────────────
   const onDragOver  = useCallback(e => { e.preventDefault(); dropRef.current?.classList.add('over'); }, []);
@@ -201,6 +218,62 @@ export default function UploadSection() {
         <span>AI 숏폼 자동 생성</span>
       </button>
       <p className="make-hint">이미지 분석 → 스타일 자동 선택 → 스크립트 → 나레이션 → 영상 완성</p>
+
+      {/* 마케팅 키트 이력 */}
+      <section className="card" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: '0.88rem', color: '#ccc' }}>
+            <i className="fas fa-history" style={{ marginRight: 6, color: '#a78bfa' }} />
+            이전 마케팅 키트
+          </p>
+          <button
+            onClick={() => loadKits(kitSearch)}
+            disabled={kitLoading}
+            style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '0.8rem' }}
+          >
+            {kitLoading ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-sync-alt" />}
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <input
+            className="name-input"
+            style={{ flex: 1, fontSize: '0.82rem', padding: '7px 12px' }}
+            placeholder="음식점 이름으로 검색..."
+            value={kitSearch}
+            onChange={e => setKitSearch(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && loadKits(kitSearch)}
+          />
+          <button className="re-btn" style={{ minWidth: 40 }} onClick={() => loadKits(kitSearch)} disabled={kitLoading}>
+            <i className="fas fa-search" />
+          </button>
+        </div>
+        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {kitHistory.length === 0 && !kitLoading && (
+            <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '10px 0', fontSize: '0.78rem' }}>
+              저장된 마케팅 키트가 없습니다
+            </p>
+          )}
+          {kitHistory.map(item => (
+            <button
+              key={item.id}
+              onClick={() => {
+                setRestaurantName(item.restaurant || '');
+                addToast(`「${item.restaurant}」 불러오기 완료`, 'ok');
+              }}
+              style={{
+                background: '#1e1e1e', border: '1px solid #333', borderRadius: 10,
+                padding: '9px 14px', cursor: 'pointer', textAlign: 'left',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}
+            >
+              <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#eee' }}>{item.restaurant || '—'}</span>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-sub)', marginLeft: 8, whiteSpace: 'nowrap' }}>
+                {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
     </main>
   );
 }
