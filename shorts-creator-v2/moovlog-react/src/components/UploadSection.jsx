@@ -98,7 +98,7 @@ export default function UploadSection() {
           <span className="num">01</span>
           <div>
             <h2>이미지 · 영상 업로드</h2>
-            <p>사진과 영상 클립을 올려주세요 (최대 10개)</p>
+            <p>사진과 영상 클립을 올려주세요 (최대 20개)</p>
           </div>
         </div>
 

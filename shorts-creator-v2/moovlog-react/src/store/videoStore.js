@@ -165,7 +165,7 @@ export const useVideoStore = create(
       addFiles: (newFiles) => set(s => {
         const valid = [...newFiles]
           .filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'))
-          .slice(0, 10 - s.files.length);
+          .slice(0, 20 - s.files.length);
         const items = valid.map(f => ({
           file: f,
           url: URL.createObjectURL(f),

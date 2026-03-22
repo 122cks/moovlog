@@ -15,10 +15,14 @@
   <title>무브먼트 Shorts Creator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;600;700;900&family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <link rel="stylesheet" href="style.css" />
+  
 </head>
+
+
+
 <body>
   <header class="app-header">
     <div class="header-inner">
@@ -68,11 +72,6 @@
           <h2>이미지 · 영상 업로드</h2>
           <p>사진과 영상 클립을 올려주세요 (최대 10개)</p>
         </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <button class="ratio-btn" onclick="changeAspectRatio('9:16',this)" style="flex:1;padding:9px 4px;border-radius:8px;border:none;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;cursor:pointer;font-weight:700;font-size:.82rem;"><i class="fas fa-mobile-alt"></i> 9:16 쇼츠</button>
-        <button class="ratio-btn" onclick="changeAspectRatio('1:1',this)"  style="flex:1;padding:9px 4px;border-radius:8px;border:none;background:rgba(255,255,255,.1);color:#888;cursor:pointer;font-weight:700;font-size:.82rem;"><i class="fab fa-instagram"></i> 1:1 피드</button>
-        <button class="ratio-btn" onclick="changeAspectRatio('16:9',this)" style="flex:1;padding:9px 4px;border-radius:8px;border:none;background:rgba(255,255,255,.1);color:#888;cursor:pointer;font-weight:700;font-size:.82rem;"><i class="fas fa-tv"></i> 16:9 유튜브</button>
       </div>
       <div class="drop-area" id="dropArea">
         <div class="drop-icon"><i class="fas fa-cloud-upload-alt"></i></div>
@@ -357,8 +356,8 @@
         <button onclick="closeEditModal()" style="background:none;border:none;color:#888;font-size:1.2rem;cursor:pointer;">✕</button>
       </div>
       <label style="font-size:.78rem;color:#94a3b8;display:block;margin-bottom:4px;">캡션 (자막)</label>
-      <input id="editCaption" type="text" style="width:100%;box-sizing:border-box;background:#0f0f1a;border:1px solid #333;border-radius:8px;padding:8px 10px;color:#e2e8f0;font-size:.9rem;margin-bottom:12px;" placeholder="자막 텍스트">      <label style="font-size:.78rem;color:#94a3b8;display:block;margin-bottom:4px;">씬 재생 길이 (초)</label>
-      <input id="editDuration" type="number" step="0.1" min="0.5" max="15.0" style="width:100%;box-sizing:border-box;background:#0f0f1a;border:1px solid #333;border-radius:8px;padding:8px 10px;color:#e2e8f0;font-size:.9rem;margin-bottom:12px;" placeholder="예: 3.5">      <label style="font-size:.78rem;color:#94a3b8;display:block;margin-bottom:4px;">나레이션</label>
+      <input id="editCaption" type="text" style="width:100%;box-sizing:border-box;background:#0f0f1a;border:1px solid #333;border-radius:8px;padding:8px 10px;color:#e2e8f0;font-size:.9rem;margin-bottom:12px;" placeholder="자막 텍스트">
+      <label style="font-size:.78rem;color:#94a3b8;display:block;margin-bottom:4px;">나레이션</label>
       <textarea id="editNarration" rows="4" style="width:100%;box-sizing:border-box;background:#0f0f1a;border:1px solid #333;border-radius:8px;padding:8px 10px;color:#e2e8f0;font-size:.9rem;resize:vertical;margin-bottom:16px;" placeholder="나레이션 텍스트"></textarea>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button onclick="closeEditModal()" style="padding:8px 18px;border-radius:8px;border:1px solid #444;background:transparent;color:#aaa;cursor:pointer;font-size:.88rem;">취소</button>
@@ -426,33 +425,6 @@
       console.log('[Firebase] API 키 미주입 — 로컬 모드 (업로드 비활성)');
     }
   </script>
-  <script defer src="script.js?v=20260309-1430"></script>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
-  <a href="index2.html" class="blog-link-btn">
-    <i class="fas fa-pen-nib"></i> 네이버 블로그 포스팅 작성
-  </a>
+  <script defer src="script.js?v=e74cd01"></script>
 </body>
 </html>

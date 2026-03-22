@@ -188,33 +188,43 @@ function safeExtractText(data) {
 export async function visionAnalysis(restaurantName, researchData = '') {
   const { files } = useVideoStore.getState();
 
-  // 미디어 변환 병렬 처리 (최대 6개 — 순차 대비 수 배 빠름, payload 절감)
-  const _mediaPartsArr = await Promise.all(
-    Array.from({ length: Math.min(files.length, 6) }, async (_, i) => {
-      const m = files[i];
-      const textPart = { text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` };
+  // ── 미디어 → base64 parts 빌드 헬퍼 (파일별 그룹 반환, idx 오프셋 지원) ──
+  const buildBatchPartsGrouped = async (fileSlice, baseIdx) =>
+    Promise.all(fileSlice.map(async (m, li) => {
+      const i = baseIdx + li;
+      const label = { text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` };
       if (m.type === 'image') {
-        try {
-          const b64 = await toB64(m.file);
-          return [textPart, { inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } }];
-        } catch (_) { return [textPart]; }
+        try { const b64 = await toB64(m.file); return [label, { inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } }]; }
+        catch (_) { return [label]; }
       } else {
-        try {
-          const frames = await extractVideoFramesB64(m.file, 2);
-          return [textPart, ...frames.map(fr => ({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } }))];
-        } catch (_) { return [textPart]; }
+        try { const frames = await extractVideoFramesB64(m.file, 2); return [label, ...frames.map(fr => ({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } }))]; }
+        catch (_) { return [label]; }
       }
-    })
-  );
-  const parts = _mediaPartsArr.flat();
+    }));
 
-  if (!parts.length) {
+  // ── 10+10 배치 분할 (최대 20개) ──
+  const VISION_BATCH = 10;
+  const totalMedia = Math.min(files.length, 20);
+  const slice0 = files.slice(0, Math.min(VISION_BATCH, totalMedia));
+  const slice1 = files.slice(VISION_BATCH, totalMedia);
+
+  if (!slice0.length) {
     return { keywords: [restaurantName, '맛집'], mood: '감성적인', per_image: [], recommended_order: [] };
   }
 
+  // 배치 parts 병렬 빌드 (파일별 그룹 유지)
+  const [filePartsGroup0, filePartsGroup1] = await Promise.all([
+    buildBatchPartsGrouped(slice0, 0),
+    slice1.length ? buildBatchPartsGrouped(slice1, VISION_BATCH) : Promise.resolve([]),
+  ]);
+  // 1차 패스용 flat parts / 2차 패스용 파일별 그룹 전체 참조
+  const parts0 = filePartsGroup0.flat();
+  const parts1 = filePartsGroup1.flat();
+  const allFilePartsGroups = [...filePartsGroup0, ...filePartsGroup1];
+
   // ── 1번째 패스: 기본 비주얼 분석 ──
   const prompt1 = `당신은 2026년 인스타그램 Reels · 유튜브 Shorts 알고리즘 전문 비주얼 디렉터입니다.
-음식점: "${restaurantName}" / 미디어 ${parts.length}개${researchData ? `\n\n[🔍 식당 사전 인텔리전스 — 아래 정보를 참고하여, 시그니처 메뉴·USP와 가장 연관된 사진에 높은 emotional_score·foodie_score를 부여하세요]\n${researchData.slice(0, 500)}` : ''}
+음식점: "${restaurantName}" / 미디어 ${totalMedia}개${researchData ? `\n\n[🔍 식당 사전 인텔리전스 — 아래 정보를 참고하여, 시그니처 메뉴·USP와 가장 연관된 사진에 높은 emotional_score·foodie_score를 부여하세요]\n${researchData.slice(0, 500)}` : ''}
 
 각 이미지:
 - type: "hook"|"hero"|"detail"|"ambiance"|"process"|"wide"
@@ -241,31 +251,48 @@ export async function visionAnalysis(restaurantName, researchData = '') {
 JSON만 반환:
 {"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"설명","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false,"aesthetic_score":85,"foodie_score":8,"best_start_pct":0.2,"tracking_coords":{"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}},"ocr_data":null}]}`;
 
-  // 이미지 포함 요청은 처리 시간이 길어 타임아웃을 90초로 증가
-  const data1 = await geminiWithFallback({
-    contents: [{ parts: [...parts, { text: prompt1 }] }],
-    generationConfig: { temperature: 0.5, responseMimeType: 'application/json' },
-  }, 90000);
-  let firstResult;
-  try {
-    const raw1 = safeExtractText(data1);
-    const _s1 = raw1.indexOf('{'), _e1 = raw1.lastIndexOf('}');
-    firstResult = JSON.parse(_s1 >= 0 && _e1 > _s1 ? raw1.slice(_s1, _e1 + 1) : raw1.replace(/```json|```/g, '').trim());
-  } catch {
-    firstResult = { keywords: [restaurantName], mood: '활기찬', per_image: [], recommended_order: [] };
-  }
+  // 배치별 1차 패스 병렬 호출 (이미지 포함 → 90초 타임아웃)
+  const callPass1 = async (batchParts) => {
+    const data = await geminiWithFallback({
+      contents: [{ parts: [...batchParts, { text: prompt1 }] }],
+      generationConfig: { temperature: 0.5, responseMimeType: 'application/json' },
+    }, 90000);
+    const raw = safeExtractText(data);
+    const _s = raw.indexOf('{'), _e = raw.lastIndexOf('}');
+    return JSON.parse(_s >= 0 && _e > _s ? raw.slice(_s, _e + 1) : raw.replace(/```json|```/g, '').trim());
+  };
+
+  const [pass1Result0, pass1Result1] = await Promise.all([
+    callPass1(parts0).catch(() => ({ keywords: [restaurantName], mood: '활기찬', per_image: [], recommended_order: [] })),
+    parts1.length ? callPass1(parts1).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
+  ]);
+
+  // 배치 결과 병합 — 2번째 배치 per_image idx에 VISION_BATCH 오프셋 적용
+  const firstResult = pass1Result1
+    ? {
+        ...pass1Result0,
+        per_image: [
+          ...(pass1Result0.per_image || []),
+          ...(pass1Result1.per_image || []).map(p => ({ ...p, idx: p.idx + VISION_BATCH })),
+        ],
+        recommended_order: [
+          ...(pass1Result0.recommended_order || []),
+          ...(pass1Result1.recommended_order || []).map(i => i + VISION_BATCH),
+        ],
+      }
+    : pass1Result0;
 
   // ── 2번째 패스: narration_hint 생성 (존댓말·정보전달) ──
-  const topIdxs = (firstResult.recommended_order || []).slice(0, Math.min(5, parts.length));
+  const topIdxs = (firstResult.recommended_order || []).slice(0, Math.min(5, allFilePartsGroups.length));
   const topParts = topIdxs.length
-    ? topIdxs.flatMap(idx => (parts[idx] ? [parts[idx]] : []))
-    : parts.slice(0, 5);
+    ? topIdxs.flatMap(idx => allFilePartsGroups[idx] || [])
+    : allFilePartsGroups.slice(0, 5).flat();
 
   const focusSummary = (firstResult.per_image || [])
     .map(p => `이미지${p.idx}: ${p.focus || ''}`)
     .join('\n');
 
-  const prompt2 = `당신은 텐션 넘치고 친근한 2030 맛집 크리에이터입니다. 친한 친구에게 찐맛집을 흥분해서 소개하듯, 자연스럽고 생동감 넘치는 구어체를 사용하세요.
+  const prompt2 = `당신은 담백하고 세련된 2030 맛집 크리에이터입니다. 과하지 않게, 진짜 맛잘알처럼 현실적인 구어체로 각 이미지에 어울리는 나레이션 힌트를 작성하세요.
 음식점: "${restaurantName}"
 아래 이미지들의 1차 분석 결과를 참고하여, 각 이미지에 대한 나레이션 힌트를 생성하세요.
 
@@ -273,11 +300,13 @@ JSON만 반환:
 ${focusSummary || '분석 없음'}
 
 [narration_hint 규칙]
-• "~요" 어미 필수 (맛있어요 / 좋아요 / 진짜예요 / 대박이에요)
+• "~요" 어미 사용 (예: 보이시나요 / 올라가 있어요 / 달궈진 철판 위예요)
 • "~입니다" "~합니다" 같은 딱딱한 말투 절대 금지
-• 화면에 실제 보이는 것을 구체적으로 설명 (맛·식감·비주얼·조리 장면 등)
-• 자연스러운 리액션 환영 (예: '비주얼 미쳤어요!', '한 입에 반했어요', '이거 진짜 맛있어요!')
+• 화면에 실제 보이는 것을 오감으로 구체적으로 설명 (질감·색감·온도감·향·소리 등)
 • 1문장, 15자 내외
+• ❌ 절대 금지 표현: "미쳤어요", "대박이에요", "실화예요", "기절이에요", "폼 미쳤어요", "정말 맛있어요", "진짜 맛있어요", "너무 맛있어요", "환상이에요", "최고예요", "레전드예요", "소름이에요", "신세계예요"
+• ❌ 호들갑 감탄사 금지: "와~!", "대박~!", "헉!", "어머!", "세상에!"
+• ✅ 올바른 예시: "두툼하게 썰어낸 채끝이 달궈진 철판 위에서 익어가고 있어요.", "포크가 닿자마자 결대로 찢어지는 질감이 보이시나요?", "기분 좋은 숯불향이 올라오는 장면이에요."
 
 JSON만 반환 — per_image 배열 각 항목에 narration_hint 필드만 포함:
 {"per_image":[{"idx":0,"narration_hint":"두툼하게 썰어낸 한우 채끝이 달궈진 철판 위에서 익어가고 있습니다."}]}`;
@@ -361,9 +390,14 @@ export async function generateScript(restaurantName, analysis, userPrompt = '', 
     ? isTrend.durations.reduce((a, v) => a + v, 0)
     : Math.min(Math.max(files.length * 4 + 8, 30), 55);
 
-  // 미디어 변환 병렬 처리 (최대 6개 — visionAnalysis와 동일한 전략)
+  // generateScript는 visionAnalysis 추천 순서 상위 10개 파일만 참조 (payload 최적화)
+  const topFileIdxs = (analysis.recommended_order?.length
+    ? analysis.recommended_order.slice(0, 10)
+    : Array.from({ length: Math.min(files.length, 10) }, (_, i) => i)
+  ).filter(i => i < files.length);
+
   const _imgPartsArr = await Promise.all(
-    Array.from({ length: Math.min(files.length, 6) }, async (_, i) => {
+    topFileIdxs.map(async (i) => {
       const m = files[i];
       const textPart = { text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` };
       if (m.type === 'image') {
