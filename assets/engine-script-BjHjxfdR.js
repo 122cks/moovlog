@@ -1,78 +1,71 @@
-import { u as useVideoStore, V as VIRAL_TRENDS, t as toB64, e as extractVideoFramesB64, T as TEMPLATE_HINTS, H as HOOK_HINTS, b as apiPost, s as safeExtractText, g as getApiUrl } from './engine-gemini-BCTerkaI.js';
-import { g as getPersonaPrompt } from './engine-core-CVvj_IMC.js';
+import { u as useVideoStore, V as VIRAL_TRENDS, t as toB64, e as extractVideoFramesB64, T as TEMPLATE_HINTS, H as HOOK_HINTS, b as apiPost, s as safeExtractText, g as getApiUrl } from './engine-gemini-iNdzkyyX.js';
+import { g as getPersonaPrompt } from './engine-core-CD1WNmk6.js';
 
-// src/engine/gemini-script.js
-// generateScript 분리 — gemini.js Rollup 빌드 스택 오버플로우 방지
-
-async function generateScript(restaurantName, analysis, userPrompt = '', researchData = '', restaurantType = '') {
+async function generateScript(restaurantName, analysis, userPrompt = "", researchData = "", restaurantType = "") {
   const { files, selectedTemplate, selectedHook } = useVideoStore.getState();
-  const pi    = analysis.per_image || [];
+  const pi = analysis.per_image || [];
   const order = analysis.recommended_order?.length ? analysis.recommended_order : files.map((_, i) => i);
-  const exteriorIdx = analysis.per_image?.find(p => p.is_exterior === true)?.idx;
-  const exteriorInfo = exteriorIdx !== undefined
-    ? `\n• [★ 외관 강제 배치] ${exteriorIdx}번 미디어가 가게 외관으로 분석되었습니다. 마지막 씬의 media_idx는 반드시 ${exteriorIdx}로 설정하세요.`
-    : '';
-  // 영상 파일 media_idx 목록 (완전 인덱스 기준)
-  const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
-  const videoRule = videoIdxs.length
-    ? `\n[\uD83C\uDFAC \ub3d9\uc601\uc0c1 \ud30c\uc77c \ubc30\uce58 \uc6b0\uc120\uc21c\uc704 \uaddc\uce59 \u2014 \uc808\ub300 \uc900\uc218]\n\u2022 \uc5c5\ub85c\ub4dc\ub41c \ub3d9\uc601\uc0c1(\uc601\uc0c1) \ud30c\uc77c media_idx \ubaa9\ub85d: [${videoIdxs.join(', ')}]\n\u2022 \uc704 media_idx\ub4e4\uc740 \ud6c5(\uc4241)\uacfc \ud074\ub77c\uc774\ub9e5\uc2a4 \uc528\uc5d0 \ubc18\ub4dc\uc2dc 1\uc21c\uc704\ub85c \ubc30\uce58\ud558\uc138\uc694.\n\u2022 \ub3d9\uc601\uc0c1 \ud30c\uc77c\uc774 \uc788\ub294\ub370 \uc804\uccb4 \uc528\uc744 \uc815\uc9c0 \uc774\ubbf8\uc9c0\ub9cc\uc73c\ub85c \ucc44\uc6b0\ub294 \uac83\uc740 \uc808\ub300 \uae08\uc9c0\ub429\ub2c8\ub2e4.\n\u2022 \ub3d9\uc601\uc0c1\uc744 \ucd5c\ub300\ud55c \uad50\ucc28 \ubc30\uce58\ud558\uc138\uc694 (\uc0c1\ub098 2\uac1c \uc4241\ub9c8\ub2e4 \ub3d9\uc601\uc0c1 1\uac1c \uc774\uc0c1 \ub303\uc2b9).`
-    : '';
-  const imgSummary = pi.map(p => {
-    const mediaLabel = files[p.idx]?.type === 'video' ? '\uD83C\uDFAC\uc601\uc0c1' : '\uD83D\uDDBC\uFE0F\uc774\ubbf8\uc9c0';
-    return `${mediaLabel}${p.idx}(${p.type}/\uac10\uc131${p.emotional_score}\uc810${p.is_exterior ? '/\uD83C\uDFEA\uc678\uad00' : ''}): \ud6a8\uacfc=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ''}"` ;
-  }).join('\n');
-
+  const exteriorIdx = analysis.per_image?.find((p) => p.is_exterior === true)?.idx;
+  const exteriorInfo = exteriorIdx !== void 0 ? `
+• [★ 외관 강제 배치] ${exteriorIdx}번 미디어가 가게 외관으로 분석되었습니다. 마지막 씬의 media_idx는 반드시 ${exteriorIdx}로 설정하세요.` : "";
+  const videoIdxs = files.map((f, i) => f.type === "video" ? i : -1).filter((i) => i >= 0);
+  const videoRule = videoIdxs.length ? `
+[🎬 동영상 파일 배치 우선순위 규칙 — 절대 준수]
+• 업로드된 동영상(영상) 파일 media_idx 목록: [${videoIdxs.join(", ")}]
+• 위 media_idx들은 훅(쐤1)과 클라이맥스 씨에 반드시 1순위로 배치하세요.
+• 동영상 파일이 있는데 전체 씨을 정지 이미지만으로 채우는 것은 절대 금지됩니다.
+• 동영상을 최대한 교차 배치하세요 (상나 2개 쐤1마다 동영상 1개 이상 댃승).` : "";
+  const imgSummary = pi.map((p) => {
+    const mediaLabel = files[p.idx]?.type === "video" ? "🎬영상" : "🖼️이미지";
+    return `${mediaLabel}${p.idx}(${p.type}/감성${p.emotional_score}점${p.is_exterior ? "/🏪외관" : ""}): 효과=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ""}"`;
+  }).join("\n");
   const isTrend = VIRAL_TRENDS[selectedTemplate];
-  const totalTarget = isTrend
-    ? isTrend.durations.reduce((a, v) => a + v, 0)
-    : Math.min(Math.max(files.length * 4 + 8, 30), 55);
-
-  // generateScript는 visionAnalysis 추천 순서 상위 10개 파일만 참조 (payload 최적화)
-  const topFileIdxs = (analysis.recommended_order?.length
-    ? analysis.recommended_order.slice(0, 10)
-    : Array.from({ length: Math.min(files.length, 10) }, (_, i) => i)
-  ).filter(i => i < files.length);
-
+  const totalTarget = isTrend ? isTrend.durations.reduce((a, v) => a + v, 0) : Math.min(Math.max(files.length * 4 + 8, 30), 55);
+  const topFileIdxs = (analysis.recommended_order?.length ? analysis.recommended_order.slice(0, 10) : Array.from({ length: Math.min(files.length, 10) }, (_, i) => i)).filter((i) => i < files.length);
   const _imgPartsArr = await Promise.all(
     topFileIdxs.map(async (i) => {
       const m = files[i];
-      const textPart = { text: `\n--- [원본 미디어 번호 media_idx: ${i}] ---` };
-      if (m.type === 'image') {
+      const textPart = { text: `
+--- [원본 미디어 번호 media_idx: ${i}] ---` };
+      if (m.type === "image") {
         try {
           const b64 = await toB64(m.file);
-          return [textPart, { inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } }];
-        } catch (_) { return [textPart]; }
+          return [textPart, { inline_data: { mime_type: m.file.type || "image/jpeg", data: b64 } }];
+        } catch (_) {
+          return [textPart];
+        }
       } else {
         try {
           const frames = await extractVideoFramesB64(m.file, 2);
-          return [textPart, ...frames.map(fr => ({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } }))];
-        } catch (_) { return [textPart]; }
+          return [textPart, ...frames.map((fr) => ({ inline_data: { mime_type: fr.mimeType, data: fr.base64 } }))];
+        } catch (_) {
+          return [textPart];
+        }
       }
     })
   );
   const imgParts = _imgPartsArr.flat();
-
   const trendInstruction = isTrend ? `
 [🚨 바이럴 트렌드 템플릿 강제 규칙 🚨]
-"${isTrend.name}" 포맷 — 정확히 ${isTrend.durations.length}개 씬, duration 배열: [${isTrend.durations.join(', ')}]
+"${isTrend.name}" 포맷 — 정확히 ${isTrend.durations.length}개 씬, duration 배열: [${isTrend.durations.join(", ")}]
 duration 1.5초 미만 씬 → narration 비우거나 단어 1~2개만.
-` : '';
-
-  const restaurantTypeHint = restaurantType
-    ? '[업체 유형: ' + restaurantType + '] — 이 업체 유형의 2026 트렌드·분위기·고객층에 최적화된 나레이션과 자막 스타일을 적용하세요.\n'
-    : '';
-
+` : "";
+  const restaurantTypeHint = restaurantType ? "[업체 유형: " + restaurantType + "] — 이 업체 유형의 2026 트렌드·분위기·고객층에 최적화된 나레이션과 자막 스타일을 적용하세요.\n" : "";
   const prompt = `당신은 텐션 넘치는 친근한 2030 맛집 크리에이터 "무브먼트(MOOVLOG)"입니다. 친한 친구에게 찐맛집을 신나게 소개하듯 생동감 넘치는 구어체로 나레이션을 작성하세요.
 2026 릴스/쇼츠: 첫 컷 임팩트, 정보 밀도, 존댓말 나레이션, 자막 임팩트.
 ${trendInstruction}${getPersonaPrompt(analysis.detected_theme, analysis.mood)}
 ${restaurantTypeHint}
 
 [사용자 특별 요청 사항 (★이 지시사항을 최우선으로 반영할 것★)]
-${userPrompt ? userPrompt : '특별한 요청 없음. 평소체림 최고의 감성으로 작성하세요.'}
+${userPrompt ? userPrompt : "특별한 요청 없음. 평소체림 최고의 감성으로 작성하세요."}
 [음식점 정보]
-이름: ${restaurantName} / 분위기: ${analysis.mood || '감성적인'}
-메뉴: ${(analysis.menu || []).join(', ') || restaurantName}
-비주얼 훅: ${analysis.visual_hook || ''}${researchData ? `\n\n[🔍 실시간 Gemini 검색 조사 — 이 식당의 실제 정보]\n${researchData}\n★ 위 조사 내용에서 이 집만의 시그니처 메뉴·맛의 비결·특별한 배경을 나레이션에 자연스럽게 녹여내세요. (단, 확인된 정보만 사용하고 없는 정보는 생략)` : ''}
+이름: ${restaurantName} / 분위기: ${analysis.mood || "감성적인"}
+메뉴: ${(analysis.menu || []).join(", ") || restaurantName}
+비주얼 훅: ${analysis.visual_hook || ""}${researchData ? `
+
+[🔍 실시간 Gemini 검색 조사 — 이 식당의 실제 정보]
+${researchData}
+★ 위 조사 내용에서 이 집만의 시그니처 메뉴·맛의 비결·특별한 배경을 나레이션에 자연스럽게 녹여내세요. (단, 확인된 정보만 사용하고 없는 정보는 생략)` : ""}
 
 [선택된 전략]
 템플릿: ${TEMPLATE_HINTS[selectedTemplate] || TEMPLATE_HINTS.story}
@@ -95,8 +88,8 @@ ${userPrompt ? userPrompt : '특별한 요청 없음. 평소체림 최고의 감
 • 볶음밥 등 마무리 메뉴는 마지막 CTA 씬 바로 직전 씬 1개에만 짧게(2.0~2.5초) 등장시키거나 완전히 생략하세요.
 
 [비주얼 컷 분석 — narration_hint를 나레이션 작성 기반으로 활용]${videoRule}
-${imgSummary || '분석 없음'}
-권장 컷 순서: [${order.join(',')}]
+${imgSummary || "분석 없음"}
+권장 컷 순서: [${order.join(",")}]
 
 [★ 총 ${totalTarget}초, ${files.length}씬 구성]
 씬1 발견/훅(2.5~3.5s): 강렬한 첫 비주얼 + 궁금증 유발 자막
@@ -245,8 +238,8 @@ tiktok_tags : #태그 딱 5개만 공백 구분
 [컷 매칭 규칙 — ★매우 중요★]
 • 각 이미지를 제공할 때 앞에 "--- [원본 미디어 번호 media_idx: N] ---" 이라고 라벨을 뺙여두었습니다.
 • 스크립트 씨(scene)을 구성할 때, 화면에 나가는 컷이 어떤 원본 파일인지 파악하여 라벨에 적힌 정확한 N값을 "media_idx" 필드에 적어주세요.
-• 반드시 권장 컷 순서 [${order.join(',')}] 의 흐름을 따라 장면을 전개하세요.
-${exteriorIdx !== undefined ? '• 가게 외관 사진(' + exteriorIdx + '번)은 마지막 씨에만 배치하고, 중간 씨에서는 사용하지 마세요.' : ''}
+• 반드시 권장 컷 순서 [${order.join(",")}] 의 흐름을 따라 장면을 전개하세요.
+${exteriorIdx !== void 0 ? "• 가게 외관 사진(" + exteriorIdx + "번)은 마지막 씨에만 배치하고, 중간 씨에서는 사용하지 마세요." : ""}
 • 🎯 씬-미디어 내용 일치 원칙: 씬의 narration/caption에서 특정 음식(예: 볶음밥)을 설명할 때는 반드시 그 음식이 직접 촬영된 media_idx만 사용하세요. 볶음밥 설명 씬에 고기·김치·다른 반찬 사진을 배치하는 것은 절대 금지입니다. 해당 메뉴가 찍힌 미디어가 없으면 그 씬 자체를 삭제하거나 실제 촬영된 다른 메뉴로 내용을 교체하세요.
 
 [카메라 워크 지시사항]
@@ -296,48 +289,48 @@ JSON만 반환:
 {"audit_report":{"score":93,"reason":""},"title":"","theme":"grill","vibe_color":"#FF6B35","hashtags":"","naver_clip_tags":"","youtube_shorts_tags":"","instagram_caption":"","tiktok_tags":"","marketing":{"hook_title":"","caption":"","hashtags_30":"","receipt_review":""},"hook_variations":[{"type":"shock","caption1":"","caption2":"","narration":""},{"type":"info","caption1":"","caption2":"","narration":""},{"type":"pov","caption1":"","caption2":"","narration":""}],"blocks":[
   {"narration":"다들 아시는 그 맛이겠거니 했는데, 한 입 먹고 바로 생각 바뀌었습니다.","caption":"🚨 유행 끝물인 줄 알았는데","caption2":"당장 저장각","subtitle_style":"hook","energy_level":4,"retention_strategy":"opening_question","effect":"zoom-in","total_duration":4.0,"video_cuts":[{"duration":0.8,"media_idx":2,"visual_focus":"훅 — 음식을 자르거나 뒤집는 역동적인 첫 컷"},{"duration":0.7,"media_idx":3,"visual_focus":"단면 클로즈업"},{"duration":2.5,"media_idx":0,"visual_focus":"전체 상차림 풀샷"}]}
 ]}`;
-
-  const makeReq = async url => {
+  const makeReq = async (url) => {
     const body = {
       system_instruction: {
-        parts: [{ text: "당신은 감각적이고 진정성 있는 로컬 맛집 리뷰어 '무브먼트(moovlog)'입니다. '대박', '실화', '미쳤다', '기절' 같은 작위적이고 뻔한 유튜브식 과장어를 절대 사용하지 마세요. 대신 시청자가 텍스트만 읽어도 침이 고이도록, 음식의 디테일과 식당의 분위기를 담백하고 현실감 있는 일상어로 세련되게 묘사해야 합니다." }],
+        parts: [{ text: "당신은 감각적이고 진정성 있는 로컬 맛집 리뷰어 '무브먼트(moovlog)'입니다. '대박', '실화', '미쳤다', '기절' 같은 작위적이고 뻔한 유튜브식 과장어를 절대 사용하지 마세요. 대신 시청자가 텍스트만 읽어도 침이 고이도록, 음식의 디테일과 식당의 분위기를 담백하고 현실감 있는 일상어로 세련되게 묘사해야 합니다." }]
       },
       contents: [{ parts: [...imgParts, { text: prompt }] }],
-      generationConfig: { temperature: 0.92, responseMimeType: 'application/json' },
+      generationConfig: { temperature: 0.92, responseMimeType: "application/json" }
     };
     const data = await apiPost(url, body);
     const raw = safeExtractText(data);
-    const _s = raw.indexOf('{'), _e = raw.lastIndexOf('}');
-    const obj = JSON.parse(_s >= 0 && _e > _s ? raw.slice(_s, _e + 1) : raw.replace(/```json|```/g, '').trim());
-    // blocks 형식(1 Audio : N Video) 또는 레거시 scenes 형식 모두 수용
+    const _s = raw.indexOf("{"), _e = raw.lastIndexOf("}");
+    const obj = JSON.parse(_s >= 0 && _e > _s ? raw.slice(_s, _e + 1) : raw.replace(/```json|```/g, "").trim());
     const hasBlocks = Array.isArray(obj.blocks) && obj.blocks.length > 0;
     const hasScenes = Array.isArray(obj.scenes) && obj.scenes.length > 0;
-    if (!hasBlocks && !hasScenes) throw new Error('스크립트 오류');
-    // scenes 형식일 때만 duration 클램핑 (blocks.video_cuts 짧은 duration 보존)
+    if (!hasBlocks && !hasScenes) throw new Error("스크립트 오류");
     if (hasScenes) {
-      obj.scenes = obj.scenes.map(sc => ({
+      obj.scenes = obj.scenes.map((sc) => ({
         ...sc,
-        duration: Math.max(2.0, Math.min(4.5, Number(sc.duration) || 3.0)),
+        duration: Math.max(2, Math.min(4.5, Number(sc.duration) || 3))
       }));
     }
-    // hook_variations 없으면 기본값 카피 (blocks / scenes 모두 대응)
     const s0 = obj.blocks?.[0] || obj.scenes?.[0];
     if (!obj.hook_variations?.length && s0) {
-      const s0cap1 = s0.caption1 || s0.caption || '';
-      const s0cap2 = s0.caption2 || '';
-      const s0nar  = s0.narration || '';
+      const s0cap1 = s0.caption1 || s0.caption || "";
+      const s0cap2 = s0.caption2 || "";
+      const s0nar = s0.narration || "";
       obj.hook_variations = [
-        { type: 'shock',  caption1: s0cap1, caption2: s0cap2, narration: s0nar },
-        { type: 'info',   caption1: s0cap1, caption2: '이 집 간다 ✅', narration: s0nar },
-        { type: 'pov',    caption1: '오늘 여기 어때?', caption2: s0cap2, narration: s0nar },
+        { type: "shock", caption1: s0cap1, caption2: s0cap2, narration: s0nar },
+        { type: "info", caption1: s0cap1, caption2: "이 집 간다 ✅", narration: s0nar },
+        { type: "pov", caption1: "오늘 여기 어때?", caption2: s0cap2, narration: s0nar }
       ];
     }
     return obj;
   };
-  try { return await makeReq(getApiUrl('gemini-2.5-pro')); }
-  catch (e) {
-    console.warn('[Script] Pro → Flash 폴백:', e.message);
-    return makeReq(getApiUrl('gemini-2.5-flash'));
+  const preferPro = String(undefined                                       || "0") === "1";
+  const primaryModel = preferPro ? "gemini-2.5-pro" : "gemini-2.5-flash";
+  const fallbackModel = preferPro ? "gemini-2.5-flash" : "gemini-2.5-pro";
+  try {
+    return await makeReq(getApiUrl(primaryModel));
+  } catch (e) {
+    console.warn(`[Script] ${primaryModel} 실패 → ${fallbackModel} 폴백:`, e.message);
+    return makeReq(getApiUrl(fallbackModel));
   }
 }
 

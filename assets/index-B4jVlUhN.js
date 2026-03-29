@@ -1,9 +1,9 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/engine-core-CVvj_IMC.js","assets/engine-gemini-BCTerkaI.js","assets/vendor-DKjQ1qLu.js","assets/vendor-react-CvBl8VdO.js","assets/engine-script-Hqvxxul9.js","assets/vendor-firebase-CmLdJ1V2.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/engine-core-CD1WNmk6.js","assets/engine-gemini-iNdzkyyX.js","assets/vendor-DKjQ1qLu.js","assets/vendor-react-CvBl8VdO.js","assets/engine-script-BjHjxfdR.js","assets/vendor-firebase-CmLdJ1V2.js"])))=>i.map(i=>d[i]);
 import { j as jsxRuntimeExports, r as reactExports, c as client, R as React } from './vendor-react-CvBl8VdO.js';
-import { u as useVideoStore, c as setGeminiKey, f as TEMPLATE_NAMES, R as RESTAURANT_TYPES, T as TEMPLATE_HINTS, _ as __vitePreload, h as generateBlogPost } from './engine-gemini-BCTerkaI.js';
-import { c as clearToken, s as saveToken, l as loadToken, a as searchMarketingKits, b as getMarketingKits, d as setTypeCastKeys, e as startMake, f as getAudioCtx, p as preprocessNarration, h as hasTypeCastKeys, i as fetchTypeCastTTS, r as rotateTypeCastKey, j as fetchTTSWithRetry, k as formatDuration, m as downloadBlob, n as sanitizeName, o as extractThumbnail, q as renderCinematicFinish, t as renderVideoWithFFmpeg, u as firebaseUploadVideo, v as deleteMarketingKit, w as saveBlogPost, x as saveSNSTags, y as searchBlogPosts, z as getRecentBlogPosts, A as initFirebase } from './engine-core-CVvj_IMC.js';
+import { u as useVideoStore, c as setGeminiKey, f as TEMPLATE_NAMES, h as RESTAURANT_TYPES, T as TEMPLATE_HINTS, _ as __vitePreload, i as generateBlogPost } from './engine-gemini-iNdzkyyX.js';
+import { c as clearToken, s as saveToken, l as loadToken, a as searchMarketingKits, b as getMarketingKits, d as setTypeCastKeys, e as startMake, f as getAudioCtx, p as preprocessNarration, h as hasTypeCastKeys, i as fetchTypeCastTTS, r as rotateTypeCastKey, j as fetchTTSWithRetry, k as formatDuration, m as downloadBlob, n as sanitizeName, o as extractThumbnail, q as renderCinematicFinish, t as renderVideoWithFFmpeg, u as firebaseUploadVideo, v as deleteMarketingKit, w as saveBlogPost, x as saveSNSTags, y as searchBlogPosts, z as getRecentBlogPosts, A as initFirebase } from './engine-core-CD1WNmk6.js';
 import { M as Muxer, x as Muxer$1, y as Mp4Muxer, W as WebmMuxer } from './vendor-DKjQ1qLu.js';
-import './engine-script-Hqvxxul9.js';
+import './engine-script-BjHjxfdR.js';
 import './vendor-firebase-CmLdJ1V2.js';
 
 true&&(function polyfill() {
@@ -613,9 +613,9 @@ const STEPS = [
   { icon: "fa-utensils", label: "업체 유형 분류" },
   { icon: "fa-eye", label: "시각 분석 + 스타일 선택" },
   { icon: "fa-film", label: "스토리보드 설계" },
+  { icon: "fa-link", label: "영상 컷 삽입 + 자막 매칭 검증" },
   { icon: "fa-microphone-alt", label: "AI 음성 합성" },
-  { icon: "fa-video", label: "렌더링 준비" },
-  { icon: "fa-check-double", label: "AI 품질 검수" }
+  { icon: "fa-video", label: "렌더링 준비 + 품질 검수" }
 ];
 function LoadingOverlay() {
   const { pipeline } = useVideoStore();
@@ -1367,7 +1367,7 @@ function SceneEditor({ sceneIdx, onClose }) {
         const text = preprocessNarration(narration);
         let newBuf = null;
         if (hasTypeCastKeys()) {
-          const { _typeCastKeys } = await __vitePreload(async () => { const { _typeCastKeys } = await import('./engine-core-CVvj_IMC.js').then(n => n.B);return { _typeCastKeys }},true?__vite__mapDeps([0,1,2,3,4,5]):void 0).then((m) => ({ _typeCastKeys: [] }));
+          const { _typeCastKeys } = await __vitePreload(async () => { const { _typeCastKeys } = await import('./engine-core-CD1WNmk6.js').then(n => n.B);return { _typeCastKeys }},true?__vite__mapDeps([0,1,2,3,4,5]):void 0).then((m) => ({ _typeCastKeys: [] }));
           let tcErr = null;
           for (let attempt = 0; attempt < 7; attempt++) {
             try {
@@ -1554,14 +1554,8 @@ function ExportPanel() {
   };
   const ensureIsolation = () => {
     if (crossOriginIsolated) return true;
-    if (script?.scenes?.length > 0) {
-      addToast("FFmpeg는 페이지 첫 로드 시 격리가 필요합니다. 기본 저장 버튼을 사용하거나, 새로고침 후 다시 시도해주세요.", "err");
-      return false;
-    }
-    addToast("FFmpeg 보안 격리를 활성화합니다. 잠시 후 자동 재시작...", "inf");
-    sessionStorage.removeItem("_coi_r");
-    setTimeout(() => location.reload(), 700);
-    return false;
+    addToast("격리 모드가 아니어서 FFmpeg가 느리거나 실패할 수 있습니다. 우선 시도합니다.", "inf");
+    return true;
   };
   const doExportThumbnail = async () => {
     if (thumbBusy) return;
@@ -1569,7 +1563,6 @@ function ExportPanel() {
       addToast("시작 전 영상을 만들어주세요", "err");
       return;
     }
-    if (!ensureIsolation()) return;
     setThumbBusy(true);
     try {
       const blob = await extractThumbnail(script.scenes, files, script, (msg) => addToast(msg, "inf"));
@@ -1587,7 +1580,7 @@ function ExportPanel() {
       addToast("먼저 영상을 생성해주세요", "err");
       return;
     }
-    if (!ensureIsolation()) return;
+    ensureIsolation();
     setHybridBusy(true);
     setExporting(true);
     try {
@@ -1630,7 +1623,7 @@ function ExportPanel() {
       addToast("미디어 파일이 없습니다", "err");
       return;
     }
-    if (!ensureIsolation()) return;
+    ensureIsolation();
     setFfmpegBusy(true);
     setFfmpegPct(0);
     try {
@@ -1648,7 +1641,13 @@ function ExportPanel() {
       setFfmpegText("📦 FFmpeg 내보내기 (시네마틱)");
       setFfmpegPct(0);
     } catch (err) {
-      addToast("FFmpeg 오류: " + (err?.message || String(err)), "err");
+      const msg = err?.message || String(err);
+      addToast("FFmpeg 오류: " + msg, "err");
+      if (/sharedarraybuffer|crossoriginisolated|coop|coep|security|worker/i.test(msg)) {
+        addToast("FFmpeg 격리 오류로 기본 저장으로 자동 전환합니다.", "inf");
+        await doExport().catch(() => {
+        });
+      }
       setFfmpegText("📦 FFmpeg 내보내기 (시네마틱)");
       setFfmpegPct(0);
     } finally {
@@ -2563,7 +2562,7 @@ function BlogPage() {
   const fileInputRef = reactExports.useRef();
   const dropRef = reactExports.useRef();
   const addFiles = reactExports.useCallback(async (list) => {
-    const { preprocessMediaFiles } = await __vitePreload(async () => { const { preprocessMediaFiles } = await import('./engine-core-CVvj_IMC.js').then(n => n.C);return { preprocessMediaFiles }},true?__vite__mapDeps([0,1,2,3,4,5]):void 0);
+    const { preprocessMediaFiles } = await __vitePreload(async () => { const { preprocessMediaFiles } = await import('./engine-core-CD1WNmk6.js').then(n => n.C);return { preprocessMediaFiles }},true?__vite__mapDeps([0,1,2,3,4,5]):void 0);
     const remaining = 20 - files.length;
     if (!remaining) return;
     const arr = [...list].slice(0, remaining);
@@ -3080,6 +3079,17 @@ function App() {
     console.log(`[App] TypeCast 키 로드: ${tcKeys.length}개`);
     initFirebase();
     document.title = "무브먼트 Shorts Creator v2";
+    if (!window.crossOriginIsolated && navigator.serviceWorker?.controller) {
+      const store = useVideoStore.getState();
+      if (!store.files.length && !store.script) {
+        const attempts = parseInt(sessionStorage.getItem("_coi_attempts") || "0", 10);
+        if (attempts < 3) {
+          sessionStorage.setItem("_coi_attempts", String(attempts + 1));
+          console.log("[App] SW 활성 but !crossOriginIsolated → 재로드 (COI 헤더 확보)");
+          location.reload();
+        }
+      }
+    }
   }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-root", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(Header, { activeTab, onTabChange: setActiveTab, tabs: APP_TABS }),
@@ -3098,11 +3108,17 @@ client.createRoot(document.getElementById("root")).render(
 );
 if (navigator.serviceWorker) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js", { scope: "/moovlog/shorts-creator/" }).then((reg) => {
-      if (window.crossOriginIsolated) return;
+    const swBase = "/moovlog/shorts-creator/";
+    navigator.serviceWorker.register(`${swBase}sw.js`, { scope: swBase }).then((reg) => {
+      if (window.crossOriginIsolated) {
+        sessionStorage.removeItem("_coi_attempts");
+        return;
+      }
       const doReload = () => {
-        if (!window.crossOriginIsolated && !sessionStorage.getItem("_coi_r")) {
-          sessionStorage.setItem("_coi_r", "1");
+        if (window.crossOriginIsolated) return;
+        const attempts = parseInt(sessionStorage.getItem("_coi_attempts") || "0", 10);
+        if (attempts < 3) {
+          sessionStorage.setItem("_coi_attempts", String(attempts + 1));
           location.reload();
         }
       };

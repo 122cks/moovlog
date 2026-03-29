@@ -1,6 +1,6 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/engine-core-CVvj_IMC.js","assets/engine-script-Hqvxxul9.js","assets/vendor-firebase-CmLdJ1V2.js","assets/vendor-DKjQ1qLu.js","assets/vendor-react-CvBl8VdO.js"])))=>i.map(i=>d[i]);
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/engine-core-CD1WNmk6.js","assets/engine-script-BjHjxfdR.js","assets/vendor-firebase-CmLdJ1V2.js","assets/vendor-DKjQ1qLu.js","assets/vendor-react-CvBl8VdO.js"])))=>i.map(i=>d[i]);
 import { p as create, v as devtools } from './vendor-DKjQ1qLu.js';
-import './engine-core-CVvj_IMC.js';
+import './engine-core-CD1WNmk6.js';
 
 const scriptRel = 'modulepreload';const assetsURL = function(dep) { return "/moovlog/shorts-creator/"+dep };const seen = {};const __vitePreload = function preload(baseModule, deps, importerUrl) {
   let promise = Promise.resolve();
@@ -186,6 +186,22 @@ const RESTAURANT_TYPES = {
   japanese:   { label: '🍣 일식/스시',         key: 'japanese' },
 };
 
+// ─── 업종별 스타일 프리셋 (AI 자동 추천 보정) ────────────────────
+const RESTAURANT_STYLE_PRESETS = {
+  grill:      { template: 'hype',            hook: 'shock' },
+  cafe:       { template: 'vlog_aesthetic',  hook: 'pov' },
+  seafood:    { template: 'cinematic_story', hook: 'question' },
+  pub:        { template: 'viral_fast',      hook: 'challenge' },
+  snack:      { template: 'viral',           hook: 'viral_2026' },
+  ramen:      { template: 'mukbang',         hook: 'question' },
+  finedining: { template: 'cinematic',       hook: 'secret' },
+  nopo:       { template: 'food_essay',      hook: 'secret' },
+  jeon:       { template: 'story',           hook: 'question' },
+  hansik:     { template: 'food_essay',      hook: 'ranking' },
+  chinese:    { template: 'hype',            hook: 'shock' },
+  japanese:   { template: 'aesthetic',       hook: 'secret' },
+};
+
 // ─── 초기 상태 ────────────────────────────────────────────────
 const INITIAL = {
   // 파일/미디어
@@ -271,7 +287,7 @@ const useVideoStore = create(
 
       // 비동기 전처리 버전 — MIME 폴백 + 50MB 초과 영상 720p 다운스케일
       addFilesAsync: async (newFiles) => {
-        const { preprocessMediaFiles } = await __vitePreload(async () => { const { preprocessMediaFiles } = await import('./engine-core-CVvj_IMC.js').then(n => n.C);return { preprocessMediaFiles }},true?__vite__mapDeps([0,1,2,3,4]):void 0);
+        const { preprocessMediaFiles } = await __vitePreload(async () => { const { preprocessMediaFiles } = await import('./engine-core-CD1WNmk6.js').then(n => n.C);return { preprocessMediaFiles }},true?__vite__mapDeps([0,1,2,3,4]):void 0);
         const { files: cur, addToast } = get();
         const limit = 30 - cur.length;
         if (limit <= 0) return;
@@ -327,6 +343,18 @@ const useVideoStore = create(
       setPipeline: (step, title, sub) => set(s => ({
         pipeline: { ...s.pipeline, visible: true, step, title, sub },
       }), false, 'setPipeline'),
+
+      resetPipelineProgress: () => set(s => ({
+        pipeline: {
+          ...s.pipeline,
+          visible: true,
+          step: 0,
+          title: '',
+          sub: '',
+          autoStyleName: '',
+          done: [false, false, false, false, false, false, false],
+        },
+      }), false, 'resetPipelineProgress'),
 
       donePipelineStep: (n) => set(s => {
         const done = [...s.pipeline.done];
@@ -384,6 +412,7 @@ const useVideoStore = create(
 const videoStore = /*#__PURE__*/Object.freeze(/*#__PURE__*/Object.defineProperty({
   __proto__: null,
   HOOK_HINTS,
+  RESTAURANT_STYLE_PRESETS,
   RESTAURANT_TYPES,
   TEMPLATE_HINTS,
   TEMPLATE_NAMES,
@@ -973,4 +1002,4 @@ JSON만 반환:
   }
 }
 
-export { HOOK_HINTS as H, RESTAURANT_TYPES as R, TEMPLATE_HINTS as T, VIRAL_TRENDS as V, __vitePreload as _, geminiQualityCheck as a, apiPost as b, setGeminiKey as c, detectRestaurantType as d, extractVideoFramesB64 as e, TEMPLATE_NAMES as f, getApiUrl as g, generateBlogPost as h, videoStore as i, gemini as j, researchRestaurant as r, safeExtractText as s, toB64 as t, useVideoStore as u, visionAnalysis as v };
+export { HOOK_HINTS as H, RESTAURANT_STYLE_PRESETS as R, TEMPLATE_HINTS as T, VIRAL_TRENDS as V, __vitePreload as _, geminiQualityCheck as a, apiPost as b, setGeminiKey as c, detectRestaurantType as d, extractVideoFramesB64 as e, TEMPLATE_NAMES as f, getApiUrl as g, RESTAURANT_TYPES as h, generateBlogPost as i, videoStore as j, gemini as k, researchRestaurant as r, safeExtractText as s, toB64 as t, useVideoStore as u, visionAnalysis as v };

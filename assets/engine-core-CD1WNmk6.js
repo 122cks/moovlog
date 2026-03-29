@@ -1,6 +1,6 @@
-const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/engine-gemini-BCTerkaI.js","assets/vendor-DKjQ1qLu.js","assets/vendor-react-CvBl8VdO.js"])))=>i.map(i=>d[i]);
-import { g as getApiUrl, u as useVideoStore, _ as __vitePreload, r as researchRestaurant, d as detectRestaurantType, v as visionAnalysis, V as VIRAL_TRENDS, a as geminiQualityCheck } from './engine-gemini-BCTerkaI.js';
-import { g as generateScript } from './engine-script-Hqvxxul9.js';
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/engine-gemini-iNdzkyyX.js","assets/vendor-DKjQ1qLu.js","assets/vendor-react-CvBl8VdO.js"])))=>i.map(i=>d[i]);
+import { g as getApiUrl, u as useVideoStore, _ as __vitePreload, r as researchRestaurant, d as detectRestaurantType, v as visionAnalysis, R as RESTAURANT_STYLE_PRESETS, V as VIRAL_TRENDS, a as geminiQualityCheck } from './engine-gemini-iNdzkyyX.js';
+import { g as generateScript } from './engine-script-BjHjxfdR.js';
 import './vendor-firebase-CmLdJ1V2.js';
 import { i as initializeApp, g as getStorage, a as getFirestore, b as ref, u as uploadBytes, c as getDownloadURL, d as addDoc, e as collection, f as serverTimestamp, h as updateDoc, j as doc, q as query, o as orderBy, l as limit, k as getDocs, w as where, m as deleteDoc, F as FFmpeg, t as toBlobURL, n as fetchFile } from './vendor-DKjQ1qLu.js';
 
@@ -13,6 +13,9 @@ const firebaseConfig = {
   appId: ""
 };
 let storage = null, db = null, sessionDocId = null;
+function normalizeRestaurantName(name) {
+  return String(name || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
 function initFirebase() {
   if (!firebaseConfig.apiKey || !firebaseConfig.appId) {
     console.log("[Firebase] API 키 없음 — 로컬 모드");
@@ -55,8 +58,10 @@ async function firebaseSaveSession(script, restaurantName) {
   if (!db) return;
   sessionDocId = null;
   try {
+    const normalized = normalizeRestaurantName(restaurantName);
     const docRef = await addDoc(collection(db, "sessions"), {
       restaurant: restaurantName || "",
+      restaurantKey: normalized,
       template: "auto",
       sceneCount: script.scenes.length,
       title: script.title || "",
@@ -184,8 +189,10 @@ async function saveSNSTags(tagsData) {
 async function saveMarketingKit(data) {
   if (!db) return null;
   try {
+    const normalized = normalizeRestaurantName(data.restaurant);
     const docRef = await addDoc(collection(db, "marketing_kits"), {
       restaurant: data.restaurant || "",
+      restaurantKey: normalized,
       hookTitle: data.hook_title || "",
       caption: data.caption || "",
       hashtags30: data.hashtags_30 || "",
@@ -249,6 +256,47 @@ async function deleteMarketingKit(id) {
     console.warn("[Firebase] 마케팅 키트 삭제 실패:", e.message);
     throw e;
   }
+}
+async function deleteDocsByRestaurant(collectionName, restaurantName) {
+  if (!db || !restaurantName) return 0;
+  try {
+    const normalized = normalizeRestaurantName(restaurantName);
+    const q = query(
+      collection(db, collectionName),
+      where("restaurantKey", "==", normalized),
+      limit(30)
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+      console.log(`[Firebase] ${collectionName} 기존 ${snap.size}개 삭제 (${restaurantName})`);
+      return snap.size;
+    }
+    const legacyQ = query(
+      collection(db, collectionName),
+      where("restaurant", "==", restaurantName.trim()),
+      limit(30)
+    );
+    const legacySnap = await getDocs(legacyQ);
+    if (legacySnap.empty) return 0;
+    await Promise.all(legacySnap.docs.map((d) => deleteDoc(d.ref)));
+    console.log(`[Firebase] ${collectionName} 레거시 ${legacySnap.size}개 삭제 (${restaurantName})`);
+    return legacySnap.size;
+  } catch (e) {
+    console.warn(`[Firebase] ${collectionName} 삭제 실패:`, e.message);
+    return 0;
+  }
+}
+async function firebaseReplaceRestaurantData(script, restaurantName, marketingData) {
+  if (!db) return;
+  await Promise.all([
+    deleteDocsByRestaurant("sessions", restaurantName),
+    deleteDocsByRestaurant("marketing_kits", restaurantName)
+  ]);
+  await firebaseSaveSession(script, restaurantName).catch(() => {
+  });
+  if (marketingData) await saveMarketingKit(marketingData).catch(() => {
+  });
 }
 
 // src/engine/PersonaManager.js
@@ -821,6 +869,157 @@ function downloadBlob(blob, name) {
 // ─── 자막 분할 ────────────────────────────────────────────
 // (utils.js에서 임포트, 기존 splitCaptions() 동일)
 
+function flattenBlocksToScenes(script) {
+  if (!Array.isArray(script?.blocks) || !script.blocks.length || script.scenes?.length) return script;
+  const flatScenes = [];
+  let globalMediaIdx = 0;
+
+  script.blocks.forEach((block, bIdx) => {
+    const cuts = (block.video_cuts && block.video_cuts.length > 0)
+      ? block.video_cuts
+      : [{ duration: block.total_duration || 3.0, media_idx: block.media_idx }];
+
+    cuts.forEach((cut, cIdx) => {
+      let humanNarration = '';
+      if (cIdx === 0 && block.narration) {
+        humanNarration = block.narration
+          .replace(/\.(?!\.)/g, ' ')
+          .replace(/,/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+      }
+      flatScenes.push({
+        ...cut,
+        blockIdx: bIdx,
+        isFirstInBlock: cIdx === 0,
+        media_idx: cut.media_idx !== undefined
+          ? cut.media_idx
+          : (block.media_idx !== undefined ? block.media_idx : globalMediaIdx++),
+        caption1: cIdx === 0 ? (block.caption || block.caption1 || '') : '',
+        caption2: cIdx === 0 ? (block.caption2 || '') : '',
+        narration: humanNarration,
+        effect: cut.effect || block.effect || 'zoom-in',
+        subtitle_style: block.subtitle_style || 'hero',
+        energy_level: block.energy_level || 3,
+        retention_strategy: block.retention_strategy || 'build',
+      });
+    });
+  });
+
+  console.log(`[Pipeline] blocks 평탄화: ${script.blocks.length}블록 → ${flatScenes.length}씬`);
+  return { ...script, scenes: flatScenes };
+}
+
+function tokenizeText(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .filter(t => t.length >= 2);
+}
+
+function tokenOverlapScore(tokens, text) {
+  if (!tokens.length) return 0;
+  const source = String(text || '').toLowerCase();
+  let score = 0;
+  for (const t of tokens) {
+    if (source.includes(t)) score += 1;
+  }
+  return score;
+}
+
+function refineScenesForStoryboard(scenes, files, analysis) {
+  if (!Array.isArray(scenes) || !scenes.length) {
+    return { scenes: Array.isArray(scenes) ? scenes : [], mediaSwapCount: 0, subtitleFixCount: 0 };
+  }
+
+  const refined = scenes.map(sc => ({ ...sc }));
+  const analysisMap = {};
+  for (const p of (analysis?.per_image || [])) analysisMap[p.idx] = p;
+  const allMediaIdxs = files.map((_, i) => i);
+  let mediaSwapCount = 0;
+  let subtitleFixCount = 0;
+
+  // 전체 스토리보드 확정 후 영상 컷을 사이사이에 배치
+  const videoIdxs = files.map((f, i) => (f.type === 'video' ? i : -1)).filter(i => i >= 0);
+  if (videoIdxs.length) {
+    let videoCursor = 0;
+    for (let i = 0; i < refined.length; i++) {
+      const curIdx = Number.isInteger(refined[i].media_idx) ? refined[i].media_idx : i;
+      const curType = files[curIdx]?.type;
+      const preferVideo = i === 0 || i % 2 === 1;
+      if (preferVideo && curType !== 'video') {
+        refined[i].media_idx = videoIdxs[videoCursor % videoIdxs.length];
+        videoCursor++;
+        mediaSwapCount++;
+      } else if (curType === 'video') {
+        videoCursor++;
+      }
+    }
+  }
+
+  // 외관 컷은 마지막 CTA에 고정
+  const exteriorIdx = analysis?.per_image?.find(p => p?.is_exterior === true)?.idx;
+  if (Number.isInteger(exteriorIdx) && refined.length && files[exteriorIdx]) {
+    const lastIdx = refined.length - 1;
+    if (refined[lastIdx].media_idx !== exteriorIdx) {
+      refined[lastIdx].media_idx = exteriorIdx;
+      mediaSwapCount++;
+    }
+  }
+
+  // 자막-영상 내용 매칭 검증: 텍스트와 focus 설명이 어긋나면 media_idx/자막 보정
+  for (let i = 0; i < refined.length; i++) {
+    const sc = refined[i];
+    const curIdx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
+    const textBundle = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
+    const tokens = tokenizeText(textBundle);
+
+    if (tokens.length) {
+      let bestIdx = curIdx;
+      let bestScore = tokenOverlapScore(tokens, `${analysisMap[curIdx]?.focus || ''} ${analysisMap[curIdx]?.narration_hint || ''}`);
+
+      for (const idx of allMediaIdxs) {
+        const candText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
+        const s = tokenOverlapScore(tokens, candText);
+        if (s > bestScore) {
+          bestScore = s;
+          bestIdx = idx;
+        }
+      }
+
+      if (bestIdx !== curIdx && bestScore >= 2) {
+        sc.media_idx = bestIdx;
+        mediaSwapCount++;
+      }
+    }
+
+    const capNorm = String(sc.caption1 || '').replace(/\s+/g, '');
+    const narNorm = String(sc.narration || '').replace(/\s+/g, '');
+    if (capNorm && narNorm && capNorm === narNorm) {
+      const shorter = String(sc.caption1 || '').replace(/[.!?]/g, '').trim().slice(0, 12);
+      if (shorter && shorter !== sc.caption1) {
+        sc.caption1 = shorter;
+        subtitleFixCount++;
+      }
+    }
+
+    const selectedMeta = analysisMap[Number.isInteger(sc.media_idx) ? sc.media_idx : i];
+    if (sc.caption1 && !sc.caption2 && selectedMeta?.focus) {
+      const capTokens = tokenizeText(sc.caption1);
+      if (tokenOverlapScore(capTokens, selectedMeta.focus) === 0) {
+        const hint = String(selectedMeta.focus).split(/[,.]/)[0].trim().slice(0, 10);
+        if (hint) {
+          sc.caption2 = hint;
+          subtitleFixCount++;
+        }
+      }
+    }
+  }
+
+  return { scenes: refined, mediaSwapCount, subtitleFixCount };
+}
+
 // ─── 파이프라인 메인 ──────────────────────────────────────
 async function startMake() {
   const store = useVideoStore.getState();
@@ -830,14 +1029,16 @@ async function startMake() {
     setPipeline, donePipelineStep, setScript,
     setAudioBuffers, setLoaded, setShowResult,
     addToast, setAutoStyleName, setTemplate, setHook,
-    hidePipeline, reset, setPipelineSessionId, setAnalysis,
+    hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis,
   } = store;
 
   if (!files.length) { addToast('이미지 또는 영상을 올려주세요', 'err'); return; }
   if (!restaurantName.trim()) { addToast('음식점 이름을 입력해주세요', 'err'); return; }
 
-  const { hasGeminiKey } = await __vitePreload(async () => { const { hasGeminiKey } = await import('./engine-gemini-BCTerkaI.js').then(n => n.j);return { hasGeminiKey }},true?__vite__mapDeps([0,1,2]):void 0);
+  const { hasGeminiKey } = await __vitePreload(async () => { const { hasGeminiKey } = await import('./engine-gemini-iNdzkyyX.js').then(n => n.k);return { hasGeminiKey }},true?__vite__mapDeps([0,1,2]):void 0);
   if (!hasGeminiKey()) { addToast('Gemini API 키가 필요합니다', 'err'); return; }
+
+  resetPipelineProgress();
 
   // AudioContext 초기화 (iOS 보안 정책 대응)
   const { audioCtx } = ensureAudio();
@@ -898,81 +1099,65 @@ async function startMake() {
     setPipeline(3, 'AI 컨텍스트 기반 이미지 분석 중...', '식당 데이터 참고 → 시그니처 메뉴 컷 우선 선별');
     const analysis = await visionAnalysis(restaurantName.trim(), researchData, effectiveType);
 
-    // AI 자동 스타일 선택
+    // AI 자동 스타일 선택 + 업종별 프리셋 보정
     const curState = useVideoStore.getState();
     const userChoseManually = curState.selectedTemplate !== 'auto';
-    if (!userChoseManually && analysis.recommended_template) {
-      setTemplate(analysis.recommended_template);
+    const preset = effectiveType ? RESTAURANT_STYLE_PRESETS[effectiveType] : null;
+
+    if (!userChoseManually) {
+      const autoTemplate = preset?.template || analysis.recommended_template;
+      if (autoTemplate) setTemplate(autoTemplate);
+
+      if (preset?.hook) {
+        setHook(preset.hook);
+      } else if (analysis.recommended_hook) {
+        setHook(analysis.recommended_hook);
+      }
+    } else if (analysis.recommended_hook) {
+      setHook(analysis.recommended_hook);
     }
-    if (analysis.recommended_hook) setHook(analysis.recommended_hook);
 
     const curTemplate = useVideoStore.getState().selectedTemplate;
-    const { TEMPLATE_NAMES } = await __vitePreload(async () => { const { TEMPLATE_NAMES } = await import('./engine-gemini-BCTerkaI.js').then(n => n.i);return { TEMPLATE_NAMES }},true?__vite__mapDeps([0,1,2]):void 0);
+    const { TEMPLATE_NAMES } = await __vitePreload(async () => { const { TEMPLATE_NAMES } = await import('./engine-gemini-iNdzkyyX.js').then(n => n.j);return { TEMPLATE_NAMES }},true?__vite__mapDeps([0,1,2]):void 0);
     setAutoStyleName(TEMPLATE_NAMES[curTemplate] || curTemplate);
     addToast(
       userChoseManually
         ? `수동 선택: ${TEMPLATE_NAMES[curTemplate] || curTemplate}`
-        : `AI 추천: ${TEMPLATE_NAMES[curTemplate] || curTemplate}`,
+        : `AI 추천: ${TEMPLATE_NAMES[curTemplate] || curTemplate}${effectiveType ? ` · 업종(${effectiveType}) 최적화` : ''}`,
       'inf'
     );
     donePipelineStep(3);
     // analysis 저장 (VideoRenderer의 focus_coords · aesthetic_score 활용)
     setAnalysis(analysis);
 
-    // ── STEP 4: Script Generation ─────────────────────────────
-    setPipeline(4, 'Instagram Reels 스토리보드 생성 중...', '훅→감성→클로즈업→CTA 내러티브 설계');
-    const script = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
-
-    // 🚀 [1 Audio : N Video] blocks → scenes 평탄화 로직
-    // AI가 blocks 형식으로 주면 시각 컷을 베고, 오디오는 첫 컷에만 연결
-    if (Array.isArray(script.blocks) && script.blocks.length && !script.scenes?.length) {
-      let flatScenes = [];
-      let globalMediaIdx = 0;
-      script.blocks.forEach((block, bIdx) => {
-        const cuts = (block.video_cuts && block.video_cuts.length > 0)
-          ? block.video_cuts
-          : [{ duration: block.total_duration || 3.0, media_idx: block.media_idx }];
-        cuts.forEach((cut, cIdx) => {
-          // ⚡ [인간화 TTS 튜닝] 단일 마침표·쉼표만 제거, 느낌표·물음표·말줄임표는 보존 (억양 유지)
-          let humanNarration = '';
-          if (cIdx === 0 && block.narration) {
-            humanNarration = block.narration
-              .replace(/\.(?!\.)/g, ' ')  // 단일 마침표만 제거 (말줄임표 ... 보존)
-              .replace(/,/g, ' ')          // 쉼표 제거 (숨 안 쉬고 랩하게)
-              .replace(/\s{2,}/g, ' ')
-              .trim();
-          }
-          flatScenes.push({
-            ...cut,
-            blockIdx:       bIdx,
-            isFirstInBlock: cIdx === 0,
-            media_idx:      cut.media_idx !== undefined ? cut.media_idx
-                            : (block.media_idx !== undefined ? block.media_idx : globalMediaIdx++),
-            caption1:          cIdx === 0 ? (block.caption || block.caption1 || '') : '',
-            caption2:          cIdx === 0 ? (block.caption2 || '') : '',
-            narration:         humanNarration,
-            effect:            cut.effect || block.effect || 'zoom-in',
-            subtitle_style:    block.subtitle_style || 'hero',
-            energy_level:      block.energy_level || 3,
-            retention_strategy: block.retention_strategy || 'build',
-          });
-        });
-      });
-      script.scenes = flatScenes;
-      console.log(`[Pipeline] blocks 평탄화: ${script.blocks.length}블록 → ${flatScenes.length}씬`);
-    }
-
-    setScript(script);
+    // ── STEP 4: 전체 스토리보드 우선 설계 ─────────────────────────────
+    setPipeline(4, '전체 스토리보드 설계 중...', '먼저 내러티브 구조를 완성하고 컷 배치는 다음 단계에서 보정합니다');
+    let workingScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
+    workingScript = flattenBlocksToScenes(workingScript);
+    setScript(workingScript);
     donePipelineStep(4);
 
-    // ── STEP 5: TTS ─────────────────────────────────────────────────
-    setPipeline(5, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${script.scenes.length}컷`);
+    // ── STEP 5: 영상 삽입 설계 + 자막 매칭 검증 ─────────────────────────
+    setPipeline(5, '영상 컷 삽입 + 자막 매칭 검증 중...', '스토리보드 확정 후 영상 위치와 자막-컷 정합성을 자동 교정합니다');
+    const refinedPlan = refineScenesForStoryboard(workingScript.scenes || [], files, analysis);
+    workingScript = { ...workingScript, scenes: refinedPlan.scenes };
+    setScript(workingScript);
+    if (refinedPlan.mediaSwapCount > 0) {
+      addToast(`컷 보정 완료: ${refinedPlan.mediaSwapCount}개 씬 media_idx 재배치`, 'ok');
+    }
+    if (refinedPlan.subtitleFixCount > 0) {
+      addToast(`자막 보정 완료: ${refinedPlan.subtitleFixCount}개 씬 자막 수정`, 'ok');
+    }
+    donePipelineStep(5);
+
+    // ── STEP 6: TTS ─────────────────────────────────────────────────
+    setPipeline(6, 'AI 남성 보이스 합성 중...', `Gemini TTS Fenrir — ${workingScript.scenes.length}컷`);
     let audioBuffers;
     try {
-      audioBuffers = await generateAllTTS(script.scenes, (msg, type) => addToast(msg, type), script.theme);
+      audioBuffers = await generateAllTTS(workingScript.scenes, (msg, type) => addToast(msg, type), workingScript.theme);
     } catch (ttsErr) {
       console.warn('[TTS] 전체 실패, 무음 진행:', ttsErr.message);
-      audioBuffers = script.scenes.map(() => null);
+      audioBuffers = workingScript.scenes.map(() => null);
       addToast('AI 보이스 실패: 무음 영상으로 진행합니다', 'inf');
     }
 
@@ -985,8 +1170,8 @@ async function startMake() {
     const BPM_BEAT   = 0.46875;  // 128 BPM 한 비트
     const finalScenes = [];
     let sceneIdx = 0;
-    while (sceneIdx < script.scenes.length) {
-      let sc      = script.scenes[sceneIdx];
+    while (sceneIdx < workingScript.scenes.length) {
+      let sc      = workingScript.scenes[sceneIdx];
       const buf   = audioBuffers[sceneIdx];
       const isBlockCut = sc.blockIdx !== undefined;
 
@@ -994,8 +1179,8 @@ async function startMake() {
         // ── 블록 그룹: 같은 blockIdx 컷 전체를 한 번에 처리 ──
         const blockStart = sceneIdx;
         const blockIdx   = sc.blockIdx;
-        while (sceneIdx < script.scenes.length && script.scenes[sceneIdx].blockIdx === blockIdx) sceneIdx++;
-        const blockScenes = script.scenes.slice(blockStart, sceneIdx);
+        while (sceneIdx < workingScript.scenes.length && workingScript.scenes[sceneIdx].blockIdx === blockIdx) sceneIdx++;
+        const blockScenes = workingScript.scenes.slice(blockStart, sceneIdx);
         const audioDur    = (buf && buf.duration > 0) ? buf.duration : 0;
 
         // 각 컷 AI 설계 duration 합산
@@ -1090,58 +1275,33 @@ async function startMake() {
     }
 
     // script 업데이트
-    setScript({ ...script, scenes: finalScenes });
+    workingScript = { ...workingScript, scenes: finalScenes };
+    setScript(workingScript);
     setAudioBuffers(audioBuffers);
-    donePipelineStep(5);
+    donePipelineStep(6);
 
-    // ── STEP 6: 미디어 프리로드 ────────────────────────────────────
-    setPipeline(6, '렌더링 준비 중...', '컷 배치 · 애니메이션 · 효과 적용');
+    // ── STEP 7: 렌더링 준비 + AI 품질 검수 ─────────────────────────────
+    setPipeline(7, '렌더링 준비 + 품질 검수 중...', '컷 배치 · 애니메이션 · 효과 적용 후 최종 QA를 수행합니다');
     const loaded = await preloadMedia(files);
     setLoaded(loaded);
     await sleep$1(200);
-    donePipelineStep(6);
 
-    // ── STEP 7: AI 품질 검수 ──────────────────────────────────────
-    setPipeline(7, 'AI 품질 검수 중...', '스크립트 흐름·금지어·CTA 점검 후 기준 미달 시 재생성');
-    const latestScript = useVideoStore.getState().script;
-    let qcResult = await geminiQualityCheck(latestScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true }));
+    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true }));
     if (!qcResult.pass) {
       addToast(`품질 검수 미달 (${qcResult.total_score}/50) — 스크립트 재생성 중...`, 'inf');
       let retryCount = 0;
       while (!qcResult.pass && retryCount < 2) {
         retryCount++;
         try {
-          const retryScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
-          // blocks→scenes 평탄화 (기존 로직 재실행)
-          if (Array.isArray(retryScript.blocks) && retryScript.blocks.length && !retryScript.scenes?.length) {
-            let flatScenes = [];
-            let gIdx = 0;
-            retryScript.blocks.forEach((block, bIdx) => {
-              const cuts = (block.video_cuts?.length > 0) ? block.video_cuts : [{ duration: block.total_duration || 3.0, media_idx: block.media_idx }];
-              cuts.forEach((cut, cIdx) => {
-                const humanNarration = cIdx === 0 && block.narration
-                  ? block.narration.replace(/\.(?!\.)/g, ' ').replace(/,/g, ' ').replace(/\s{2,}/g, ' ').trim()
-                  : '';
-                flatScenes.push({
-                  ...cut,
-                  blockIdx: bIdx, isFirstInBlock: cIdx === 0,
-                  media_idx: cut.media_idx !== undefined ? cut.media_idx : (block.media_idx !== undefined ? block.media_idx : gIdx++),
-                  caption1: cIdx === 0 ? (block.caption || block.caption1 || '') : '',
-                  caption2: cIdx === 0 ? (block.caption2 || '') : '',
-                  narration: humanNarration,
-                  effect: cut.effect || block.effect || 'zoom-in',
-                  subtitle_style: block.subtitle_style || 'hero',
-                  energy_level: block.energy_level || 3,
-                  retention_strategy: block.retention_strategy || 'build',
-                });
-              });
-            });
-            retryScript.scenes = flatScenes;
-          }
+          let retryScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
+          retryScript = flattenBlocksToScenes(retryScript);
+          const retryRefined = refineScenesForStoryboard(retryScript.scenes || [], files, analysis);
+          retryScript = { ...retryScript, scenes: retryRefined.scenes };
           // TTS 재생성
           const retryAudioBuffers = await generateAllTTS(retryScript.scenes, () => {}, retryScript.theme).catch(() => retryScript.scenes.map(() => null));
-          setScript({ ...retryScript, scenes: retryScript.scenes });
+          setScript(retryScript);
           setAudioBuffers(retryAudioBuffers);
+          workingScript = retryScript;
           qcResult = await geminiQualityCheck(retryScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true }));
           if (qcResult.pass) {
             addToast(`재생성 성공 (${retryCount}차) — 품질 통과 ✅`, 'ok');
@@ -1159,24 +1319,22 @@ async function startMake() {
     }
     donePipelineStep(7);
 
-    // Firebase 세션 저장
-    firebaseSaveSession({ ...script, scenes: finalScenes }, restaurantName).catch(() => {});
-
-    // 마케팅 키트 자동 저장 (Firebase)
-    saveMarketingKit({
-      restaurant:        restaurantName,
-      hook_title:        script.marketing?.hook_title || '',
-      caption:           script.marketing?.caption || '',
-      hashtags_30:       script.marketing?.hashtags_30 || '',
-      receipt_review:    script.marketing?.receipt_review || '',
-      hook_variations:   script.hook_variations || [],
-      naver_clip_tags:   script.naver_clip_tags || '',
-      youtube_shorts_tags: script.youtube_shorts_tags || '',
-      instagram_caption: script.instagram_caption || '',
-      tiktok_tags:       script.tiktok_tags || '',
-      hashtags:          script.hashtags || '',
-      theme:             script.theme || '',
-      vibe_color:        script.vibe_color || '',
+    // Firebase 저장: 같은 식당명은 기존 데이터 삭제 후 새 결과로 대체
+    const latestScriptForSave = useVideoStore.getState().script || workingScript;
+    firebaseReplaceRestaurantData(latestScriptForSave, restaurantName, {
+      restaurant: latestScriptForSave.restaurant || restaurantName,
+      hook_title: latestScriptForSave.marketing?.hook_title || '',
+      caption: latestScriptForSave.marketing?.caption || '',
+      hashtags_30: latestScriptForSave.marketing?.hashtags_30 || '',
+      receipt_review: latestScriptForSave.marketing?.receipt_review || '',
+      hook_variations: latestScriptForSave.hook_variations || [],
+      naver_clip_tags: latestScriptForSave.naver_clip_tags || '',
+      youtube_shorts_tags: latestScriptForSave.youtube_shorts_tags || '',
+      instagram_caption: latestScriptForSave.instagram_caption || '',
+      tiktok_tags: latestScriptForSave.tiktok_tags || '',
+      hashtags: latestScriptForSave.hashtags || '',
+      theme: latestScriptForSave.theme || '',
+      vibe_color: latestScriptForSave.vibe_color || '',
     }).catch(() => {});
 
     await sleep$1(300);
