@@ -1,0 +1,78 @@
+name: 🚀 Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── React 앱 빌드 (GEMINI_KEY2 + Typecast 1-8 주입) ───────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install & Build React app
+        working-directory: shorts-creator-v2/moovlog-react
+        continue-on-error: true   # 실패 시 커밋된 dist로 폴백
+        env:
+          VITE_GEMINI_KEY: ${{ secrets.GEMINI_KEY2 }}
+          VITE_TYPECAST_KEY: ${{ secrets.TYPECAST_API_KEY }}
+          VITE_TYPECAST_KEY_2: ${{ secrets.TYPECAST_API_KEY_2 }}
+          VITE_TYPECAST_KEY_3: ${{ secrets.TYPECAST_API_KEY_3 }}
+          VITE_TYPECAST_KEY_4: ${{ secrets.TYPECAST_API_KEY_4 }}
+          VITE_TYPECAST_KEY_5: ${{ secrets.TYPECAST_API_KEY_5 }}
+          VITE_TYPECAST_KEY_6: ${{ secrets.TYPECAST_API_KEY_6 }}
+          VITE_TYPECAST_KEY_7: ${{ secrets.TYPECAST_API_KEY_7 }}
+          VITE_TYPECAST_KEY_8: ${{ secrets.TYPECAST_API_KEY_8 }}
+          VITE_GOOGLE_DRIVE_API: ${{ secrets.GOOGLE_DRIVE_API }}
+          VITE_GOOGLE_API_KEY: ${{ secrets.VITE_GOOGLE_API_KEY }}
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_APP_ID: ${{ secrets.VITE_GOOGLE_APP_ID }}
+          VITE_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+        run: |
+          echo "Node: $(node --version), npm: $(npm --version)"
+          npm install --prefer-offline=false
+          npm run build
+
+      # ── _site 디렉토리 구성 ────────────────────────────────────
+      - name: Prepare _site staging directory
+        run: |
+          mkdir -p _site/shorts-creator
+          cp index.html style.css script.js _site/
+          cp -r assets _site/assets 2>/dev/null || true
+          cp -r shorts-creator-v2/moovlog-react/dist/. _site/shorts-creator/
+
+      # ── GitHub Pages artifact 방식으로 배포 ───────────────────
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
