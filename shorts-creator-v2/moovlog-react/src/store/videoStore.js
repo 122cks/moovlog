@@ -100,6 +100,39 @@ export const VIRAL_TRENDS = {
   },
 };
 
+// ─── 음식점 업체 유형 ─────────────────────────────────────────
+export const RESTAURANT_TYPES = {
+  auto:       { label: '🤖 자동 감지',       key: 'auto' },
+  grill:      { label: '🥩 고깃집/BBQ',      key: 'grill' },
+  cafe:       { label: '☕ 카페/디저트',      key: 'cafe' },
+  seafood:    { label: '🦞 해물집/일식',      key: 'seafood' },
+  pub:        { label: '🍺 술집/포차',        key: 'pub' },
+  snack:      { label: '🥡 분식/일반음식',    key: 'snack' },
+  ramen:      { label: '🍜 라멘/면',          key: 'ramen' },
+  finedining: { label: '🍷 파인다이닝/양식',  key: 'finedining' },
+  nopo:       { label: '🏮 노포/전통음식',     key: 'nopo' },
+  jeon:       { label: '🥘 전/부침개',         key: 'jeon' },
+  hansik:     { label: '🍚 한식/백반',         key: 'hansik' },
+  chinese:    { label: '🥡 중식',              key: 'chinese' },
+  japanese:   { label: '🍣 일식/스시',         key: 'japanese' },
+};
+
+// ─── 업종별 스타일 프리셋 (AI 자동 추천 보정) ────────────────────
+export const RESTAURANT_STYLE_PRESETS = {
+  grill:      { template: 'hype',            hook: 'shock' },
+  cafe:       { template: 'vlog_aesthetic',  hook: 'pov' },
+  seafood:    { template: 'cinematic_story', hook: 'question' },
+  pub:        { template: 'viral_fast',      hook: 'challenge' },
+  snack:      { template: 'viral',           hook: 'viral_2026' },
+  ramen:      { template: 'mukbang',         hook: 'question' },
+  finedining: { template: 'cinematic',       hook: 'secret' },
+  nopo:       { template: 'food_essay',      hook: 'secret' },
+  jeon:       { template: 'story',           hook: 'question' },
+  hansik:     { template: 'food_essay',      hook: 'ranking' },
+  chinese:    { template: 'hype',            hook: 'shock' },
+  japanese:   { template: 'aesthetic',       hook: 'secret' },
+};
+
 // ─── 초기 상태 ────────────────────────────────────────────────
 const INITIAL = {
   // 파일/미디어
@@ -127,11 +160,11 @@ const INITIAL = {
   // 파이프라인 UI
   pipeline: {
     visible: false,
-    step: 0,          // 0=idle, 1~4=진행
+    step: 0,          // 0=idle, 1~7=진행
     title: '',
     sub: '',
     autoStyleName: '',
-    done: [false, false, false, false, false],
+    done: [false, false, false, false, false, false, false], // 7단계
   },
 
   // 결과 화면
@@ -143,6 +176,10 @@ const INITIAL = {
 
   // 토스트
   toasts: [],         // [{ id, msg, type }]
+
+  // 업체 유형
+  restaurantType: 'auto',       // RESTAURANT_TYPES 키
+  detectedRestaurantType: '',   // AI 자동 감지된 업체 유형
 
   // 유저 프롬프트
   userPrompt: '',
@@ -174,7 +211,7 @@ export const useVideoStore = create(
           if (I.has(ext)) return 'image';
           return null;
         };
-        const pairs = [...newFiles].map(f => [f, getType(f)]).filter(([, t]) => t).slice(0, 20 - s.files.length);
+        const pairs = [...newFiles].map(f => [f, getType(f)]).filter(([, t]) => t).slice(0, 30 - s.files.length);
         const items = pairs.map(([f, t]) => ({ file: f, url: URL.createObjectURL(f), type: t }));
         return { files: [...s.files, ...items] };
       }, false, 'addFiles'),
@@ -183,7 +220,7 @@ export const useVideoStore = create(
       addFilesAsync: async (newFiles) => {
         const { preprocessMediaFiles } = await import('../engine/mediaPreprocess.js');
         const { files: cur, addToast } = get();
-        const limit = 20 - cur.length;
+        const limit = 30 - cur.length;
         if (limit <= 0) return;
         const arr = [...newFiles].slice(0, limit);
         const big = arr.some(f => f.size > 50 * 1024 * 1024);
@@ -238,6 +275,18 @@ export const useVideoStore = create(
         pipeline: { ...s.pipeline, visible: true, step, title, sub },
       }), false, 'setPipeline'),
 
+      resetPipelineProgress: () => set(s => ({
+        pipeline: {
+          ...s.pipeline,
+          visible: true,
+          step: 0,
+          title: '',
+          sub: '',
+          autoStyleName: '',
+          done: [false, false, false, false, false, false, false],
+        },
+      }), false, 'resetPipelineProgress'),
+
       donePipelineStep: (n) => set(s => {
         const done = [...s.pipeline.done];
         done[n - 1] = true;
@@ -264,6 +313,10 @@ export const useVideoStore = create(
       removeToast: (id) => set(s => ({
         toasts: s.toasts.filter(t => t.id !== id),
       }), false, 'removeToast'),
+
+      // ── 업체 유형 ──────────────────────────────────────────
+      setRestaurantType: (restaurantType) => set({ restaurantType }, false, 'setRestaurantType'),
+      setDetectedRestaurantType: (t) => set({ detectedRestaurantType: t }, false, 'setDetectedRestaurantType'),
 
       // ── 유저 프롬프트 ──────────────────────────────────────
       setUserPrompt: (userPrompt) => set({ userPrompt }, false, 'setUserPrompt'),

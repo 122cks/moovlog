@@ -21,6 +21,13 @@ const firebaseConfig = {
 
 let storage = null, db = null, sessionDocId = null;
 
+function normalizeRestaurantName(name) {
+  return String(name || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 export function initFirebase() {
   if (!firebaseConfig.apiKey || !firebaseConfig.appId) {
     console.log('[Firebase] API 키 없음 — 로컬 모드');
@@ -67,8 +74,10 @@ export async function firebaseSaveSession(script, restaurantName) {
   if (!db) return;
   sessionDocId = null;
   try {
+    const normalized = normalizeRestaurantName(restaurantName);
     const docRef = await addDoc(collection(db, 'sessions'), {
       restaurant: restaurantName || '',
+      restaurantKey: normalized,
       template:   'auto',
       sceneCount: script.scenes.length,
       title:      script.title || '',
@@ -204,8 +213,10 @@ export async function saveSNSTags(tagsData) {
 export async function saveMarketingKit(data) {
   if (!db) return null;
   try {
+    const normalized = normalizeRestaurantName(data.restaurant);
     const docRef = await addDoc(collection(db, 'marketing_kits'), {
       restaurant:        data.restaurant || '',
+      restaurantKey:     normalized,
       hookTitle:         data.hook_title || '',
       caption:           data.caption || '',
       hashtags30:        data.hashtags_30 || '',
@@ -272,4 +283,54 @@ export async function deleteMarketingKit(id) {
     console.warn('[Firebase] 마케팅 키트 삭제 실패:', e.message);
     throw e;
   }
+}
+
+// ─── 식당명 기준 기존 데이터 삭제 (같은 식당 재생성 시 대체) ────
+async function deleteDocsByRestaurant(collectionName, restaurantName) {
+  if (!db || !restaurantName) return 0;
+  try {
+    const normalized = normalizeRestaurantName(restaurantName);
+    const q = query(
+      collection(db, collectionName),
+      where('restaurantKey', '==', normalized),
+      limit(30),
+    );
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+      console.log(`[Firebase] ${collectionName} 기존 ${snap.size}개 삭제 (${restaurantName})`);
+      return snap.size;
+    }
+
+    // 구버전 데이터 호환: restaurantKey 없는 문서는 restaurant 원문으로 1회 폴백 삭제
+    const legacyQ = query(
+      collection(db, collectionName),
+      where('restaurant', '==', restaurantName.trim()),
+      limit(30),
+    );
+    const legacySnap = await getDocs(legacyQ);
+    if (legacySnap.empty) return 0;
+    await Promise.all(legacySnap.docs.map(d => deleteDoc(d.ref)));
+    console.log(`[Firebase] ${collectionName} 레거시 ${legacySnap.size}개 삭제 (${restaurantName})`);
+    return legacySnap.size;
+  } catch (e) {
+    console.warn(`[Firebase] ${collectionName} 삭제 실패:`, e.message);
+    return 0;
+  }
+}
+
+/**
+ * 기존 세션·마케팅 키트를 삭제하고 새 데이터로 대체
+ * 같은 식당명으로 재생성 시 Firebase에 중복 누적되지 않도록 함
+ */
+export async function firebaseReplaceRestaurantData(script, restaurantName, marketingData) {
+  if (!db) return;
+  // 기존 레코드 삭제 (병렬)
+  await Promise.all([
+    deleteDocsByRestaurant('sessions', restaurantName),
+    deleteDocsByRestaurant('marketing_kits', restaurantName),
+  ]);
+  // 새 데이터 저장
+  await firebaseSaveSession(script, restaurantName).catch(() => {});
+  if (marketingData) await saveMarketingKit(marketingData).catch(() => {});
 }

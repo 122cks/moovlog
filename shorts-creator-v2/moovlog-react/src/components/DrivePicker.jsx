@@ -1,5 +1,6 @@
 // src/components/DrivePicker.jsx
-import { useEffect, useState } from 'react';
+// v2.46: 로그인 반복 버그 수정 — loadToken() 직접 확인, useRef tokenClient 재사용, 401 자동 재인증
+import { useEffect, useState, useRef } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 import { saveToken, loadToken, clearToken } from '../engine/AuthService.js';
 
@@ -15,22 +16,15 @@ function loadScript(src) {
   });
 }
 
-const TOKEN_KEY  = ''; // AuthService에서 관리 — 여기선 사용 안 함
-
-
 export default function DrivePicker({ addFiles: addFilesProp }) {
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [cachedToken, setCachedToken] = useState(null);
-  // addFilesAsync: 조용히 다운스케일 + MIME 폴백 버전
+  // tokenClient는 한 번만 생성하고 재사용 (매 클릭마다 새로 만들면 계정 선택 팝업 반복됨)
+  const tokenClientRef = useRef(null);
+  const clientIdRef    = useRef('');
+
   const { addFilesAsync: storeAddFilesAsync, addToast } = useVideoStore();
   const addFiles = addFilesProp || storeAddFilesAsync;
-
-  // 앱 시작 시 저장된 토큰 복원
-  useEffect(() => {
-    const t = loadToken();
-    if (t) setCachedToken(t);
-  }, []);
 
   useEffect(() => {
     (async () => {
@@ -45,7 +39,6 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
   }, []);
 
   const getClientId = () => {
-    // 환경변수 우선, 없으면 localStorage, 없으면 팝업 입력
     const envId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
     if (envId) return envId.trim();
     let id = localStorage.getItem('moovlog_google_client_id') || '';
@@ -57,42 +50,6 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
       if (id) localStorage.setItem('moovlog_google_client_id', id.trim());
     }
     return id.trim();
-  };
-
-  const handleClick = () => {
-    if (!ready) { addToast('Google API 로딩 중...', 'inf'); return; }
-    if (!API_KEY) { addToast('Google API 키가 설정되지 않았습니다.', 'err'); return; }
-    const clientId = getClientId();
-    if (!clientId) { addToast('클라이언트 ID가 필요합니다.', 'err'); return; }
-
-    // 유효한 토큰 캐시가 있으면 재로그인 없이 바로 피커 열기
-    if (cachedToken) {
-      openPicker(cachedToken, clientId);
-      return;
-    }
-
-    window.google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/drive.readonly',
-      callback: (resp) => {
-        if (resp.error) {
-          clearToken();
-          setCachedToken(null);
-          if (resp.error === 'redirect_uri_mismatch' || resp.error === 'idpiframe_initialization_failed') {
-            addToast(
-              'GCP 콘솔 > 사용자 인증 정보 > OAuth 클라이언트 ID > "Authorized JavaScript origins"에 https://122cks.github.io 를 추가해야 합니다.',
-              'err'
-            );
-          } else {
-            addToast('Google 로그인 실패: ' + resp.error, 'err');
-          }
-          return;
-        }
-        saveToken(resp.access_token);
-        setCachedToken(resp.access_token);
-        openPicker(resp.access_token, clientId);
-      },
-    }).requestAccessToken(); // prompt 생략 → GIS가 상황에 맞게 계정 선택창 표시, silent redirect 방지
   };
 
   const openPicker = (accessToken, clientId) => {
@@ -115,6 +72,55 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
       .setVisible(true);
   };
 
+  // 새 토큰 요청 — tokenClient를 캐싱하여 재사용
+  const requestNewToken = (clientId) => {
+    if (!tokenClientRef.current || clientIdRef.current !== clientId) {
+      clientIdRef.current = clientId;
+      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/drive.readonly',
+        callback: (resp) => {
+          if (resp.error) {
+            clearToken();
+            if (resp.error === 'redirect_uri_mismatch' || resp.error === 'idpiframe_initialization_failed') {
+              addToast(
+                'GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.',
+                'err'
+              );
+            } else if (resp.error !== 'popup_closed_by_user' && resp.error !== 'access_denied') {
+              addToast('Google 로그인 실패: ' + resp.error, 'err');
+            }
+            return;
+          }
+          saveToken(resp.access_token);
+          openPicker(resp.access_token, clientId);
+        },
+      });
+      // 신규 tokenClient: 계정 선택 팝업 표시
+      tokenClientRef.current.requestAccessToken({ prompt: 'select_account' });
+    } else {
+      // 기존 tokenClient 재사용: 팝업 없이 재인증 시도, 실패 시 계정 선택
+      tokenClientRef.current.requestAccessToken({ prompt: '' });
+    }
+  };
+
+  const handleClick = () => {
+    if (!ready) { addToast('Google API 로딩 중...', 'inf'); return; }
+    if (!API_KEY) { addToast('Google API 키가 설정되지 않았습니다.', 'err'); return; }
+    const clientId = getClientId();
+    if (!clientId) { addToast('클라이언트 ID가 필요합니다.', 'err'); return; }
+
+    // localStorage TTL 기반으로 유효 토큰 확인 (React state X → 항상 최신 상태 반영)
+    const validToken = loadToken();
+    if (validToken) {
+      openPicker(validToken, clientId);
+      return;
+    }
+
+    // 유효 토큰 없음 → 로그인 팝업 (tokenClient 재사용으로 반복 팝업 방지)
+    requestNewToken(clientId);
+  };
+
   const pickerCallback = async (data, accessToken) => {
     if (data.action !== window.google.picker.Action.PICKED) return;
     const docs = data.docs || [];
@@ -127,8 +133,15 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
           `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?alt=media`,
           { headers: { Authorization: `Bearer ${accessToken}` } }
         );
+        if (res.status === 401) {
+          // 토큰 만료 → 삭제하고 tokenClient 리셋 (다음 클릭 시 재로그인)
+          clearToken();
+          tokenClientRef.current = null;
+          throw new Error('인증이 만료되었습니다. 다시 버튼을 눌러 로그인해주세요.');
+        }
         if (!res.ok) throw new Error(`'${doc.name}' 다운로드 실패 (${res.status})`);
         const blob = await res.blob();
+        if (!blob.size) throw new Error(`'${doc.name}' 파일을 읽을 수 없습니다. Drive 공유 권한을 확인하세요.`);
         return new File([blob], doc.name, { type: doc.mimeType || blob.type });
       }));
       addFiles(files);

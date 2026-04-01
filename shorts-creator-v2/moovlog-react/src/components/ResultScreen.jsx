@@ -514,20 +514,23 @@ export default function ResultScreen() {
                 { label: '◎ 릴스 캡션',          val: loadedKit.instagramCaption },
                 { label: '▶ 유튜브 쇼츠 태그',    val: loadedKit.youtubeShortsTags },
                 { label: '♪ 틱톡 태그',          val: loadedKit.tiktokTags },
-              ].filter(r => r.val).map(({ label, val }) => (
+              ].map(({ label, val }) => (
                 <div key={label} className="marketing-row" style={{ marginBottom: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                     <span className="marketing-label" style={{ margin: 0 }}>{label}</span>
-                    <button className="marketing-copy-btn" onClick={async () => {
-                      try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료!`, 'ok'); }
-                      catch { addToast('복사 실패', 'err'); }
-                    }}><i className="fas fa-copy" /> 복사</button>
+                    {val && (
+                      <button className="marketing-copy-btn" onClick={async () => {
+                        try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료!`, 'ok'); }
+                        catch { addToast('복사 실패', 'err'); }
+                      }}><i className="fas fa-copy" /> 복사</button>
+                    )}
                   </div>
                   <p className="marketing-text" style={{
                     whiteSpace: 'pre-line', fontSize: '0.78rem', margin: 0,
-                    color: label.includes('태그') || label.includes('해시태그') ? '#a855f7' : '#ddd',
+                    color: val ? (label.includes('태그') || label.includes('해시태그') ? '#a855f7' : '#ddd') : '#666',
                     background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px',
-                  }}>{val}</p>
+                    fontStyle: val ? 'normal' : 'italic',
+                  }}>{val || '(저장된 데이터 없음)'}</p>
                 </div>
               ))}
               {loadedKit.hookVariations?.length > 0 && (

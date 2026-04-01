@@ -55,7 +55,7 @@ function getVideoFilter(scene, theme, dur, isLastScene, sceneIndex = 0) {
   // 기본 해상도 / 크롭
   f.push('scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1');
   // ★ Freeze Frame
-  f.push('tpad=stop_mode=clone:stop_duration=30');
+  f.push('tpad=stop_mode=clone:stop_duration=5');
   
   // 색감 LUT
   f.push(getColorLUT(theme));
@@ -290,21 +290,24 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
 
     const inputLoopArgs = isVideo ? [] : ['-loop', '1'];
     const ssArgs = (isVideo && scene.best_start_pct > 0)
-      ? ['-ss', (scene.best_start_pct * dur).toFixed(2)]
+      ? ['-ss', (scene.best_start_pct * Math.max(dur * 2, 5)).toFixed(2)]
       : [];
-    await ff.exec([
-      ...inputLoopArgs,
-      ...ssArgs,
-      '-i', inputName,
-      '-t', String(dur),
-      '-vf', vf,
-      '-r', String(FPS),
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
-      '-pix_fmt', 'yuv420p', '-an',
-      outputName,
-    ]);
-
-    partFiles.push(outputName);
+    try {
+      await ff.exec([
+        ...inputLoopArgs,
+        ...ssArgs,
+        '-i', inputName,
+        '-t', String(dur),
+        '-vf', vf,
+        '-r', String(FPS),
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+        '-pix_fmt', 'yuv420p', '-an',
+        outputName,
+      ]);
+      partFiles.push(outputName);
+    } catch (sceneErr) {
+      console.warn(`[FFmpeg] 씬 ${i + 1} 인코딩 실패 — 건너뜁니다:`, sceneErr.message);
+    }
     await ff.deleteFile(inputName).catch(() => {});
   }
 

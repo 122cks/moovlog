@@ -72,24 +72,16 @@ export default function ExportPanel() {
     }
   };
 
-  // COOP/COEP 격리 확인 — 스크립트 있을 때는 reload 금지(데이터 손실 방지)
+  // COOP/COEP 격리 확인 — 비격리 환경에서도 우선 시도하고 실패 시 안내/폴백
   const ensureIsolation = () => {
     if (crossOriginIsolated) return true;
-    // 스크립트가 이미 생성된 상태라면 reload하면 데이터 전체 손실
-    if (script?.scenes?.length > 0) {
-      addToast('FFmpeg는 페이지 첫 로드 시 격리가 필요합니다. 기본 저장 버튼을 사용하거나, 새로고침 후 다시 시도해주세요.', 'err');
-      return false;
-    }
-    addToast('FFmpeg 보안 격리를 활성화합니다. 잠시 후 자동 재시작...', 'inf');
-    sessionStorage.removeItem('_coi_r');
-    setTimeout(() => location.reload(), 700);
-    return false;
+    addToast('격리 모드가 아니어서 FFmpeg가 느리거나 실패할 수 있습니다. 우선 시도합니다.', 'inf');
+    return true;
   };
 
   const doExportThumbnail = async () => {
     if (thumbBusy) return;
     if (!script?.scenes?.length || !files?.length) { addToast('시작 전 영상을 만들어주세요', 'err'); return; }
-    if (!ensureIsolation()) return;
     setThumbBusy(true);
     try {
       const blob = await extractThumbnail(script.scenes, files, script, (msg) => addToast(msg, 'inf'));
@@ -105,7 +97,7 @@ export default function ExportPanel() {
   const doExportHybrid = async () => {
     if (hybridBusy || exporting) return;
     if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
-    if (!ensureIsolation()) return;
+    ensureIsolation();
     setHybridBusy(true);
     setExporting(true);
     try {
@@ -145,7 +137,7 @@ export default function ExportPanel() {
     if (ffmpegBusy) return;
     if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
     if (!files?.length) { addToast('미디어 파일이 없습니다', 'err'); return; }
-    if (!ensureIsolation()) return;
+    ensureIsolation();
     setFfmpegBusy(true);
     setFfmpegPct(0);
     try {
@@ -163,7 +155,12 @@ export default function ExportPanel() {
       setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
       setFfmpegPct(0);
     } catch (err) {
-      addToast('FFmpeg 오류: ' + (err?.message || String(err)), 'err');
+      const msg = err?.message || String(err);
+      addToast('FFmpeg 오류: ' + msg, 'err');
+      if (/sharedarraybuffer|crossoriginisolated|coop|coep|security|worker/i.test(msg)) {
+        addToast('FFmpeg 격리 오류로 기본 저장으로 자동 전환합니다.', 'inf');
+        await doExport().catch(() => {});
+      }
       setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
       setFfmpegPct(0);
     } finally {

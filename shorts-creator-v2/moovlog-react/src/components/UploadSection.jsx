@@ -1,6 +1,6 @@
 // src/components/UploadSection.jsx
 import { useCallback, useRef, useState, useEffect } from 'react';
-import { useVideoStore, TEMPLATE_NAMES, TEMPLATE_HINTS } from '../store/videoStore.js';
+import { useVideoStore, TEMPLATE_NAMES, TEMPLATE_HINTS, RESTAURANT_TYPES } from '../store/videoStore.js';
 import { startMake } from '../engine/pipeline.js';
 import { setGeminiKey } from '../engine/gemini.js';
 import { setTypeCastKeys } from '../engine/tts.js';
@@ -12,6 +12,7 @@ export default function UploadSection() {
   const {
     files, addFiles, removeFile, restaurantName, setRestaurantName,
     selectedTemplate, setTemplate, aspectRatio, setAspectRatio,
+    restaurantType, setRestaurantType,
     addToast,
   } = useVideoStore();
 
@@ -115,7 +116,7 @@ export default function UploadSection() {
           <span className="num">01</span>
           <div>
             <h2>이미지 · 영상 업로드</h2>
-            <p>사진과 영상 클립을 올려주세요 (최대 20개)</p>
+            <p>사진와 영상 클립을 올려주세요 (업로드 최다 30개를 모두 사용함)</p>
           </div>
         </div>
 
@@ -140,7 +141,7 @@ export default function UploadSection() {
             hidden
             onChange={onFileChange}
           />
-          <p className="drop-hint">JPG · PNG · MP4 · MOV</p>
+          <p className="drop-hint">JPG · PNG · MP4 · MOV · 최다 30개</p>
         </div>
 
         <div className="drive-row">
@@ -186,6 +187,26 @@ export default function UploadSection() {
         <p className="ai-auto-hint">
           <i className="fas fa-sparkles" /> AI가 이미지를 분석해 최적의 스타일 · 훅 · 템플릿을 자동 선택합니다
         </p>
+      </div>
+
+      {/* 업체 유형 선택 — Step 0: 파이프라인 유형 분류단계 */}
+      <div className="card" style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#a78bfa', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            🏪 업체 유형 선택
+          </span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-sub)' }}>— 유형별 최신 숫싼/릴스 스타일로 자동 설계</span>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+          {Object.entries(RESTAURANT_TYPES).map(([key, info]) => (
+            <button
+              key={key}
+              className={`tpl-chip ${restaurantType === key ? 'active' : ''}`}
+              onClick={() => setRestaurantType(key)}
+              title={info.hint || ''}
+            >{info.label}</button>
+          ))}
+        </div>
       </div>
 
       {/* 템플릿 수동 선택 */}

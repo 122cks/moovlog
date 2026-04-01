@@ -3,10 +3,12 @@ import { useVideoStore } from '../store/videoStore.js';
 
 const STEPS = [
   { icon: 'fa-search',         label: '식당 실시간 정보 조사' },
+  { icon: 'fa-utensils',       label: '업체 유형 분류' },
   { icon: 'fa-eye',            label: '시각 분석 + 스타일 선택' },
   { icon: 'fa-film',           label: '스토리보드 설계' },
+  { icon: 'fa-link',           label: '영상 컷 삽입 + 자막 매칭 검증' },
   { icon: 'fa-microphone-alt', label: 'AI 음성 합성' },
-  { icon: 'fa-video',          label: '렌더링 준비' },
+  { icon: 'fa-video',          label: '렌더링 준비 + 품질 검수' },
 ];
 
 export default function LoadingOverlay() {

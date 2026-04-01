@@ -3,13 +3,13 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/moovlog/shorts-creator/',   // GitHub Pages 경로 — 기존과 동일
+  base: '/moovlog/shorts-creator/',   // GitHub Pages 寃쎈줈 ??湲곗〈怨??숈씪
   publicDir: 'public',
-  // FFmpeg WASM: Vite dev server가 사전 번들링하지 않도록 exclude
+  // FFmpeg WASM: Vite dev server媛 ?ъ쟾 踰덈뱾留곹븯吏 ?딅룄濡?exclude
   optimizeDeps: {
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
-  // FFmpeg WASM이 요구하는 SharedArrayBuffer를 위한 COOP/COEP 헤더 (dev server)
+  // FFmpeg WASM???붽뎄?섎뒗 SharedArrayBuffer瑜??꾪븳 COOP/COEP ?ㅻ뜑 (dev server)
   server: {
     headers: {
       'Cross-Origin-Opener-Policy':   'same-origin',
@@ -17,16 +17,25 @@ export default defineConfig({
     },
   },
   build: {
-    target: 'es2022',                 // WebCodecs, AudioWorklet 지원
-    outDir: 'dist',
-    rollupOptions: {
+    target: 'esnext',                 // WebCodecs, AudioWorklet 吏??    outDir: 'dist',
+    minify: false,                    // ?꾩떆: ??⑸웾 ?뚯씪 Rollup OOM ?고쉶
+      reportCompressedSize: false,
+      emptyOutDir: false,
+      rollupOptions: {
+      treeshake: false,
       output: {
-        manualChunks: {
-          'vendor-react':   ['react', 'react-dom'],
-          'vendor-muxers':  ['mp4-muxer', 'webm-muxer'],
-          'vendor-firebase':['firebase/app', 'firebase/storage', 'firebase/firestore'],
+        manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) return "vendor-react";
+          if (id.includes("node_modules/firebase")) return "vendor-firebase";
+          if (id.includes("node_modules")) return "vendor";
+          if (id.includes("gemini-script")) return "engine-script";
+          if (id.includes("gemini")) return "engine-gemini";
+          if (id.includes("/engine/")) return "engine-core";
         },
       },
     },
-  },
+    },
+    worker: {
+      format: 'es',
+    },
 });

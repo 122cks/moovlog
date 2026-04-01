@@ -42,6 +42,21 @@ export default function App() {
     initFirebase();
 
     document.title = '무브먼트 Shorts Creator v2';
+
+    // ── 조기 COI 감지 ──────────────────────────────────────────────────────────
+    // SW가 이미 컨트롤 중인데 crossOriginIsolated가 false이면 (도구 손실 없는 초기 상태에서) 재로드
+    // 아직 파일/스크립트가 없을 때만 재로드해서 데이터 손실 방지
+    if (!window.crossOriginIsolated && navigator.serviceWorker?.controller) {
+      const store = useVideoStore.getState();
+      if (!store.files.length && !store.script) {
+        const attempts = parseInt(sessionStorage.getItem('_coi_attempts') || '0', 10);
+        if (attempts < 3) {
+          sessionStorage.setItem('_coi_attempts', String(attempts + 1));
+          console.log('[App] SW 활성 but !crossOriginIsolated → 재로드 (COI 헤더 확보)');
+          location.reload();
+        }
+      }
+    }
   }, []);
 
   return (

@@ -1,3 +1,13 @@
+
+> moovlog-shorts-creator@2.46 build
+> vite build ; echo exit: $?
+
 [36mvite v5.4.21 [32mbuilding for production...[36m[39m
-transforming...
-[32m✓[39m 78 modules transformed.
+[32m✓[39m 0 modules transformed.
+[31mx[39m Build failed in 15ms
+[31merror during build:
+[31mCould not resolve entry module ";/index.html".[31m
+    at getRollupError (file:///c:/Users/7tpwz/OneDrive/Onedrive%20-%20%EC%94%A8%EB%A7%88%EC%8A%A4/OneDrive/02_Workspace/moovlog/shorts-creator-v2/moovlog-react/node_modules/rollup/dist/es/shared/parseAst.js:402:41)
+    at error (file:///c:/Users/7tpwz/OneDrive/Onedrive%20-%20%EC%94%A8%EB%A7%88%EC%8A%A4/OneDrive/02_Workspace/moovlog/shorts-creator-v2/moovlog-react/node_modules/rollup/dist/es/shared/parseAst.js:398:42)
+    at ModuleLoader.loadEntryModule (file:///c:/Users/7tpwz/OneDrive/Onedrive%20-%20%EC%94%A8%EB%A7%88%EC%8A%A4/OneDrive/02_Workspace/moovlog/shorts-creator-v2/moovlog-react/node_modules/rollup/dist/es/shared/node-entry.js:21731:20)
+    at async Promise.all (index 0)[39m
