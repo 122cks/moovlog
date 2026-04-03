@@ -230,12 +230,33 @@ function LoadedKitTabs({ kit, addToast }) {
   const [openTab, setOpenTab] = useState(null);
   if (!kit) return null;
 
+  // 인스타: 본문 제한 없이, 태그 5개만
+  const fmtInsta = (cap) => {
+    if (!cap) return '';
+    const sep = cap.indexOf('\n\n');
+    if (sep !== -1) {
+      const desc = cap.slice(0, sep);
+      const tags = (cap.slice(sep + 2).match(/#[^\s#]+/g) || []).slice(0, 5);
+      return desc + '\n\n' + tags.join(' ');
+    }
+    const tags = (cap.match(/#[^\s#]+/g) || []).slice(0, 5);
+    return tags.length ? tags.join(' ') : cap;
+  };
+  // N영수증: 공백 포함 400자 제한
+  const fmtReceipt = (text) => {
+    const raw = String(text || '');
+    if (raw.length <= 400) return raw;
+    const cut = raw.slice(0, 400);
+    const sp = cut.lastIndexOf(' ');
+    return sp > 350 ? cut.slice(0, sp) : cut;
+  };
+
   const TABS = [
     { id: 'nclip',   label: 'N클립',   color: '#03c75a', val: kit.naverClipTags },
     { id: 'shorts',  label: '쇼츠',    color: '#ff0000', val: kit.youtubeShortsTags },
-    { id: 'insta',   label: '인스타',  color: '#e1306c', val: kit.instagramCaption || kit.caption },
+    { id: 'insta',   label: '인스타',  color: '#e1306c', val: fmtInsta(kit.instagramCaption || kit.caption) },
     { id: 'tiktok',  label: '틱톡',    color: '#6fc2f5', val: kit.tiktokTags },
-    { id: 'receipt', label: 'N영수증', color: '#03c75a', val: kit.receiptReview },
+    { id: 'receipt', label: 'N영수증', color: '#03c75a', val: fmtReceipt(kit.receiptReview) },
   ].filter(t => t.val?.trim());
 
   const copy = async (text) => {
@@ -376,6 +397,13 @@ function MarketingKitTabs({ script, addToast }) {
     const tags = (cap.match(/#[^\s#]+/g) || []).slice(0, 5);
     return tags.length ? tags.join(' ') : cap;
   };
+  const pReceipt = (text) => {
+    const raw = String(text || '');
+    if (raw.length <= 400) return raw;
+    const cut = raw.slice(0, 400);
+    const sp = cut.lastIndexOf(' ');
+    return sp > 350 ? cut.slice(0, sp) : cut;
+  };
   const pTiktok = () => {
     const cap = script?.instagram_caption || script?.marketing?.caption || '';
     const sep = cap.indexOf('\n\n');
@@ -391,7 +419,7 @@ function MarketingKitTabs({ script, addToast }) {
     { id: 'shorts',  label: '쇼츠',    badge: '100자',     color: '#ff0000', text: pShorts(script.youtube_shorts_tags) },
     { id: 'insta',   label: '인스타',  badge: '본문+태그5', color: '#e1306c', text: pInsta(script.instagram_caption) },
     { id: 'tiktok',  label: '틱톡',    badge: '본문+태그5', color: '#6fc2f5', text: pTiktok() },
-    { id: 'receipt', label: 'N영수증', badge: '한줄평',    color: '#03c75a', text: script?.marketing?.receipt_review || '' },
+    { id: 'receipt', label: 'N영수증', badge: '400자',     color: '#03c75a', text: pReceipt(script?.marketing?.receipt_review) },
   ].filter(t => t.text.trim());
 
   if (!TABS.length) return null;

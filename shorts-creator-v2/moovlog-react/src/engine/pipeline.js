@@ -495,6 +495,7 @@ export async function startMake() {
           }
           const imgMeta = analysisMap[s.media_idx ?? (blockStart + j)] || {};
           finalScenes.push({ ...s, duration: durations[j], caption1, caption2, subtitle: caption1 || s.subtitle || '',
+            narration_duration: j === 0 && audioDur > 0 ? audioDur : 0,
             focus_coords:    imgMeta.focus_coords    || null,
             aesthetic_score: imgMeta.aesthetic_score || null,
             foodie_score:    imgMeta.foodie_score    || null,
@@ -524,6 +525,7 @@ export async function startMake() {
         }
         const imgMeta = analysisMap[sc.media_idx ?? sceneIdx] || {};
         finalScenes.push({ ...sc, duration, caption1, caption2, subtitle: caption1 || sc.subtitle || '',
+          narration_duration: buf?.duration > 0 ? buf.duration : 0,
           focus_coords:    imgMeta.focus_coords    || null,
           aesthetic_score: imgMeta.aesthetic_score || null,
           foodie_score:    imgMeta.foodie_score    || null,
@@ -718,7 +720,8 @@ export async function startMake() {
               blkScenes.forEach((s, j) => {
                 let cap1 = s.caption1, cap2 = s.caption2;
                 if (!cap1?.trim()) { const [c1, c2] = splitCaptions(s.narration || s.subtitle || ''); cap1 = c1; cap2 = c2; }
-                retryFinalScenes.push({ ...s, duration: durs[j], caption1: cap1, caption2: cap2, subtitle: cap1 || s.subtitle || '' });
+                retryFinalScenes.push({ ...s, duration: durs[j], caption1: cap1, caption2: cap2, subtitle: cap1 || s.subtitle || '',
+                  narration_duration: j === 0 && aDur > 0 ? aDur : 0 });
               });
             } else {
               const aDur = (rbuf && rbuf.duration > 0) ? rbuf.duration : 0;
@@ -728,7 +731,8 @@ export async function startMake() {
               dur = Math.max(2.0, dur);
               let cap1 = rsc.caption1, cap2 = rsc.caption2;
               if (!cap1?.trim()) { const [c1, c2] = splitCaptions(rsc.narration || rsc.subtitle || ''); cap1 = c1; cap2 = c2; }
-              retryFinalScenes.push({ ...rsc, duration: dur, caption1: cap1, caption2: cap2, subtitle: cap1 || rsc.subtitle || '' });
+              retryFinalScenes.push({ ...rsc, duration: dur, caption1: cap1, caption2: cap2, subtitle: cap1 || rsc.subtitle || '',
+                narration_duration: aDur });
               rsi++;
             }
           }
