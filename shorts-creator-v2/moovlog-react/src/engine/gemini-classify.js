@@ -50,27 +50,35 @@ JSON만 반환: {"type": "grill", "confidence": 0.9, "reason": "삼겹살 전문
 // ─── STEP 6: AI 품질 검수 ────────────────────────────────
 export async function geminiQualityCheck(script, restaurantName, restaurantType = '') {
   const scenes = script.blocks || script.scenes || [];
-  const sceneSummary = scenes.slice(0, 8).map((sc, i) => {
+  const sceneSummary = scenes.slice(0, 10).map((sc, i) => {
     const narration = sc.narration || '';
     const caption = sc.caption || sc.caption1 || '';
     const duration = sc.total_duration || sc.duration || 0;
-    return `씬${i + 1}: narration="${narration}" caption="${caption}" duration=${duration}s`;
+    const cutCount = Array.isArray(sc.video_cuts) ? sc.video_cuts.length : 1;
+    return `씬${i + 1}: narration="${narration}" caption="${caption}" total_duration=${duration}s cuts=${cutCount}`;
   }).join('\n');
+
+  const blockCount = script.blocks?.length || 0;
+  const flatSceneCount = script.scenes?.length || 0;
+  const structureInfo = blockCount > 0
+    ? `블록 수: ${blockCount}개`
+    : `씬 수: ${flatSceneCount}개`;
 
   const prompt = `당신은 2026년 한국 숏폼 콘텐츠 전문 QA 디렉터입니다.
 아래 릴스/쇼츠 스크립트를 검수하고 품질 점수를 평가하세요.
 
 식당명: ${restaurantName}
 업체 유형: ${restaurantType || '미분류'}
+구조: ${structureInfo}
 
-[스크립트 요약 - 최대 8씬]
+[스크립트 요약 - 최대 10씬]
 ${sceneSummary}
 
 [검수 기준 (각 항목 0~10점)]
-1. 훅(Hook): 첫 씬이 2초 안에 시청자를 멈추게 하는가?
+1. 훅(Hook): 첫 씬이 2초 안에 시청자를 멈추게 하는가? 결론 선제시, 강렬한 비주얼 묘사?
 2. 금지어 준수: "미쳤다", "대박", "환상적인", "선사", "구워드립니다(표현 오류)" 등 금지어 미사용?
-3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가?
-4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가?
+3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가? 반전→클라이맥스→CTA 아크 구성?
+4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가? 오감 묘사 포함?
 5. CTA: 마지막 씬에 구독/좋아요 유도가 포함되었는가?
 
 threshold: 총점 45점 이상(90%)이면 통과 — 44점 이하면 무조건 pass:false 반환

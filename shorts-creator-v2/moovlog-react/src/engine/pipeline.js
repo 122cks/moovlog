@@ -329,8 +329,8 @@ export async function startMake() {
 
         // 각 컷 AI 설계 duration 합산
         const rawTotal = blockScenes.reduce((sum, s) => sum + Math.max(BPM_BEAT, s.duration || BPM_BEAT), 0);
-        // 필요 최소 총 길이 = audioDur + 0.1s 여백 (타이트 컷오프 방지)
-        const minTotal = audioDur > 0 ? audioDur + 0.1 : rawTotal;
+        // 필요 최소 총 길이: 오디오 + 0.5s 여유 AND 최소 2.5s 보장 (타이트 컷오프 방지)
+        const minTotal = Math.max(audioDur > 0 ? audioDur + 0.5 : 0, 2.5);
         const deficit  = Math.max(0, minTotal - rawTotal);
 
         // 각 컷 BPM 스냅
@@ -342,8 +342,8 @@ export async function startMake() {
 
         // BPM 스냅 후에도 부족하면 재보정
         const snappedTotal = durations.reduce((s, d) => s + d, 0);
-        if (audioDur > 0 && snappedTotal < audioDur + 0.1) {
-          durations[durations.length - 1] += Math.ceil((audioDur + 0.1 - snappedTotal) / BPM_BEAT) * BPM_BEAT;
+        if (snappedTotal < minTotal) {
+          durations[durations.length - 1] += Math.ceil((minTotal - snappedTotal) / BPM_BEAT) * BPM_BEAT;
         }
 
         blockScenes.forEach((s, j) => {
@@ -470,6 +470,47 @@ export async function startMake() {
           retryScript = { ...retryScript, scenes: retryRefined.scenes };
           // TTS 재생성
           const retryAudioBuffers = await generateAllTTS(retryScript.scenes, () => {}, retryScript.theme).catch(() => retryScript.scenes.map(() => null));
+
+          // ⚠️ duration sync 필수 적용 (누락 시 narration 중간 끊김 발생)
+          const retryFinalScenes = [];
+          let rsi = 0;
+          while (rsi < retryScript.scenes.length) {
+            const rsc = retryScript.scenes[rsi];
+            const rbuf = retryAudioBuffers[rsi];
+            if (rsc.blockIdx !== undefined) {
+              const blkStart = rsi;
+              const blkId    = rsc.blockIdx;
+              while (rsi < retryScript.scenes.length && retryScript.scenes[rsi].blockIdx === blkId) rsi++;
+              const blkScenes = retryScript.scenes.slice(blkStart, rsi);
+              const aDur = (rbuf && rbuf.duration > 0) ? rbuf.duration : 0;
+              const rawTot = blkScenes.reduce((sum, s) => sum + Math.max(BPM_BEAT, s.duration || BPM_BEAT), 0);
+              const minTot = Math.max(aDur > 0 ? aDur + 0.5 : 0, 2.5);
+              let durs = blkScenes.map(s =>
+                Math.max(BPM_BEAT, Math.round(Math.max(BPM_BEAT, s.duration || BPM_BEAT) / BPM_BEAT) * BPM_BEAT)
+              );
+              const def = Math.max(0, minTot - rawTot);
+              if (def > 0) durs[durs.length - 1] += Math.ceil(def / BPM_BEAT) * BPM_BEAT;
+              const snapped = durs.reduce((s, d) => s + d, 0);
+              if (snapped < minTot) durs[durs.length - 1] += Math.ceil((minTot - snapped) / BPM_BEAT) * BPM_BEAT;
+              blkScenes.forEach((s, j) => {
+                let cap1 = s.caption1, cap2 = s.caption2;
+                if (!cap1?.trim()) { const [c1, c2] = splitCaptions(s.narration || s.subtitle || ''); cap1 = c1; cap2 = c2; }
+                retryFinalScenes.push({ ...s, duration: durs[j], caption1: cap1, caption2: cap2, subtitle: cap1 || s.subtitle || '' });
+              });
+            } else {
+              const aDur = (rbuf && rbuf.duration > 0) ? rbuf.duration : 0;
+              let dur = aDur > 0
+                ? Math.max(2.0, Math.round((aDur + 0.5) / BPM_BEAT) * BPM_BEAT)
+                : Math.max(2.0, Math.round((rsc.duration || 3.0) / BPM_BEAT) * BPM_BEAT);
+              dur = Math.max(2.0, dur);
+              let cap1 = rsc.caption1, cap2 = rsc.caption2;
+              if (!cap1?.trim()) { const [c1, c2] = splitCaptions(rsc.narration || rsc.subtitle || ''); cap1 = c1; cap2 = c2; }
+              retryFinalScenes.push({ ...rsc, duration: dur, caption1: cap1, caption2: cap2, subtitle: cap1 || rsc.subtitle || '' });
+              rsi++;
+            }
+          }
+          retryScript = { ...retryScript, scenes: retryFinalScenes };
+
           setScript(retryScript);
           setAudioBuffers(retryAudioBuffers);
           workingScript = retryScript;

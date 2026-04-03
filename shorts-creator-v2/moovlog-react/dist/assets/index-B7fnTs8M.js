@@ -1814,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.53" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.54" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -1909,7 +1909,8 @@ async function generateScript(restaurantName, analysis, userPrompt = "", researc
     return `${mediaLabel}${p.idx}(${p.type}/감성${p.emotional_score}점${p.is_exterior ? "/🏪외관" : ""}): 효과=${p.best_effect}, ${p.suggested_duration}s, focus="${p.focus}", narration_hint="${p.narration_hint || p.focus || ""}"`;
   }).join("\n");
   const isTrend = VIRAL_TRENDS[selectedTemplate];
-  const totalTarget = isTrend ? isTrend.durations.reduce((a, v) => a + v, 0) : Math.min(Math.max(files.length * 4 + 8, 30), 55);
+  const sceneCountTarget = isTrend ? isTrend.durations.length : Math.max(5, Math.min(Math.ceil(files.length / 2.5), 7));
+  const totalTarget = isTrend ? isTrend.durations.reduce((a, v) => a + v, 0) : Math.max(sceneCountTarget * 4, 22);
   const topFileIdxs = (analysis.recommended_order?.length ? analysis.recommended_order.slice(0, 10) : Array.from({ length: Math.min(files.length, 10) }, (_, i) => i)).filter((i) => i < files.length);
   const _imgPartsArr = await Promise.all(
     topFileIdxs.map(async (i) => {
@@ -1936,8 +1937,10 @@ async function generateScript(restaurantName, analysis, userPrompt = "", researc
   const imgParts = _imgPartsArr.flat();
   const trendInstruction = isTrend ? `
 [🚨 바이럴 트렌드 템플릿 강제 규칙 🚨]
-"${isTrend.name}" 포맷 — 정확히 ${isTrend.durations.length}개 씬, duration 배열: [${isTrend.durations.join(", ")}]
-duration 1.5초 미만 씬 → narration 비우거나 단어 1~2개만.
+"${isTrend.name}" 포맷 — 정확히 ${sceneCountTarget}개 블록으로 구성.
+각 블록의 total_duration 목표: ${(totalTarget / sceneCountTarget).toFixed(1)}초 내외 (3.0~5.5초 범위 내).
+이 템플릿의 에너지감을 살리되, 블록의 total_duration은 반드시 3.0초 이상이어야 합니다.
+video_cuts 개별 컷은 0.5~2.5초로 다양하게 조합하여 이 템플릿만의 리듬감을 구현하세요.
 ` : "";
   const restaurantTypeHint = restaurantType ? "[업체 유형: " + restaurantType + "] — 이 업체 유형의 2026 트렌드·분위기·고객층에 최적화된 나레이션과 자막 스타일을 적용하세요.\n" : "";
   const prompt = `당신은 담백하고 신뢰감 있는 2030 맛집 크리에이터 "무브먼트(MOOVLOG)"입니다. 친한 지인에게 좋은 맛집을 추천하듯, 과장 없이 현실감 있는 구어체로 나레이션을 작성하세요.
@@ -1988,12 +1991,12 @@ ${researchData}
 ${imgSummary || "분석 없음"}
 권장 컷 순서: [${order.join(",")}]
 
-[★ 총 ${totalTarget}초, ${files.length}씬 구성]
-씬1 발견/훅(2.5~3.5s): 강렬한 첫 비주얼 + 궁금증 유발 자막
-씬2 설정/기대(3~4s): 이 곳이 특별한 이유, 분위기·비하인드
-씬3 클라이맥스 전(3~4s): 대표 메뉴 등장, 텍스처·디테일
-씬4 감정 피크(3~4.5s): 맛·경험 최고조 → 가장 인상적인 컷
-마지막 씬 CTA(3~4s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption1에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.${exteriorInfo}
+[★ 총 ${totalTarget}초, ${sceneCountTarget}개 블록으로 구성 — 파일 ${files.length}개 업로드됐어도 블록은 반드시 ${sceneCountTarget}개 이내, 한 블록에 미디어 여러 개 교차 편집 ★]
+블록1 발견/훅(total_duration 3.0~4.5s): 강렬한 첫 비주얼 + 궁금증 유발 자막
+블록2 설정/기대(total_duration 3.5~4.5s): 이 곳이 특별한 이유, 분위기·비하인드
+블록3 클라이맥스 전(total_duration 3.5~4.5s): 대표 메뉴 등장, 텍스처·디테일
+블록4 감정 피크(total_duration 3.5~5.0s): 맛·경험 최고조 → 가장 인상적인 컷
+마지막 블록 CTA(total_duration 3.0~4.5s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.${exteriorInfo}
 
 [🔁 리텐션 루프 전략 — 시청자를 끝까지 붙잡는 4단계 구조]
 • 씬1 (opening_question): 첫 프레임에 답을 알고 싶은 질문을 던져라. 예: "이 줄이 진짜 맞아?" / "가격이 얼마길래?"
@@ -2007,15 +2010,15 @@ ${imgSummary || "분석 없음"}
 • platform_y_offset: 520 (Reels 기준 자막 Y오프셋 픽셀. 변경 불필요 시 520 고정)
 
 [⏱ Duration 규칙 — 반드시 준수]
-• 모든 씬의 duration은 2.0초 이상 4.5초 이하로 설정하세요.
-• 0.5초, 1초처럼 2초 미만의 짧은 duration은 영상 로딩 전 화면이 넘어가 깜박임의 원인이 됩니다. 절대 사용 금지.
-• trendInstruction의 duration 배열이 제시되더라도 2.0초 미만 값은 2.0초로 올려서 사용하세요.
-• 자막 글자 수 기반 duration 가이드 (자막 다이어트 후 캡션 총 글자 수 기준):
-  - 총 10자 미만 → 2.0~2.2초 (임팩트 컷, 눈에 쏙 들어오는 짧은 자막)
-  - 총 10~18자 → 2.3~3.0초 (정보 전달, 시청자가 편하게 읽을 시간 확보)
-  - 총 18자 이상 → 3.0~4.0초 (상세 묘사, 나레이션 호흡 맞추기)
-• 비디오 소스(영상 파일)가 씬 duration보다 짧으면 자동 슬로우모션이 적용됩니다. 비디오 씬의 duration은 소스 길이의 2배를 넘지 마세요 (예: 2초 클립 → duration 최대 4초).
-• 이미지 소스는 Ken Burns 효과 적용 — duration 제한 없음 (3~4.5초 권고).
+★ 블록의 total_duration (= video_cuts 합산, 나레이션 재생 시간 전체): 반드시 3.0초 이상 5.5초 이하.
+  - 블록 narration 40자 미만 → total_duration 3.0~4.0초
+  - 블록 narration 40~60자 → total_duration 4.0~5.0초
+  - 블록 narration 60자 초과 → total_duration 4.5~5.5초
+★ video_cuts 개별 컷 duration: 비트매칭을 위해 0.5~2.5초로 자유롭게 조합 가능. (단, 모든 컷 합계가 total_duration과 일치해야 함)
+• 컷 최소 0.5초: 그 미만은 화면 로딩 전 전환되어 깜빡임 발생.
+• 컷 duration 가이드: 훅 클로즈업=0.7~1.0초, 정보 전달=1.0~2.0초, 클라이맥스 안정=2.0~3.0초.
+• 비디오 소스 컷: duration = 클립 길이의 0.5~2배 (예: 3초 클립 → 1.5~6초 duration).
+• 이미지 소스 컷: Ken Burns 효과 적용 — 0.7~3.0초 권고.
 
 [🤖 AI 텍스트 '인간화' (Humanize AI) 5대 원칙]
 가장 중요한 규칙입니다. AI가 작성한 티가 나는 완벽하고 기계적인 문장을 절대 금지합니다.
@@ -2070,13 +2073,14 @@ ${imgSummary || "분석 없음"}
 
 [🎬 인간 크리에이터급 컷편집 템플릿 — 비트매칭 필수 적용]
 모든 블록을 기계적으로 3초씩 배분하는 촌스러운 편집을 절대 금지합니다.
-아래 비트매칭 구조로\`blocks\` 출력 JSON(하단 참조)을 구성하고, 각 블록의 \`video_cuts\` 안에서 0.5~1.5초 짧은 컷과 2.0~3.0초 긴 컷을 반드시 섞어 리듬감을 만드세요.
+아래 비트매칭 구조로\`blocks\` 출력 JSON(하단 참조)을 구성하고, 각 블록의 \`video_cuts\` 안에서 0.5~1.5초 짧은 컷과 1.5~2.5초 긴 컷을 반드시 섞어 리듬감을 만드세요.
+단, 모든 video_cuts의 duration 합 = 해당 블록의 total_duration과 일치해야 합니다.
 
 ■ 비트매칭 리듬 규칙:
-- 블록 시작 훅 컷: 0.7~1.0초 (나레이션 없음 — 자막 + 임팩트 비주얼만)
-- 교차 편집 컷: 0.5~0.8초짜리 클로즈업 1~2개
+- 블록 시작 훅 컷: 0.7~1.2초 (나레이션 없음 — 자막 + 임팩트 비주얼만)
+- 교차 편집 컷: 0.5~1.0초짜리 클로즈업 1~2개
 - 클라이맥스 안정 컷: 1.5~2.5초 (풀샷 또는 인테리어 — 나레이션 본격 시작)
-- CTA 블록: 2.0~3.0초
+- CTA 블록: 총 3.0~4.5초 (single cut 또는 2 cuts)
 
 [🎥 카메라 앵글 및 화각(Shot Size) 배치 규칙]
 - 블록마다 화각을 교차 편집(Cross-cutting)하여 시청자 시각 피로를 줄이세요.
@@ -2164,7 +2168,7 @@ ${exteriorIdx !== void 0 ? "• 가게 외관 사진(" + exteriorIdx + "번)은 
 [릴스 최적화 자가 검증 — 최종 JSON 출력 전 스스로 채점 후 audit_report에 담기]
 • Hook(후킹): 첫 씬 caption1이 2초 안에 시청자를 멈추게 하는가? (0~100점)
 • Readability(가독성): 모든 caption1이 12자 이내, caption2가 8자 이내인가? (0~100점)
-• Pacing(박자): 모든 duration이 2.0~4.5초 이며 글자 수 기준 가이드에 맞게 배분했는가? (0~100점)
+• Pacing(박자): 모든 블록의 total_duration이 3.0~5.5초 범위이고, video_cuts 개별 컷의 합이 total_duration과 일치하는가? (0~100점)
 3항목 평균 점수를 "score" 필드에, 릴스에서 터지는 이유 한 줄을 "reason" 필드에 담아서 JSON에 포함하세요.
 기준 미달 항목은 즉시 수정 후 출력하세요.
 
@@ -2186,7 +2190,7 @@ ${exteriorIdx !== void 0 ? "• 가게 외관 사진(" + exteriorIdx + "번)은 
 기존의 '1화면 = 1자막/음성' 구조를 절대 금지합니다. 아래 \`blocks\` 구조로 출력하세요.
 - narration: 자연스럽게 이어지는 한 문장 (2~4초 길이 호흡)
 - caption: 블록 전체 시간 동안 유지되는 짧고 굵은 자막
-- total_duration: narration 길이 + 여유 (2.5~4.5초)
+- total_duration: narration 길이 + 여유 0.5초 이상 (3.0~5.5초 고정 범위, 최소 3.0s 준수)
 - video_cuts: narration이 재생되는 동안 화면에서 빠르게 교차할 짧은 컷들 (0.5~2.5초)
 ※ video_cuts 각 항목에 media_idx를 반드시 지정하세요. 시스템이 타이밍 자동 보정합니다.
 
@@ -2209,6 +2213,25 @@ JSON만 반환:
     const hasBlocks = Array.isArray(obj.blocks) && obj.blocks.length > 0;
     const hasScenes = Array.isArray(obj.scenes) && obj.scenes.length > 0;
     if (!hasBlocks && !hasScenes) throw new Error("스크립트 오류");
+    if (hasBlocks) {
+      obj.blocks = obj.blocks.map((block) => {
+        const cuts = Array.isArray(block.video_cuts) ? block.video_cuts.map((cut) => ({
+          ...cut,
+          duration: Math.max(0.5, Math.min(3, Number(cut.duration) || 1))
+        })) : block.video_cuts;
+        const rawCutTotal = Array.isArray(cuts) ? cuts.reduce((s, c) => s + (c.duration || 1), 0) : 0;
+        const clampedTotal = Math.max(3, Math.min(5.5, Number(block.total_duration) || 4));
+        let finalCuts = cuts;
+        if (Array.isArray(cuts) && cuts.length > 0 && rawCutTotal < clampedTotal - 0.05) {
+          finalCuts = [...cuts];
+          finalCuts[finalCuts.length - 1] = {
+            ...finalCuts[finalCuts.length - 1],
+            duration: Math.round((finalCuts[finalCuts.length - 1].duration + (clampedTotal - rawCutTotal)) * 100) / 100
+          };
+        }
+        return { ...block, total_duration: clampedTotal, video_cuts: finalCuts };
+      });
+    }
     if (hasScenes) {
       obj.scenes = obj.scenes.map((sc) => ({
         ...sc,
@@ -2290,27 +2313,35 @@ JSON만 반환: {"type": "grill", "confidence": 0.9, "reason": "삼겹살 전문
 // ─── STEP 6: AI 품질 검수 ────────────────────────────────
 async function geminiQualityCheck(script, restaurantName, restaurantType = '') {
   const scenes = script.blocks || script.scenes || [];
-  const sceneSummary = scenes.slice(0, 8).map((sc, i) => {
+  const sceneSummary = scenes.slice(0, 10).map((sc, i) => {
     const narration = sc.narration || '';
     const caption = sc.caption || sc.caption1 || '';
     const duration = sc.total_duration || sc.duration || 0;
-    return `씬${i + 1}: narration="${narration}" caption="${caption}" duration=${duration}s`;
+    const cutCount = Array.isArray(sc.video_cuts) ? sc.video_cuts.length : 1;
+    return `씬${i + 1}: narration="${narration}" caption="${caption}" total_duration=${duration}s cuts=${cutCount}`;
   }).join('\n');
+
+  const blockCount = script.blocks?.length || 0;
+  const flatSceneCount = script.scenes?.length || 0;
+  const structureInfo = blockCount > 0
+    ? `블록 수: ${blockCount}개`
+    : `씬 수: ${flatSceneCount}개`;
 
   const prompt = `당신은 2026년 한국 숏폼 콘텐츠 전문 QA 디렉터입니다.
 아래 릴스/쇼츠 스크립트를 검수하고 품질 점수를 평가하세요.
 
 식당명: ${restaurantName}
 업체 유형: ${restaurantType || '미분류'}
+구조: ${structureInfo}
 
-[스크립트 요약 - 최대 8씬]
+[스크립트 요약 - 최대 10씬]
 ${sceneSummary}
 
 [검수 기준 (각 항목 0~10점)]
-1. 훅(Hook): 첫 씬이 2초 안에 시청자를 멈추게 하는가?
+1. 훅(Hook): 첫 씬이 2초 안에 시청자를 멈추게 하는가? 결론 선제시, 강렬한 비주얼 묘사?
 2. 금지어 준수: "미쳤다", "대박", "환상적인", "선사", "구워드립니다(표현 오류)" 등 금지어 미사용?
-3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가?
-4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가?
+3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가? 반전→클라이맥스→CTA 아크 구성?
+4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가? 오감 묘사 포함?
 5. CTA: 마지막 씬에 구독/좋아요 유도가 포함되었는가?
 
 threshold: 총점 45점 이상(90%)이면 통과 — 44점 이하면 무조건 pass:false 반환
@@ -2702,8 +2733,8 @@ async function startMake() {
 
         // 각 컷 AI 설계 duration 합산
         const rawTotal = blockScenes.reduce((sum, s) => sum + Math.max(BPM_BEAT, s.duration || BPM_BEAT), 0);
-        // 필요 최소 총 길이 = audioDur + 0.1s 여백 (타이트 컷오프 방지)
-        const minTotal = audioDur > 0 ? audioDur + 0.1 : rawTotal;
+        // 필요 최소 총 길이: 오디오 + 0.5s 여유 AND 최소 2.5s 보장 (타이트 컷오프 방지)
+        const minTotal = Math.max(audioDur > 0 ? audioDur + 0.5 : 0, 2.5);
         const deficit  = Math.max(0, minTotal - rawTotal);
 
         // 각 컷 BPM 스냅
@@ -2715,8 +2746,8 @@ async function startMake() {
 
         // BPM 스냅 후에도 부족하면 재보정
         const snappedTotal = durations.reduce((s, d) => s + d, 0);
-        if (audioDur > 0 && snappedTotal < audioDur + 0.1) {
-          durations[durations.length - 1] += Math.ceil((audioDur + 0.1 - snappedTotal) / BPM_BEAT) * BPM_BEAT;
+        if (snappedTotal < minTotal) {
+          durations[durations.length - 1] += Math.ceil((minTotal - snappedTotal) / BPM_BEAT) * BPM_BEAT;
         }
 
         blockScenes.forEach((s, j) => {
@@ -2843,6 +2874,47 @@ async function startMake() {
           retryScript = { ...retryScript, scenes: retryRefined.scenes };
           // TTS 재생성
           const retryAudioBuffers = await generateAllTTS(retryScript.scenes, () => {}, retryScript.theme).catch(() => retryScript.scenes.map(() => null));
+
+          // ⚠️ duration sync 필수 적용 (누락 시 narration 중간 끊김 발생)
+          const retryFinalScenes = [];
+          let rsi = 0;
+          while (rsi < retryScript.scenes.length) {
+            const rsc = retryScript.scenes[rsi];
+            const rbuf = retryAudioBuffers[rsi];
+            if (rsc.blockIdx !== undefined) {
+              const blkStart = rsi;
+              const blkId    = rsc.blockIdx;
+              while (rsi < retryScript.scenes.length && retryScript.scenes[rsi].blockIdx === blkId) rsi++;
+              const blkScenes = retryScript.scenes.slice(blkStart, rsi);
+              const aDur = (rbuf && rbuf.duration > 0) ? rbuf.duration : 0;
+              const rawTot = blkScenes.reduce((sum, s) => sum + Math.max(BPM_BEAT, s.duration || BPM_BEAT), 0);
+              const minTot = Math.max(aDur > 0 ? aDur + 0.5 : 0, 2.5);
+              let durs = blkScenes.map(s =>
+                Math.max(BPM_BEAT, Math.round(Math.max(BPM_BEAT, s.duration || BPM_BEAT) / BPM_BEAT) * BPM_BEAT)
+              );
+              const def = Math.max(0, minTot - rawTot);
+              if (def > 0) durs[durs.length - 1] += Math.ceil(def / BPM_BEAT) * BPM_BEAT;
+              const snapped = durs.reduce((s, d) => s + d, 0);
+              if (snapped < minTot) durs[durs.length - 1] += Math.ceil((minTot - snapped) / BPM_BEAT) * BPM_BEAT;
+              blkScenes.forEach((s, j) => {
+                let cap1 = s.caption1, cap2 = s.caption2;
+                if (!cap1?.trim()) { const [c1, c2] = splitCaptions(s.narration || s.subtitle || ''); cap1 = c1; cap2 = c2; }
+                retryFinalScenes.push({ ...s, duration: durs[j], caption1: cap1, caption2: cap2, subtitle: cap1 || s.subtitle || '' });
+              });
+            } else {
+              const aDur = (rbuf && rbuf.duration > 0) ? rbuf.duration : 0;
+              let dur = aDur > 0
+                ? Math.max(2.0, Math.round((aDur + 0.5) / BPM_BEAT) * BPM_BEAT)
+                : Math.max(2.0, Math.round((rsc.duration || 3.0) / BPM_BEAT) * BPM_BEAT);
+              dur = Math.max(2.0, dur);
+              let cap1 = rsc.caption1, cap2 = rsc.caption2;
+              if (!cap1?.trim()) { const [c1, c2] = splitCaptions(rsc.narration || rsc.subtitle || ''); cap1 = c1; cap2 = c2; }
+              retryFinalScenes.push({ ...rsc, duration: dur, caption1: cap1, caption2: cap2, subtitle: cap1 || rsc.subtitle || '' });
+              rsi++;
+            }
+          }
+          retryScript = { ...retryScript, scenes: retryFinalScenes };
+
           setScript(retryScript);
           setAudioBuffers(retryAudioBuffers);
           workingScript = retryScript;
