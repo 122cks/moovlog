@@ -1,5 +1,5 @@
-import { c as create, d as devtools, i as initializeApp, g as getStorage, a as getFirestore, b as ref, u as uploadBytes, e as getDownloadURL, f as addDoc, h as collection, s as serverTimestamp, j as updateDoc, k as doc, q as query, o as orderBy, l as limit, m as getDocs, w as where, n as deleteDoc, p as jsxRuntimeExports, t as reactExports, v as reactDomExports, F as FFmpeg, x as toBlobURL, y as fetchFile, M as Muxer, z as Muxer$1, A as Mp4Muxer, W as WebmMuxer, B as client, R as React } from './vendor-_TA3R0fS.js';
-import './vendor-firebase-DkG2A0lU.js';
+import { c as create, d as devtools, i as initializeApp, g as getStorage, a as getFirestore, b as ref, u as uploadBytes, e as getDownloadURL, f as addDoc, h as collection, s as serverTimestamp, j as updateDoc, k as doc, q as query, o as orderBy, l as limit, m as getDocs, w as where, n as deleteDoc, p as jsxRuntimeExports, t as reactExports, v as reactDomExports, F as FFmpeg, x as fetchFile, M as Muxer, y as Muxer$1, z as Mp4Muxer, W as WebmMuxer, A as client, R as React } from './vendor-DeOn_Cgg.js';
+import './vendor-firebase-BHay5Hlc.js';
 
 true&&(function polyfill() {
   const relList = document.createElement("link").relList;
@@ -1138,8 +1138,7 @@ ${researchData.slice(0, 500)}` : ""}
 - best_start_pct: 0.0~1.0 (?곸긽 ?뚯뒪??寃쎌슦 媛???몄긽?곸씤 ?섏씠?쇱씠??援ш컙 ?쒖옉 吏??鍮꾩쑉. ?대?吏??0)
 - tracking_coords: {"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}} (?쇱궗泥??대룞 寃쎈줈 異붿젙. ?뺤쟻 而룹? start쨌end ?숈씪)
 - ocr_data: {"menu_items":[],"prices":[]} (硫붾돱?먃룰?寃⑺몴쨌?곸닔利앹뿉???몄떇???띿뒪?? ?놁쑝硫?null)
-- cooking_state: "raw"|"cooking"|"cooked"|null — 고기/육류가 보이면 생고기(raw)/굽는중(cooking)/다구워진것(cooked), 비고기류는 null
-
+- cooking_state: "raw"|"cooking"|"cooked"|null — 고기/육류가 보이면 생고기(raw)/굽는중(cooking)/다구워진것(cooked), 비고기류는 null- food_category: "볶음밥"|"밑반찬"|"짜개"|"주스"|"고기"|"상차림"|"냉면"|"공기밥"|"외관"|"디저트"|"글로버프라이"|"안주"|"찌개"|"샰러드"|null — 해당 이미지에서 주로 보이는 음식의 종류를 한국어 단어로 명시. 음식이 주제가 아니면 null
 ?꾩껜:
 - keywords: ?몃젋??寃?됱뼱 ?ы븿 (ex: "以꾩꽌??吏?, "?몄깮 留쏆쭛", "留쏆쭛?ъ뼱")
 - mood, menu, visual_hook
@@ -1148,7 +1147,7 @@ ${researchData.slice(0, 500)}` : ""}
 - recommended_hook: viral_2026|pov|shock|question|challenge 以??좏깮
 
 JSON留?諛섑솚:
-{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"?ㅻ챸","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false,"aesthetic_score":85,"foodie_score":8,"best_start_pct":0.2,"tracking_coords":{"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}},"ocr_data":null,"cooking_state":null}]}`;
+{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"?ㅻ챸","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false,"aesthetic_score":85,"foodie_score":8,"best_start_pct":0.2,"tracking_coords":{"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}},"ocr_data":null,"cooking_state":null,"food_category":"고기"}]}`;
   const callPass1 = async (batchParts) => {
     const data = await geminiWithFallback({
       contents: [{ parts: [...batchParts, { text: prompt1 }] }],
@@ -1814,7 +1813,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.59" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.60" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2494,19 +2493,37 @@ function tokenOverlapScore(tokens, text) {
 }
 
 // ─── 음식 카테고리 감지 (나레이션-영상 불일치 2단계 교정용) ──────────
+// Gemini 프롬프트 food_category 필드 + 텍스트 키워드 이중 매칭
 const FOOD_CATEGORY_MAP = [
-  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음'] },
-  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '겉절이', '나물', '조림', '무침', '깻잎', '잡채'] },
-  { cat: 'soup',       kw: ['찌개', '계란찜', '된장', '부대찌개', '김치찌개', '탕', '전골', '국물', '뚝배기'] },
-  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료'] },
-  { cat: 'meat',       kw: ['고기', '삼겹살', '갈비', '목살', '구이', '육즙', '숯불', '불판', '원육', '마블링', '곱창', '항정살'] },
+  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음', '볶기우', '글로버프라이'] },
+  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '겹절이', '나물', '조림', '무침', '깨잎', '잡채', '엘로케', '순두부', '감자조림', '안주', '폤위조림'] },
+  { cat: 'soup',       kw: ['짜개', '오’짜개', '계란짜', '된장', '부대짜개', '김치짜개', '탕', '전골', '국물', '딹배기', '라면', '순두부찌개', '진지짜개', '매운탕'] },
+  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료', '리코타', '남음'] },
+  { cat: 'meat',       kw: ['고기', '삼격살', '갈비', '목살', '구이', '육즙', '숲불', '불판', '원육', '마블링', '곡창', '항정살', '역살', '돼지고기', '소고기', '한우', '하합', '네크'] },
   { cat: 'table',      kw: ['상차림', '차림', '한 상', '테이블 세팅', '올라왔'] },
-  { cat: 'noodle',     kw: ['냉면', '국수', '라면', '면 요리'] },
-  { cat: 'rice',       kw: ['공기밥', '쌀밥', '흰밥', '돌솥밥'] },
-  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구'] },
+  { cat: 'noodle',     kw: ['냉면', '국수', '라면', '면 요리', '우동', '본', '컨국수', '매바라기'] },
+  { cat: 'rice',       kw: ['공기밥', '쌌맛', '흔밥', '돌솔밥', '돌솔올림', '비빔밥'] },
+  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구', '주차장'] },
+  { cat: 'dessert',    kw: ['디저트', '아이스크림', '케이크', '마카론', '케지', '와플', '아이스플', '수프림'] },
+  { cat: 'salad',      kw: ['샄러드', '솤러드', '캐스니샤러드', '시저트', '신선난'] },
 ];
 
-function detectFoodCategory(text) {
+// Gemini food_category 문자열 → 내부 cat 매핑
+const GEMINI_CAT_MAP = {
+  '볶음밥': 'fried_rice', '밑반찬': 'side_dish', '짜개': 'soup',
+  '주스': 'juice', '고기': 'meat', '상차림': 'table',
+  '냉면': 'noodle', '공기밥': 'rice', '외관': 'exterior',
+  '디저트': 'dessert', '글로버프라이': 'fried_rice',
+  '안주': 'side_dish', '찌개': 'soup', '샰러드': 'salad',
+};
+
+function detectFoodCategory(text, geminiFoodCategory) {
+  // 1순위: Gemini가 직접 염락한 food_category 필드
+  if (geminiFoodCategory) {
+    const mapped = GEMINI_CAT_MAP[geminiFoodCategory];
+    if (mapped) return mapped;
+    // Gemini 값이 키워드맵에 없으면 텍스트 검색에서 검색
+  }
   const t = String(text || '').toLowerCase();
   for (const { cat, kw } of FOOD_CATEGORY_MAP) {
     if (kw.some(w => t.includes(w))) return cat;
@@ -2624,9 +2641,14 @@ function refineScenesForStoryboard(scenes, files, analysis) {
     }
   }
 
-  // ─── 2단계: 음식 카테고리 불일치 강제 교정 ─────────────────────────
-  // 씬 나레이션이 특정 음식(볶음밥, 밑반찬, 고기 등)을 명시했는데
-  // 배정된 미디어의 focus가 다른 카테고리면 올바른 미디어로 교체
+  // ─── 2단계: 음식 카테고리 불일치 강제 교정 (swap 방식) ──────────────────────
+  // 해결한 문제: 이전 구현은 usedMediaIdxs로 인해 모든 미디어가 침 당해있어 후보가 없었음
+  // 수정: 이미 사용된 미디어도 swap 허용 — 카테고리 건미는 죄에 포함
+  const mediaToScene = new Map();
+  refined.forEach((sc, i) => {
+    if (Number.isInteger(sc.media_idx)) mediaToScene.set(sc.media_idx, i);
+  });
+
   for (let i = 0; i < refined.length - 1; i++) {
     const sc = refined[i];
     const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
@@ -2634,26 +2656,47 @@ function refineScenesForStoryboard(scenes, files, analysis) {
     if (!sceneCat) continue;
 
     const midx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
-    const mediaFocusText = `${analysisMap[midx]?.focus || ''} ${analysisMap[midx]?.narration_hint || ''}`;
-    const mediaCat = detectFoodCategory(mediaFocusText);
+    const mData = analysisMap[midx];
+    // Gemini food_category 직접 활용 + 텍스트 기반 탐지 병합
+    const mediaFocusText = `${mData?.focus || ''} ${mData?.narration_hint || ''}`;
+    const mediaCat = detectFoodCategory(mediaFocusText, mData?.food_category);
     if (mediaCat === sceneCat) continue; // 이미 일치
 
-    // 같은 카테고리이면서 미사용인 미디어 탐색 (foodie_score 높은 순)
-    const candidates = allMediaIdxs.filter(idx => {
-      if (idx === midx) return false;
-      if (usedMediaIdxs.has(idx)) return false;
-      if (analysisMap[idx]?.is_exterior) return false;
-      const fText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
-      return detectFoodCategory(fText) === sceneCat;
-    }).sort((a, b) => (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0));
+    // 씬 카테고리 미디어 탐색: 미사용 우선, 적합 순으로 정렬
+    const candidates = allMediaIdxs
+      .filter(idx => {
+        if (analysisMap[idx]?.is_exterior) return false;
+        const d = analysisMap[idx];
+        const fText = `${d?.focus || ''} ${d?.narration_hint || ''}`;
+        return detectFoodCategory(fText, d?.food_category) === sceneCat;
+      })
+      .sort((a, b) => {
+        // 미사용 먼저, 같으면 foodie_score 높은 순으로
+        const aUsed = mediaToScene.has(a) ? 1 : 0;
+        const bUsed = mediaToScene.has(b) ? 1 : 0;
+        if (aUsed !== bUsed) return aUsed - bUsed;
+        return (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0);
+      });
 
-    if (candidates.length > 0) {
-      usedMediaIdxs.delete(midx);
-      sc.media_idx = candidates[0];
-      usedMediaIdxs.add(candidates[0]);
+    if (!candidates.length) continue;
+    const bestCand = candidates[0];
+    if (bestCand === midx) continue;
+
+    // bestCand가 다른 씬에서 사용중이면 거기에 현재 씬의 미디어를 입자 증 (swap)
+    const otherSceneIdx = mediaToScene.get(bestCand);
+    if (otherSceneIdx !== undefined && otherSceneIdx !== i) {
+      refined[otherSceneIdx].media_idx = midx;
+      mediaToScene.set(midx, otherSceneIdx);
       mediaSwapCount++;
-      console.log(`[CategoryFix] 씬 ${i}: '${sceneCat}' 나레이션 → 미디어 ${midx}(${mediaCat || '?'}) → ${candidates[0]}(${sceneCat}) 교체`);
+      console.log(`[CategoryFix swap] 씬 ${otherSceneIdx}: ${bestCand}→${midx}`);
+    } else {
+      mediaToScene.delete(midx);
     }
+
+    sc.media_idx = bestCand;
+    mediaToScene.set(bestCand, i);
+    mediaSwapCount++;
+    console.log(`[CategoryFix] 씬 ${i}: '${sceneCat}' 나레이션 → 미디어 ${midx}(${mediaCat || '?'}) → ${bestCand}(${sceneCat}) 교체`);
   }
 
   return { scenes: refined, mediaSwapCount, subtitleFixCount };
@@ -4061,9 +4104,23 @@ function LoadingOverlay() {
 
 
 const FFMPEG_CORE_URLS = [
-  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 우선 (안정적, 실제 검증됨)
-  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr 폴백
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr (빠름)
+  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 폴백
 ];
+
+// 타임아웃 포함 fetch → Blob URL 생성 (toBlobURL 대체)
+async function fetchToBlobURL(url, mimeType, timeoutMs = 90_000) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = await res.arrayBuffer();
+    return URL.createObjectURL(new Blob([buf], { type: mimeType }));
+  } finally {
+    clearTimeout(tid);
+  }
+}
 // 자막용 폰트 (NotoSans KR Bold .ttf — CDN에서 최초 1회 다운로드)
 const FONT_CDN_URL = 'https://fonts.gstatic.com/s/notosanskr/v36/PbykFmXiEBPT4ITbgNA5Cgm20xz64px_1hVWr0wuPNGmlQNMEfD4.0.woff2';
 // woff2는 ffmpeg drawtext 미지원 → TTF 대안 CDN
@@ -4073,14 +4130,13 @@ let ffmpegInstance = null;
 let isLoading = false;
 
 async function getFFmpeg(onLog) {
-  // ⚠️ SharedArrayBuffer 미지원 환경 경고 (throw 대신 warn — SW 주입 후 재시도 가능)
+  // SharedArrayBuffer 미지원 환경에서는 즉시 실패 → 로딩 스피너 무한 방지
   if (!globalThis.crossOriginIsolated) {
-    console.warn('[FFmpeg] crossOriginIsolated=false — COOP/COEP 헤더가 아직 적용 안 됐을 수 있습니다. 계속 시도합니다.');
+    throw new Error('__FFmpeg_COI_REQUIRED__');
   }
 
   if (ffmpegInstance) return ffmpegInstance;
   if (isLoading) {
-    // 다른 호출이 로딩 중이면 완료될 때까지 대기
     while (isLoading) await new Promise(r => setTimeout(r, 200));
     if (!ffmpegInstance) throw new Error('FFmpeg 엔진 로딩에 실패했습니다. 다시 시도해주세요.');
     return ffmpegInstance;
@@ -4089,22 +4145,15 @@ async function getFFmpeg(onLog) {
   try {
     const ff = new FFmpeg();
     if (onLog) ff.on('log', ({ message }) => onLog(message));
-    // CDN 순서대로 시도 (unpkg 우선, jsDelivr 폴백)
     let lastErr;
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
-        // HEAD probe: CDN 가용성 확인 (CORS로 null 반환 시 → 실제 로드는 계속 시도)
-        const [probeJs, probeWasm] = await Promise.all([
-          fetch(`${cdn}/ffmpeg-core.js`,   { method: 'HEAD' }).catch(() => null),
-          fetch(`${cdn}/ffmpeg-core.wasm`, { method: 'HEAD' }).catch(() => null),
+        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 90초)`);
+        // fetchToBlobURL: 90초 타임아웃 포함 — 무한 대기 방지
+        const [coreURL, wasmURL] = await Promise.all([
+          fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript'),
+          fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm'),
         ]);
-        // probe가 null이 아닌데 명시적 HTTP 오류 상태(4xx/5xx)면 이 CDN 스킵
-        if (probeJs   !== null && !probeJs.ok)   throw new Error(`CDN ffmpeg-core.js 응답 오류 (${probeJs.status})`);
-        if (probeWasm !== null && !probeWasm.ok) throw new Error(`CDN ffmpeg-core.wasm 응답 오류 (${probeWasm.status})`);
-        // probe=null(CORS 차단)이거나 ok=true면 실제 로드 시도
-
-        const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript');
-        const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');
         await ff.load({ coreURL, wasmURL });
         ffmpegInstance = ff;
         return ff;
@@ -4113,19 +4162,12 @@ async function getFFmpeg(onLog) {
         lastErr = e;
       }
     }
-    const finalMsg = lastErr?.message || String(lastErr) || 'CDN 로드 실패';
-    if (!globalThis.crossOriginIsolated) {
-      throw new Error(
-        `FFmpeg WASM 로드 실패: 페이지를 새로고침(F5) 후 다시 시도해주세요.\n` +
-        `(보안 헤더 격리 필요 — COOP/COEP 미적용)\n상세: ${finalMsg}`
-      );
-    }
-    throw lastErr instanceof Error ? lastErr : new Error(finalMsg);
+    throw lastErr instanceof Error ? lastErr : new Error('CDN 로드 실패');
   } catch (e) {
-    ffmpegInstance = null; // 실패 시 초기화 → 재시도 가능
+    ffmpegInstance = null;
     throw e;
   } finally {
-    isLoading = false; // 성공/실패 모두 플래그 해제
+    isLoading = false;
   }
 }
 
@@ -5448,14 +5490,15 @@ function ExportPanel() {
       setFfmpegPct(0);
     } catch (err) {
       const msg = err?.message || String(err);
-      addToast("FFmpeg 오류: " + msg, "err");
-      if (/sharedarraybuffer|crossoriginisolated|coop|coep|security|worker/i.test(msg)) {
-        addToast("FFmpeg 격리 오류로 기본 저장으로 자동 전환합니다.", "inf");
-        await doExport().catch(() => {
-        });
+      if (msg === "__FFmpeg_COI_REQUIRED__") {
+        addToast("보안 헤더 적용을 위해 페이지를 새로고침합니다... (2초 후)", "inf");
+        setFfmpegText("🔄 새로고침 중...");
+        setTimeout(() => location.reload(), 2e3);
+      } else {
+        addToast("FFmpeg 오류: " + msg, "err");
+        setFfmpegText("📦 FFmpeg 내보내기 (시네마틱)");
+        setFfmpegPct(0);
       }
-      setFfmpegText("📦 FFmpeg 내보내기 (시네마틱)");
-      setFfmpegPct(0);
     } finally {
       setFfmpegBusy(false);
     }
@@ -5949,6 +5992,132 @@ function HookPicker({ variations, script, setScript, addToast }) {
     ] }, i)) })
   ] });
 }
+function LoadedKitTabs({ kit, addToast }) {
+  const [openTab, setOpenTab] = reactExports.useState(null);
+  if (!kit) return null;
+  const TABS = [
+    { id: "nclip", label: "N클립", color: "#03c75a", val: kit.naverClipTags },
+    { id: "shorts", label: "쇼츠", color: "#ff0000", val: kit.youtubeShortsTags },
+    { id: "insta", label: "인스타", color: "#e1306c", val: kit.instagramCaption || kit.caption },
+    { id: "tiktok", label: "틱톡", color: "#6fc2f5", val: kit.tiktokTags },
+    { id: "receipt", label: "N영수증", color: "#03c75a", val: kit.receiptReview }
+  ].filter((t) => t.val?.trim());
+  const copy = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      addToast("복사 완료! ✨", "ok");
+    } catch {
+      addToast("복사 실패", "err");
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    kit.hookTitle && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", style: { marginTop: 12, marginBottom: 8 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", style: { margin: 0 }, children: "🎣 훅 제목" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", onClick: () => copy(kit.hookTitle), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
+          " 복사"
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-text", style: { margin: 0, whiteSpace: "pre-line", fontSize: "0.82rem" }, children: kit.hookTitle })
+    ] }),
+    TABS.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }, children: TABS.map((tab) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        onClick: () => setOpenTab(tab),
+        style: {
+          padding: "8px 16px",
+          borderRadius: 22,
+          background: tab.color + "22",
+          color: tab.color,
+          border: `1.5px solid ${tab.color}88`,
+          fontSize: "0.82rem",
+          fontWeight: 700,
+          cursor: "pointer"
+        },
+        children: tab.label
+      },
+      tab.id
+    )) }),
+    kit.hookVariations?.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", style: { marginTop: 12, marginBottom: 0 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", children: "🎣 3종 훅 베리에이션" }),
+      kit.hookVariations.map((h, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "8px 12px", marginTop: 6, fontSize: "0.75rem" }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#a855f7", fontWeight: 700 }, children: h.type }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#fff", marginLeft: 8 }, children: h.caption1 }),
+        h.caption2 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "#aaa", marginLeft: 6 }, children: [
+          "/ ",
+          h.caption2
+        ] }),
+        h.narration && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#888", marginTop: 4, margin: "4px 0 0", fontStyle: "italic" }, children: h.narration })
+      ] }, i))
+    ] }),
+    openTab && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: {
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          background: "rgba(0,0,0,0.75)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center"
+        },
+        onClick: () => setOpenTab(null),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            style: {
+              background: "#1a1a1a",
+              border: `1.5px solid ${openTab.color}55`,
+              borderRadius: 18,
+              padding: "24px 22px",
+              maxWidth: 480,
+              width: "92%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+              WebkitOverflowScrolling: "touch"
+            },
+            onClick: (e) => e.stopPropagation(),
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: openTab.color, fontWeight: 800, fontSize: "1rem" }, children: openTab.label }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    onClick: () => setOpenTab(null),
+                    style: { background: "none", border: "none", color: "#666", fontSize: "1.3rem", cursor: "pointer", lineHeight: 1 },
+                    children: "✕"
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: {
+                whiteSpace: "pre-wrap",
+                color: "#ddd",
+                fontSize: "0.82rem",
+                lineHeight: 1.75,
+                margin: 0,
+                background: "rgba(0,0,0,0.3)",
+                borderRadius: 10,
+                padding: "12px 14px"
+              }, children: openTab.val }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.68rem", color: "#555" }, children: [
+                  openTab.val.length,
+                  "자"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", style: { float: "none" }, onClick: () => copy(openTab.val), children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
+                  " 복사"
+                ] })
+              ] })
+            ]
+          }
+        )
+      }
+    )
+  ] });
+}
 function MarketingKitTabs({ script, addToast }) {
   const [activeTab, setActiveTab] = reactExports.useState(null);
   if (!script) return null;
@@ -6269,55 +6438,7 @@ function ResultScreen() {
           item.id
         )) }) })
       ] }),
-      loadedKit && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 12, maxHeight: "520px", overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y" }, children: [
-        [
-          { label: "🎣 훅 제목", val: loadedKit.hookTitle },
-          { label: "✍️ 인스타 캡션", val: loadedKit.caption },
-          { label: "🏷️ 해시태그 30개", val: loadedKit.hashtags30 },
-          { label: "🧾 네이버 영수증 리뷰", val: loadedKit.receiptReview },
-          { label: "📎 네이버 클립 태그", val: loadedKit.naverClipTags },
-          { label: "◎ 릴스 캡션", val: loadedKit.instagramCaption },
-          { label: "▶ 유튜브 쇼츠 태그", val: loadedKit.youtubeShortsTags },
-          { label: "♪ 틱톡 태그", val: loadedKit.tiktokTags }
-        ].map(({ label, val }) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", style: { marginBottom: 12 }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", style: { margin: 0 }, children: label }),
-            val && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", onClick: async () => {
-              try {
-                await navigator.clipboard.writeText(val);
-                addToast(`${label} 복사 완료!`, "ok");
-              } catch {
-                addToast("복사 실패", "err");
-              }
-            }, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
-              " 복사"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-text", style: {
-            whiteSpace: "pre-line",
-            fontSize: "0.78rem",
-            margin: 0,
-            color: val ? label.includes("태그") || label.includes("해시태그") ? "#a855f7" : "#ddd" : "#666",
-            background: "rgba(0,0,0,0.3)",
-            borderRadius: 8,
-            padding: "8px 12px",
-            fontStyle: val ? "normal" : "italic"
-          }, children: val || "(저장된 데이터 없음)" })
-        ] }, label)),
-        loadedKit.hookVariations?.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", style: { marginBottom: 8 }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", children: "🎣 3종 훅 베리에이션" }),
-          loadedKit.hookVariations.map((h, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "8px 12px", marginTop: 6, fontSize: "0.75rem" }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#a855f7", fontWeight: 700 }, children: h.type }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#fff", marginLeft: 8 }, children: h.caption1 }),
-            h.caption2 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "#aaa", marginLeft: 6 }, children: [
-              "/ ",
-              h.caption2
-            ] }),
-            h.narration && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#888", marginTop: 4, margin: "4px 0 0", fontStyle: "italic" }, children: h.narration })
-          ] }, i))
-        ] })
-      ] })
+      loadedKit && /* @__PURE__ */ jsxRuntimeExports.jsx(LoadedKitTabs, { kit: loadedKit, addToast })
     ] }),
     script?.hook_variations?.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(HookPicker, { variations: script.hook_variations, script, setScript, addToast }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "re-btn", onClick: doReset, children: [

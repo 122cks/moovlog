@@ -156,13 +156,16 @@ export default function ExportPanel() {
       setFfmpegPct(0);
     } catch (err) {
       const msg = err?.message || String(err);
-      addToast('FFmpeg 오류: ' + msg, 'err');
-      if (/sharedarraybuffer|crossoriginisolated|coop|coep|security|worker/i.test(msg)) {
-        addToast('FFmpeg 격리 오류로 기본 저장으로 자동 전환합니다.', 'inf');
-        await doExport().catch(() => {});
+      if (msg === '__FFmpeg_COI_REQUIRED__') {
+        // SW가 COOP/COEP 헤더를 주입하도록 페이지 새로고침
+        addToast('보안 헤더 적용을 위해 페이지를 새로고침합니다... (2초 후)', 'inf');
+        setFfmpegText('🔄 새로고침 중...');
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        addToast('FFmpeg 오류: ' + msg, 'err');
+        setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
+        setFfmpegPct(0);
       }
-      setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
-      setFfmpegPct(0);
     } finally {
       setFfmpegBusy(false);
     }

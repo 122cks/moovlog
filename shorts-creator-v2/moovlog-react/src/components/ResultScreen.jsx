@@ -225,7 +225,127 @@ function HookPicker({ variations, script, setScript, addToast }) {
   );
 }
 
-// ── 📣 마케팅 키트 탭 버튼 UI ─────────────────────────────
+// ── � 불러온 이전 마케팅 키트 탭 버튼 UI ─────────────────
+function LoadedKitTabs({ kit, addToast }) {
+  const [openTab, setOpenTab] = useState(null);
+  if (!kit) return null;
+
+  const TABS = [
+    { id: 'nclip',   label: 'N클립',   color: '#03c75a', val: kit.naverClipTags },
+    { id: 'shorts',  label: '쇼츠',    color: '#ff0000', val: kit.youtubeShortsTags },
+    { id: 'insta',   label: '인스타',  color: '#e1306c', val: kit.instagramCaption || kit.caption },
+    { id: 'tiktok',  label: '틱톡',    color: '#6fc2f5', val: kit.tiktokTags },
+    { id: 'receipt', label: 'N영수증', color: '#03c75a', val: kit.receiptReview },
+  ].filter(t => t.val?.trim());
+
+  const copy = async (text) => {
+    try { await navigator.clipboard.writeText(text); addToast('복사 완료! ✨', 'ok'); }
+    catch { addToast('복사 실패', 'err'); }
+  };
+
+  return (
+    <>
+      {/* 훅 제목 */}
+      {kit.hookTitle && (
+        <div className="marketing-row" style={{ marginTop: 12, marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span className="marketing-label" style={{ margin: 0 }}>🎣 훅 제목</span>
+            <button className="marketing-copy-btn" onClick={() => copy(kit.hookTitle)}>
+              <i className="fas fa-copy" /> 복사
+            </button>
+          </div>
+          <p className="marketing-text" style={{ margin: 0, whiteSpace: 'pre-line', fontSize: '0.82rem' }}>
+            {kit.hookTitle}
+          </p>
+        </div>
+      )}
+
+      {/* 탭 버튼 */}
+      {TABS.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setOpenTab(tab)}
+              style={{
+                padding: '8px 16px', borderRadius: 22,
+                background: tab.color + '22',
+                color: tab.color,
+                border: `1.5px solid ${tab.color}88`,
+                fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 훅 베리에이션 */}
+      {kit.hookVariations?.length > 0 && (
+        <div className="marketing-row" style={{ marginTop: 12, marginBottom: 0 }}>
+          <span className="marketing-label">🎣 3종 훅 베리에이션</span>
+          {kit.hookVariations.map((h, i) => (
+            <div key={i} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px', marginTop: 6, fontSize: '0.75rem' }}>
+              <span style={{ color: '#a855f7', fontWeight: 700 }}>{h.type}</span>
+              <span style={{ color: '#fff', marginLeft: 8 }}>{h.caption1}</span>
+              {h.caption2 && <span style={{ color: '#aaa', marginLeft: 6 }}>/ {h.caption2}</span>}
+              {h.narration && <p style={{ color: '#888', marginTop: 4, margin: '4px 0 0', fontStyle: 'italic' }}>{h.narration}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 탭 모달 */}
+      {openTab && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => setOpenTab(null)}
+        >
+          <div
+            style={{
+              background: '#1a1a1a', border: `1.5px solid ${openTab.color}55`,
+              borderRadius: 18, padding: '24px 22px',
+              maxWidth: 480, width: '92%', maxHeight: '80vh',
+              overflowY: 'auto', WebkitOverflowScrolling: 'touch',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <span style={{ color: openTab.color, fontWeight: 800, fontSize: '1rem' }}>
+                {openTab.label}
+              </span>
+              <button
+                onClick={() => setOpenTab(null)}
+                style={{ background: 'none', border: 'none', color: '#666', fontSize: '1.3rem', cursor: 'pointer', lineHeight: 1 }}
+              >✕</button>
+            </div>
+            <p style={{
+              whiteSpace: 'pre-wrap', color: '#ddd',
+              fontSize: '0.82rem', lineHeight: 1.75, margin: 0,
+              background: 'rgba(0,0,0,0.3)', borderRadius: 10,
+              padding: '12px 14px',
+            }}>
+              {openTab.val}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14 }}>
+              <span style={{ fontSize: '0.68rem', color: '#555' }}>{openTab.val.length}자</span>
+              <button className="marketing-copy-btn" style={{ float: 'none' }} onClick={() => copy(openTab.val)}>
+                <i className="fas fa-copy" /> 복사
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ── �📣 마케팅 키트 탭 버튼 UI ─────────────────────────────
 function MarketingKitTabs({ script, addToast }) {
   const [activeTab, setActiveTab] = useState(null);
   if (!script) return null;
@@ -548,49 +668,7 @@ export default function ResultScreen() {
 
           {/* 로드된 키트 전체 데이터 표시 */}
           {loadedKit && (
-            <div style={{ marginTop: 12, maxHeight: '520px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y' }}>
-              {[
-                { label: '🎣 훅 제목',          val: loadedKit.hookTitle },
-                { label: '✍️ 인스타 캡션',        val: loadedKit.caption },
-                { label: '🏷️ 해시태그 30개',      val: loadedKit.hashtags30 },
-                { label: '🧾 네이버 영수증 리뷰',   val: loadedKit.receiptReview },
-                { label: '📎 네이버 클립 태그',    val: loadedKit.naverClipTags },
-                { label: '◎ 릴스 캡션',          val: loadedKit.instagramCaption },
-                { label: '▶ 유튜브 쇼츠 태그',    val: loadedKit.youtubeShortsTags },
-                { label: '♪ 틱톡 태그',          val: loadedKit.tiktokTags },
-              ].map(({ label, val }) => (
-                <div key={label} className="marketing-row" style={{ marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span className="marketing-label" style={{ margin: 0 }}>{label}</span>
-                    {val && (
-                      <button className="marketing-copy-btn" onClick={async () => {
-                        try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료!`, 'ok'); }
-                        catch { addToast('복사 실패', 'err'); }
-                      }}><i className="fas fa-copy" /> 복사</button>
-                    )}
-                  </div>
-                  <p className="marketing-text" style={{
-                    whiteSpace: 'pre-line', fontSize: '0.78rem', margin: 0,
-                    color: val ? (label.includes('태그') || label.includes('해시태그') ? '#a855f7' : '#ddd') : '#666',
-                    background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px',
-                    fontStyle: val ? 'normal' : 'italic',
-                  }}>{val || '(저장된 데이터 없음)'}</p>
-                </div>
-              ))}
-              {loadedKit.hookVariations?.length > 0 && (
-                <div className="marketing-row" style={{ marginBottom: 8 }}>
-                  <span className="marketing-label">🎣 3종 훅 베리에이션</span>
-                  {loadedKit.hookVariations.map((h, i) => (
-                    <div key={i} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 12px', marginTop: 6, fontSize: '0.75rem' }}>
-                      <span style={{ color: '#a855f7', fontWeight: 700 }}>{h.type}</span>
-                      <span style={{ color: '#fff', marginLeft: 8 }}>{h.caption1}</span>
-                      {h.caption2 && <span style={{ color: '#aaa', marginLeft: 6 }}>/ {h.caption2}</span>}
-                      {h.narration && <p style={{ color: '#888', marginTop: 4, margin: '4px 0 0', fontStyle: 'italic' }}>{h.narration}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <LoadedKitTabs kit={loadedKit} addToast={addToast} />
           )}
         </div>
 

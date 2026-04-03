@@ -252,8 +252,7 @@ export async function visionAnalysis(restaurantName, researchData = '', restaura
 - best_start_pct: 0.0~1.0 (?곸긽 ?뚯뒪??寃쎌슦 媛???몄긽?곸씤 ?섏씠?쇱씠??援ш컙 ?쒖옉 吏??鍮꾩쑉. ?대?吏??0)
 - tracking_coords: {"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}} (?쇱궗泥??대룞 寃쎈줈 異붿젙. ?뺤쟻 而룹? start쨌end ?숈씪)
 - ocr_data: {"menu_items":[],"prices":[]} (硫붾돱?먃룰?寃⑺몴쨌?곸닔利앹뿉???몄떇???띿뒪?? ?놁쑝硫?null)
-- cooking_state: "raw"|"cooking"|"cooked"|null — 고기/육류가 보이면 생고기(raw)/굽는중(cooking)/다구워진것(cooked), 비고기류는 null
-
+- cooking_state: "raw"|"cooking"|"cooked"|null — 고기/육류가 보이면 생고기(raw)/굽는중(cooking)/다구워진것(cooked), 비고기류는 null- food_category: "볶음밥"|"밑반찬"|"짜개"|"주스"|"고기"|"상차림"|"냉면"|"공기밥"|"외관"|"디저트"|"글로버프라이"|"안주"|"찌개"|"샰러드"|null — 해당 이미지에서 주로 보이는 음식의 종류를 한국어 단어로 명시. 음식이 주제가 아니면 null
 ?꾩껜:
 - keywords: ?몃젋??寃?됱뼱 ?ы븿 (ex: "以꾩꽌??吏?, "?몄깮 留쏆쭛", "留쏆쭛?ъ뼱")
 - mood, menu, visual_hook
@@ -262,7 +261,7 @@ export async function visionAnalysis(restaurantName, researchData = '', restaura
 - recommended_hook: viral_2026|pov|shock|question|challenge 以??좏깮
 
 JSON留?諛섑솚:
-{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"?ㅻ챸","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false,"aesthetic_score":85,"foodie_score":8,"best_start_pct":0.2,"tracking_coords":{"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}},"ocr_data":null,"cooking_state":null}]}`;
+{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"?ㅻ챸","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false,"aesthetic_score":85,"foodie_score":8,"best_start_pct":0.2,"tracking_coords":{"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}},"ocr_data":null,"cooking_state":null,"food_category":"고기"}]}`;
 
   // 諛곗튂蹂?1李??⑥뒪 蹂묐젹 ?몄텧 (?대?吏 ?ы븿 ??90珥???꾩븘??
   const callPass1 = async (batchParts) => {

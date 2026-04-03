@@ -73,19 +73,37 @@ function tokenOverlapScore(tokens, text) {
 }
 
 // ─── 음식 카테고리 감지 (나레이션-영상 불일치 2단계 교정용) ──────────
+// Gemini 프롬프트 food_category 필드 + 텍스트 키워드 이중 매칭
 const FOOD_CATEGORY_MAP = [
-  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음'] },
-  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '겉절이', '나물', '조림', '무침', '깻잎', '잡채'] },
-  { cat: 'soup',       kw: ['찌개', '계란찜', '된장', '부대찌개', '김치찌개', '탕', '전골', '국물', '뚝배기'] },
-  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료'] },
-  { cat: 'meat',       kw: ['고기', '삼겹살', '갈비', '목살', '구이', '육즙', '숯불', '불판', '원육', '마블링', '곱창', '항정살'] },
+  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음', '볶기우', '글로버프라이'] },
+  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '겹절이', '나물', '조림', '무침', '깨잎', '잡채', '엘로케', '순두부', '감자조림', '안주', '폤위조림'] },
+  { cat: 'soup',       kw: ['짜개', '오’짜개', '계란짜', '된장', '부대짜개', '김치짜개', '탕', '전골', '국물', '딹배기', '라면', '순두부찌개', '진지짜개', '매운탕'] },
+  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료', '리코타', '남음'] },
+  { cat: 'meat',       kw: ['고기', '삼격살', '갈비', '목살', '구이', '육즙', '숲불', '불판', '원육', '마블링', '곡창', '항정살', '역살', '돼지고기', '소고기', '한우', '하합', '네크'] },
   { cat: 'table',      kw: ['상차림', '차림', '한 상', '테이블 세팅', '올라왔'] },
-  { cat: 'noodle',     kw: ['냉면', '국수', '라면', '면 요리'] },
-  { cat: 'rice',       kw: ['공기밥', '쌀밥', '흰밥', '돌솥밥'] },
-  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구'] },
+  { cat: 'noodle',     kw: ['냉면', '국수', '라면', '면 요리', '우동', '본', '컨국수', '매바라기'] },
+  { cat: 'rice',       kw: ['공기밥', '쌌맛', '흔밥', '돌솔밥', '돌솔올림', '비빔밥'] },
+  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구', '주차장'] },
+  { cat: 'dessert',    kw: ['디저트', '아이스크림', '케이크', '마카론', '케지', '와플', '아이스플', '수프림'] },
+  { cat: 'salad',      kw: ['샄러드', '솤러드', '캐스니샤러드', '시저트', '신선난'] },
 ];
 
-function detectFoodCategory(text) {
+// Gemini food_category 문자열 → 내부 cat 매핑
+const GEMINI_CAT_MAP = {
+  '볶음밥': 'fried_rice', '밑반찬': 'side_dish', '짜개': 'soup',
+  '주스': 'juice', '고기': 'meat', '상차림': 'table',
+  '냉면': 'noodle', '공기밥': 'rice', '외관': 'exterior',
+  '디저트': 'dessert', '글로버프라이': 'fried_rice',
+  '안주': 'side_dish', '찌개': 'soup', '샰러드': 'salad',
+};
+
+function detectFoodCategory(text, geminiFoodCategory) {
+  // 1순위: Gemini가 직접 염락한 food_category 필드
+  if (geminiFoodCategory) {
+    const mapped = GEMINI_CAT_MAP[geminiFoodCategory];
+    if (mapped) return mapped;
+    // Gemini 값이 키워드맵에 없으면 텍스트 검색에서 검색
+  }
   const t = String(text || '').toLowerCase();
   for (const { cat, kw } of FOOD_CATEGORY_MAP) {
     if (kw.some(w => t.includes(w))) return cat;
@@ -203,9 +221,14 @@ function refineScenesForStoryboard(scenes, files, analysis) {
     }
   }
 
-  // ─── 2단계: 음식 카테고리 불일치 강제 교정 ─────────────────────────
-  // 씬 나레이션이 특정 음식(볶음밥, 밑반찬, 고기 등)을 명시했는데
-  // 배정된 미디어의 focus가 다른 카테고리면 올바른 미디어로 교체
+  // ─── 2단계: 음식 카테고리 불일치 강제 교정 (swap 방식) ──────────────────────
+  // 해결한 문제: 이전 구현은 usedMediaIdxs로 인해 모든 미디어가 침 당해있어 후보가 없었음
+  // 수정: 이미 사용된 미디어도 swap 허용 — 카테고리 건미는 죄에 포함
+  const mediaToScene = new Map();
+  refined.forEach((sc, i) => {
+    if (Number.isInteger(sc.media_idx)) mediaToScene.set(sc.media_idx, i);
+  });
+
   for (let i = 0; i < refined.length - 1; i++) {
     const sc = refined[i];
     const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
@@ -213,26 +236,47 @@ function refineScenesForStoryboard(scenes, files, analysis) {
     if (!sceneCat) continue;
 
     const midx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
-    const mediaFocusText = `${analysisMap[midx]?.focus || ''} ${analysisMap[midx]?.narration_hint || ''}`;
-    const mediaCat = detectFoodCategory(mediaFocusText);
+    const mData = analysisMap[midx];
+    // Gemini food_category 직접 활용 + 텍스트 기반 탐지 병합
+    const mediaFocusText = `${mData?.focus || ''} ${mData?.narration_hint || ''}`;
+    const mediaCat = detectFoodCategory(mediaFocusText, mData?.food_category);
     if (mediaCat === sceneCat) continue; // 이미 일치
 
-    // 같은 카테고리이면서 미사용인 미디어 탐색 (foodie_score 높은 순)
-    const candidates = allMediaIdxs.filter(idx => {
-      if (idx === midx) return false;
-      if (usedMediaIdxs.has(idx)) return false;
-      if (analysisMap[idx]?.is_exterior) return false;
-      const fText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
-      return detectFoodCategory(fText) === sceneCat;
-    }).sort((a, b) => (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0));
+    // 씬 카테고리 미디어 탐색: 미사용 우선, 적합 순으로 정렬
+    const candidates = allMediaIdxs
+      .filter(idx => {
+        if (analysisMap[idx]?.is_exterior) return false;
+        const d = analysisMap[idx];
+        const fText = `${d?.focus || ''} ${d?.narration_hint || ''}`;
+        return detectFoodCategory(fText, d?.food_category) === sceneCat;
+      })
+      .sort((a, b) => {
+        // 미사용 먼저, 같으면 foodie_score 높은 순으로
+        const aUsed = mediaToScene.has(a) ? 1 : 0;
+        const bUsed = mediaToScene.has(b) ? 1 : 0;
+        if (aUsed !== bUsed) return aUsed - bUsed;
+        return (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0);
+      });
 
-    if (candidates.length > 0) {
-      usedMediaIdxs.delete(midx);
-      sc.media_idx = candidates[0];
-      usedMediaIdxs.add(candidates[0]);
+    if (!candidates.length) continue;
+    const bestCand = candidates[0];
+    if (bestCand === midx) continue;
+
+    // bestCand가 다른 씬에서 사용중이면 거기에 현재 씬의 미디어를 입자 증 (swap)
+    const otherSceneIdx = mediaToScene.get(bestCand);
+    if (otherSceneIdx !== undefined && otherSceneIdx !== i) {
+      refined[otherSceneIdx].media_idx = midx;
+      mediaToScene.set(midx, otherSceneIdx);
       mediaSwapCount++;
-      console.log(`[CategoryFix] 씬 ${i}: '${sceneCat}' 나레이션 → 미디어 ${midx}(${mediaCat || '?'}) → ${candidates[0]}(${sceneCat}) 교체`);
+      console.log(`[CategoryFix swap] 씬 ${otherSceneIdx}: ${bestCand}→${midx}`);
+    } else {
+      mediaToScene.delete(midx);
     }
+
+    sc.media_idx = bestCand;
+    mediaToScene.set(bestCand, i);
+    mediaSwapCount++;
+    console.log(`[CategoryFix] 씬 ${i}: '${sceneCat}' 나레이션 → 미디어 ${midx}(${mediaCat || '?'}) → ${bestCand}(${sceneCat}) 교체`);
   }
 
   return { scenes: refined, mediaSwapCount, subtitleFixCount };

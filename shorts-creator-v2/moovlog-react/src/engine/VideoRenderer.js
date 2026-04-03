@@ -3,13 +3,27 @@
 // ⚠️ SharedArrayBuffer가 필요합니다. COOP/COEP 헤더가 설정된 환경에서만 동작합니다.
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { fetchFile } from '@ffmpeg/util';
 import { useVideoStore } from '../store/videoStore.js';
 
 const FFMPEG_CORE_URLS = [
-  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 우선 (안정적, 실제 검증됨)
-  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr 폴백
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr (빠름)
+  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 폴백
 ];
+
+// 타임아웃 포함 fetch → Blob URL 생성 (toBlobURL 대체)
+async function fetchToBlobURL(url, mimeType, timeoutMs = 90_000) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buf = await res.arrayBuffer();
+    return URL.createObjectURL(new Blob([buf], { type: mimeType }));
+  } finally {
+    clearTimeout(tid);
+  }
+}
 // 자막용 폰트 (NotoSans KR Bold .ttf — CDN에서 최초 1회 다운로드)
 const FONT_CDN_URL = 'https://fonts.gstatic.com/s/notosanskr/v36/PbykFmXiEBPT4ITbgNA5Cgm20xz64px_1hVWr0wuPNGmlQNMEfD4.0.woff2';
 // woff2는 ffmpeg drawtext 미지원 → TTF 대안 CDN
@@ -19,14 +33,13 @@ let ffmpegInstance = null;
 let isLoading = false;
 
 async function getFFmpeg(onLog) {
-  // ⚠️ SharedArrayBuffer 미지원 환경 경고 (throw 대신 warn — SW 주입 후 재시도 가능)
+  // SharedArrayBuffer 미지원 환경에서는 즉시 실패 → 로딩 스피너 무한 방지
   if (!globalThis.crossOriginIsolated) {
-    console.warn('[FFmpeg] crossOriginIsolated=false — COOP/COEP 헤더가 아직 적용 안 됐을 수 있습니다. 계속 시도합니다.');
+    throw new Error('__FFmpeg_COI_REQUIRED__');
   }
 
   if (ffmpegInstance) return ffmpegInstance;
   if (isLoading) {
-    // 다른 호출이 로딩 중이면 완료될 때까지 대기
     while (isLoading) await new Promise(r => setTimeout(r, 200));
     if (!ffmpegInstance) throw new Error('FFmpeg 엔진 로딩에 실패했습니다. 다시 시도해주세요.');
     return ffmpegInstance;
@@ -35,22 +48,15 @@ async function getFFmpeg(onLog) {
   try {
     const ff = new FFmpeg();
     if (onLog) ff.on('log', ({ message }) => onLog(message));
-    // CDN 순서대로 시도 (unpkg 우선, jsDelivr 폴백)
     let lastErr;
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
-        // HEAD probe: CDN 가용성 확인 (CORS로 null 반환 시 → 실제 로드는 계속 시도)
-        const [probeJs, probeWasm] = await Promise.all([
-          fetch(`${cdn}/ffmpeg-core.js`,   { method: 'HEAD' }).catch(() => null),
-          fetch(`${cdn}/ffmpeg-core.wasm`, { method: 'HEAD' }).catch(() => null),
+        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 90초)`);
+        // fetchToBlobURL: 90초 타임아웃 포함 — 무한 대기 방지
+        const [coreURL, wasmURL] = await Promise.all([
+          fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript'),
+          fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm'),
         ]);
-        // probe가 null이 아닌데 명시적 HTTP 오류 상태(4xx/5xx)면 이 CDN 스킵
-        if (probeJs   !== null && !probeJs.ok)   throw new Error(`CDN ffmpeg-core.js 응답 오류 (${probeJs.status})`);
-        if (probeWasm !== null && !probeWasm.ok) throw new Error(`CDN ffmpeg-core.wasm 응답 오류 (${probeWasm.status})`);
-        // probe=null(CORS 차단)이거나 ok=true면 실제 로드 시도
-
-        const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript');
-        const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');
         await ff.load({ coreURL, wasmURL });
         ffmpegInstance = ff;
         return ff;
@@ -59,19 +65,12 @@ async function getFFmpeg(onLog) {
         lastErr = e;
       }
     }
-    const finalMsg = lastErr?.message || String(lastErr) || 'CDN 로드 실패';
-    if (!globalThis.crossOriginIsolated) {
-      throw new Error(
-        `FFmpeg WASM 로드 실패: 페이지를 새로고침(F5) 후 다시 시도해주세요.\n` +
-        `(보안 헤더 격리 필요 — COOP/COEP 미적용)\n상세: ${finalMsg}`
-      );
-    }
-    throw lastErr instanceof Error ? lastErr : new Error(finalMsg);
+    throw lastErr instanceof Error ? lastErr : new Error('CDN 로드 실패');
   } catch (e) {
-    ffmpegInstance = null; // 실패 시 초기화 → 재시도 가능
+    ffmpegInstance = null;
     throw e;
   } finally {
-    isLoading = false; // 성공/실패 모두 플래그 해제
+    isLoading = false;
   }
 }
 
