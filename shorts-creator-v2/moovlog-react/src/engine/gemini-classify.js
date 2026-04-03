@@ -68,15 +68,15 @@ ${sceneSummary}
 
 [검수 기준 (각 항목 0~10점)]
 1. 훅(Hook): 첫 씬이 2초 안에 시청자를 멈추게 하는가?
-2. 금지어 준수: "미쳤다", "대박", "환상적인", "선사" 등 금지어 미사용?
+2. 금지어 준수: "미쳤다", "대박", "환상적인", "선사", "구워드립니다(표현 오류)" 등 금지어 미사용?
 3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가?
 4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가?
 5. CTA: 마지막 씬에 구독/좋아요 유도가 포함되었는가?
 
-threshold: 총점 35점 이상(70%)이면 통과
+threshold: 총점 45점 이상(90%)이면 통과 — 44점 이하면 무조건 pass:false 반환
 
 JSON만 반환:
-{"total_score": 38, "pass": true, "hook": 8, "banned_words": 9, "flow": 7, "info_density": 7, "cta": 7, "issues": ["첫 씬 임팩트 부족"], "suggestion": "첫 씬 caption을 더 강렬하게 수정 권장"}`;
+{"total_score": 47, "pass": true, "hook": 9, "banned_words": 10, "flow": 9, "info_density": 10, "cta": 9, "issues": [], "suggestion": ""}`;
 
   try {
     const data = await geminiWithFallback({
@@ -90,6 +90,6 @@ JSON만 반환:
     return result;
   } catch (e) {
     console.warn('[geminiQualityCheck] 실패 → 기본 통과 처리:', e.message);
-    return { total_score: 40, pass: true, issues: [], suggestion: '' };
+    return { total_score: 50, pass: true, issues: [], suggestion: '' };
   }
 }

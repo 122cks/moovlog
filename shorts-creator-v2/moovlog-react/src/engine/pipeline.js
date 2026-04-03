@@ -455,7 +455,9 @@ export async function startMake() {
     setLoaded(loaded);
     await sleep(200);
 
-    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true }));
+    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true, total_score: 50 }));
+    // 서버사이드 강제: Gemini 응답과 무관하게 45점 미만이면 무조건 재생성
+    if (typeof qcResult.total_score === 'number' && qcResult.total_score < 45) qcResult.pass = false;
     if (!qcResult.pass) {
       addToast(`품질 검수 미달 (${qcResult.total_score}/50) — 스크립트 재생성 중...`, 'inf');
       let retryCount = 0;

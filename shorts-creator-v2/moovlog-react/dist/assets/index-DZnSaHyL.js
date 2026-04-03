@@ -1138,6 +1138,7 @@ ${researchData.slice(0, 500)}` : ""}
 - best_start_pct: 0.0~1.0 (?곸긽 ?뚯뒪??寃쎌슦 媛???몄긽?곸씤 ?섏씠?쇱씠??援ш컙 ?쒖옉 吏??鍮꾩쑉. ?대?吏??0)
 - tracking_coords: {"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}} (?쇱궗泥??대룞 寃쎈줈 異붿젙. ?뺤쟻 而룹? start쨌end ?숈씪)
 - ocr_data: {"menu_items":[],"prices":[]} (硫붾돱?먃룰?寃⑺몴쨌?곸닔利앹뿉???몄떇???띿뒪?? ?놁쑝硫?null)
+- cooking_state: "raw"|"cooking"|"cooked"|null — 고기/육류가 보이면 생고기(raw)/굽는중(cooking)/다구워진것(cooked), 비고기류는 null
 
 ?꾩껜:
 - keywords: ?몃젋??寃?됱뼱 ?ы븿 (ex: "以꾩꽌??吏?, "?몄깮 留쏆쭛", "留쏆쭛?ъ뼱")
@@ -1147,7 +1148,7 @@ ${researchData.slice(0, 500)}` : ""}
 - recommended_hook: viral_2026|pov|shock|question|challenge 以??좏깮
 
 JSON留?諛섑솚:
-{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"?ㅻ챸","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false,"aesthetic_score":85,"foodie_score":8,"best_start_pct":0.2,"tracking_coords":{"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}},"ocr_data":null}]}`;
+{"keywords":[],"mood":"","menu":[],"visual_hook":"","recommended_order":[],"recommended_template":"reveal","recommended_hook":"viral_2026","per_image":[{"idx":0,"type":"hook","best_effect":"zoom-out","emotional_score":9,"suggested_duration":0.8,"focus":"?ㅻ챸","focus_coords":{"x":0.5,"y":0.45},"viral_potential":"high","is_exterior":false,"aesthetic_score":85,"foodie_score":8,"best_start_pct":0.2,"tracking_coords":{"start":{"x":0.5,"y":0.5},"end":{"x":0.5,"y":0.5}},"ocr_data":null,"cooking_state":null}]}`;
   const callPass1 = async (batchParts) => {
     const data = await geminiWithFallback({
       contents: [{ parts: [...batchParts, { text: prompt1 }] }],
@@ -1813,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.51" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.52" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -1974,7 +1975,15 @@ ${researchData}
 • 볶음밥·냉면·된장찌개·공기밥 등 마무리 메뉴는 「사이드/엔딩 메뉴」입니다. 이 메뉴들을 클라이맥스·히어로 씬의 주인공으로 배치하면 절대 안 됩니다.
 • 고깃집 영상의 메인(hero/climax) 씬 주제는 반드시 「구이」(고기·삼겹살·갈비·목살·소고기·곱창 등)이어야 합니다.
 • 볶음밥 등 마무리 메뉴는 마지막 CTA 씬 바로 직전 씬 1개에만 짧게(2.0~2.5초) 등장시키거나 완전히 생략하세요.
+[🔥 고깃집 구이 표현 정확성 규칙 — 반드시 준수]
+• "직접 구워드립니다", "테이블에서 구워드립니다", "구워드릴게요" 등 직원이 고기를 구워주는 표현은 영상/사진에서 직원이 실제로 구워주는 장면이 보일 때만 사용하세요.
+• 직원이 구워주는 장면이 없거나 불확실하면 "직접 구워서", "셀프 구이", "집게 들고 뒤집는 재미" 등 고객이 스스로 굽는다는 자연스러운 표현을 사용하세요.
 
+[🎖️ 시각 상태와 나레이션 일치 규칙 — 반드시 준수 (cooking_state 연동)]
+• 비주얼 컷 분석에서 cooking_state="cooked"(다 구워진 상태)로 표시된 이미지와 연결된 씬에서는 "선홍빛", "생고기", "구워지기 전", "원육" 등 생고기 상태를 연상시키는 단어를 나레이션/캡션에 절대 사용하지 마세요.
+• cooking_state="raw"(생고기)로 표시된 이미지에는 "구워진", "익힌", "육즙이 터지는" 등 이미 익힌 상태를 알리는 단어를 사용하지 마세요.
+• cooking_state가 null이거나 "cooking"(굽는 중)이면 화면에 보이는 실제 상태를 그대로 묘사하세요.
+• 예시: cooking_state="cooked" 이미지 → "노릇하게 구워진 구이 단면" O, "선홍빛 원육이 놓입니다" ❌
 [비주얼 컷 분석 — narration_hint를 나레이션 작성 기반으로 활용]${videoRule}
 ${imgSummary || "분석 없음"}
 권장 컷 순서: [${order.join(",")}]
@@ -2299,15 +2308,15 @@ ${sceneSummary}
 
 [검수 기준 (각 항목 0~10점)]
 1. 훅(Hook): 첫 씬이 2초 안에 시청자를 멈추게 하는가?
-2. 금지어 준수: "미쳤다", "대박", "환상적인", "선사" 등 금지어 미사용?
+2. 금지어 준수: "미쳤다", "대박", "환상적인", "선사", "구워드립니다(표현 오류)" 등 금지어 미사용?
 3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가?
 4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가?
 5. CTA: 마지막 씬에 구독/좋아요 유도가 포함되었는가?
 
-threshold: 총점 35점 이상(70%)이면 통과
+threshold: 총점 45점 이상(90%)이면 통과 — 44점 이하면 무조건 pass:false 반환
 
 JSON만 반환:
-{"total_score": 38, "pass": true, "hook": 8, "banned_words": 9, "flow": 7, "info_density": 7, "cta": 7, "issues": ["첫 씬 임팩트 부족"], "suggestion": "첫 씬 caption을 더 강렬하게 수정 권장"}`;
+{"total_score": 47, "pass": true, "hook": 9, "banned_words": 10, "flow": 9, "info_density": 10, "cta": 9, "issues": [], "suggestion": ""}`;
 
   try {
     const data = await geminiWithFallback({
@@ -2321,7 +2330,7 @@ JSON만 반환:
     return result;
   } catch (e) {
     console.warn('[geminiQualityCheck] 실패 → 기본 통과 처리:', e.message);
-    return { total_score: 40, pass: true, issues: [], suggestion: '' };
+    return { total_score: 50, pass: true, issues: [], suggestion: '' };
   }
 }
 
@@ -2819,7 +2828,9 @@ async function startMake() {
     setLoaded(loaded);
     await sleep$1(200);
 
-    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true }));
+    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true, total_score: 50 }));
+    // 서버사이드 강제: Gemini 응답과 무관하게 45점 미만이면 무조건 재생성
+    if (typeof qcResult.total_score === 'number' && qcResult.total_score < 45) qcResult.pass = false;
     if (!qcResult.pass) {
       addToast(`품질 검수 미달 (${qcResult.total_score}/50) — 스크립트 재생성 중...`, 'inf');
       let retryCount = 0;
