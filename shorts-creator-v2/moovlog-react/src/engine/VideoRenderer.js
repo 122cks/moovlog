@@ -16,21 +16,29 @@ let ffmpegInstance = null;
 let isLoading = false;
 
 async function getFFmpeg(onLog) {
-  if (ffmpegInstance?.loaded) return ffmpegInstance;
+  if (ffmpegInstance) return ffmpegInstance;
   if (isLoading) {
+    // 다른 호출이 로딩 중이면 완료될 때까지 대기
     while (isLoading) await new Promise(r => setTimeout(r, 200));
+    if (!ffmpegInstance) throw new Error('FFmpeg 엔진 로딩에 실패했습니다. 다시 시도해주세요.');
     return ffmpegInstance;
   }
   isLoading = true;
-  const ff = new FFmpeg();
-  if (onLog) ff.on('log', ({ message }) => onLog(message));
-  await ff.load({
-    coreURL: await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.js`,   'text/javascript'),
-    wasmURL: await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.wasm`, 'application/wasm'),
-  });
-  ffmpegInstance = ff;
-  isLoading = false;
-  return ff;
+  try {
+    const ff = new FFmpeg();
+    if (onLog) ff.on('log', ({ message }) => onLog(message));
+    await ff.load({
+      coreURL: await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.js`,   'text/javascript'),
+      wasmURL: await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.wasm`, 'application/wasm'),
+    });
+    ffmpegInstance = ff;
+    return ff;
+  } catch (e) {
+    ffmpegInstance = null; // 실패 시 초기화 → 재시도 가능
+    throw e;
+  } finally {
+    isLoading = false; // 성공/실패 모두 플래그 해제
+  }
 }
 
 // ─── 테마별 색감 보정 LUT 필터 ───────────────────────────
