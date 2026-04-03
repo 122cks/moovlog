@@ -84,30 +84,29 @@ function refineScenesForStoryboard(scenes, files, analysis) {
   let mediaSwapCount = 0;
   let subtitleFixCount = 0;
 
-  // 전체 스토리보드 확정 후 영상 컷을 사이사이에 배치
-  const videoIdxs = files.map((f, i) => (f.type === 'video' ? i : -1)).filter(i => i >= 0);
-  if (videoIdxs.length) {
-    let videoCursor = 0;
-    for (let i = 0; i < refined.length; i++) {
-      const curIdx = Number.isInteger(refined[i].media_idx) ? refined[i].media_idx : i;
-      const curType = files[curIdx]?.type;
-      const preferVideo = i === 0 || i % 2 === 1;
-      if (preferVideo && curType !== 'video') {
-        refined[i].media_idx = videoIdxs[videoCursor % videoIdxs.length];
-        videoCursor++;
-        mediaSwapCount++;
-      } else if (curType === 'video') {
-        videoCursor++;
-      }
-    }
-  }
-
   // 외관 컷은 마지막 CTA에 고정
   const exteriorIdx = analysis?.per_image?.find(p => p?.is_exterior === true)?.idx;
   if (Number.isInteger(exteriorIdx) && refined.length && files[exteriorIdx]) {
     const lastIdx = refined.length - 1;
     if (refined[lastIdx].media_idx !== exteriorIdx) {
       refined[lastIdx].media_idx = exteriorIdx;
+      mediaSwapCount++;
+    }
+  }
+
+  // [팟바란 영상 두 자리 코드 제거]
+  // 기존 코드: 0번째 + 짝수 위치에 무조건 영상 순환 배치 → 자막과 다른 영상이 튜어나는 문제 발생
+  // 수정: Gemini가 직접 할당한 media_idx 신뢰. 콘텐츠 매칭 기반으로만 보정.
+  // 단, 영상 파일 중 상당히 더 잘 맞는 것이 있으면 서브스티 스왓
+  const videoIdxs = files.map((f, i) => (f.type === 'video' ? i : -1)).filter(i => i >= 0);
+  if (videoIdxs.length) {
+    // 영상을 주입할 지 마 어느 술지 가장 잘 맞는 요소로 결정
+    // 영상 사용륙이 0개이면 첫 번째 씨 + 홀수 았는 씨에 영상 서브스티만 (콘텐츠 스코어 확인)
+    const usedVideoIdxSet = new Set(refined.filter(s => files[s.media_idx]?.type === 'video').map(s => s.media_idx));
+    const unusedVideoIdxs = videoIdxs.filter(i => !usedVideoIdxSet.has(i));
+    // 영상이 전혀 사용되지 앤으면 첫 씨에라도 넓음
+    if (usedVideoIdxSet.size === 0 && videoIdxs.length > 0 && refined.length > 0) {
+      refined[0].media_idx = videoIdxs[0];
       mediaSwapCount++;
     }
   }
@@ -174,6 +173,7 @@ export async function startMake() {
     setAudioBuffers, setLoaded, setShowResult,
     addToast, setAutoStyleName, setTemplate, setHook,
     hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis,
+    requiredKeywords,
   } = store;
 
   if (!files.length) { addToast('이미지 또는 영상을 올려주세요', 'err'); return; }
@@ -276,7 +276,7 @@ export async function startMake() {
 
     // ── STEP 4: 전체 스토리보드 우선 설계 ─────────────────────────────
     setPipeline(4, '전체 스토리보드 설계 중...', '먼저 내러티브 구조를 완성하고 컷 배치는 다음 단계에서 보정합니다');
-    let workingScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
+    let workingScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType, (useVideoStore.getState().requiredKeywords || '').trim());
     workingScript = flattenBlocksToScenes(workingScript);
     setScript(workingScript);
     donePipelineStep(4);

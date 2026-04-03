@@ -184,6 +184,9 @@ const INITIAL = {
   // 유저 프롬프트
   userPrompt: '',
 
+  // 필수 포함 키워드 (마케팅 키트 태그에 반드시 넣을 키워드)
+  requiredKeywords: '',
+
   // 플랫폼 최적화
   targetPlatform: 'reels', // 'reels' | 'shorts' | 'tiktok'
 
@@ -320,6 +323,9 @@ export const useVideoStore = create(
 
       // ── 유저 프롬프트 ──────────────────────────────────────
       setUserPrompt: (userPrompt) => set({ userPrompt }, false, 'setUserPrompt'),
+
+      // ── 필수 키워드 ────────────────────────────────────────
+      setRequiredKeywords: (requiredKeywords) => set({ requiredKeywords }, false, 'setRequiredKeywords'),
 
       // ── Firebase ───────────────────────────────────────────
       setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),

@@ -13,6 +13,7 @@ export default function UploadSection() {
     files, addFiles, removeFile, restaurantName, setRestaurantName,
     selectedTemplate, setTemplate, aspectRatio, setAspectRatio,
     restaurantType, setRestaurantType,
+    requiredKeywords, setRequiredKeywords,
     addToast,
   } = useVideoStore();
 
@@ -230,6 +231,21 @@ export default function UploadSection() {
       {/* AI 특별 요청 */}
       <PromptInput />
 
+      {/* 필수 키워드 */}
+      <div style={{ marginTop: '12px', width: '100%' }}>
+        <label style={{ display: 'block', marginBottom: '8px', fontWeight: '700', color: '#aaa', fontSize: '0.82rem' }}>
+          📌 필수 포함 키워드 <span style={{ color: '#555', fontWeight: '400' }}>(선택 — 주요 SNS 태그에 반드시 포함)</span>
+        </label>
+        <input
+          type="text"
+          className="name-input"
+          style={{ fontSize: '0.85rem', padding: '9px 12px', width: '100%', boxSizing: 'border-box' }}
+          placeholder="예: 부개동맛집, 인천삼겹살, 숙성삼겹살 (쉼표 구분)"
+          value={requiredKeywords}
+          onChange={e => setRequiredKeywords(e.target.value)}
+        />
+      </div>
+
       {/* 생성 버튼 */}
       <button
         className="make-btn"
@@ -280,6 +296,7 @@ export default function UploadSection() {
             const isOpen = selectedKit?.id === item.id;
             const dateStr = item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || '';
             const SNS_ROWS = [
+              { label: '✍️ 인스타 캡션',   val: item.caption },
               { label: '📎 N클립 태그',    val: item.naverClipTags },
               { label: '▶ 쇼츠 태그',      val: item.youtubeShortsTags },
               { label: '◎ 릴스 캡션',      val: item.instagramCaption },
@@ -288,6 +305,7 @@ export default function UploadSection() {
               { label: '🏷️ 해시태그 30개', val: item.hashtags30 },
               { label: '🧾 영수증 리뷰',    val: item.receiptReview },
             ].filter(r => r.val);
+            const hookVars = Array.isArray(item.hookVariations) ? item.hookVariations.filter(h => h?.caption1) : [];
             return (
               <div key={item.id} style={{ border: `1px solid ${isOpen ? '#7c3aed66' : '#333'}`, borderRadius: 10, overflow: 'hidden', background: isOpen ? 'rgba(124,58,237,0.06)' : '#1e1e1e', transition: 'border-color 0.15s' }}>
                 {/* 헤더 행: 클릭하면 토글 */}
@@ -316,8 +334,23 @@ export default function UploadSection() {
                 {/* 펼쳐진 내용 */}
                 {isOpen && (
                   <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {SNS_ROWS.length === 0 && (
+                    {SNS_ROWS.length === 0 && hookVars.length === 0 && (
                       <p style={{ color: '#666', fontSize: '0.75rem', fontStyle: 'italic', margin: 0 }}>저장된 태그 데이터가 없습니다</p>
+                    )}
+                    {/* AI PD의 3종 훅 전략 */}
+                    {hookVars.length > 0 && (
+                      <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 10px' }}>
+                        <p style={{ margin: '0 0 6px', fontSize: '0.7rem', fontWeight: 700, color: '#a78bfa' }}>🎯 AI PD의 3종 훅 전략</p>
+                        {hookVars.map((h, hi) => {
+                          const typeLabel = h.type === 'shock' ? '🔥 충격형' : h.type === 'info' ? 'ℹ️ 정보형' : '👤 1인칭';
+                          return (
+                            <div key={hi} style={{ marginBottom: 4 }}>
+                              <span style={{ fontSize: '0.68rem', color: '#f59e0b', fontWeight: 700 }}>{typeLabel}</span>
+                              <span style={{ fontSize: '0.72rem', color: '#ddd', marginLeft: 6 }}>{h.caption1}{h.caption2 ? ` / ${h.caption2}` : ''}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
                     {SNS_ROWS.map(({ label, val }) => (
                       <div key={label} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 10px' }}>

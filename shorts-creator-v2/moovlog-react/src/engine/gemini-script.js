@@ -4,7 +4,7 @@ import { toB64, extractVideoFramesB64, apiPost, getApiUrl, safeExtractText } fro
 import { useVideoStore, TEMPLATE_HINTS, HOOK_HINTS, VIRAL_TRENDS } from '../store/videoStore.js';
 import { getPersonaPrompt } from './PersonaManager.js';
 
-export async function generateScript(restaurantName, analysis, userPrompt = '', researchData = '', restaurantType = '') {
+export async function generateScript(restaurantName, analysis, userPrompt = '', researchData = '', restaurantType = '', requiredKeywords = '') {
   const { files, selectedTemplate, selectedHook } = useVideoStore.getState();
   const pi    = analysis.per_image || [];
   const order = analysis.recommended_order?.length ? analysis.recommended_order : files.map((_, i) => i);
@@ -239,9 +239,13 @@ ${imgSummary || '분석 없음'}
 
 [★ SNS 태그 규칙 — 반드시 준수]
 naver_clip_tags : #협찬 으로 시작, 이어서 지역·음식·분위기 태그 공백 나열, 총 300자 이내
-youtube_shorts_tags : 핵심 태그 5~8개 100자 이내
-instagram_caption : 감성 소개 2~3줄\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5 (5개 딱 맞기)
-tiktok_tags : #태그 딱 5개만 공백 구분
+youtube_shorts_tags : 핵심 태그 5~8개, 공백 포함 100자 이내. ⚠️ 무브먼트·무브먼트픽 등 브랜드 자체 태그 절대 제외. 음식점 이름·지역·메뉴 중심 태그만 사용.
+instagram_caption : 감성 소개 2~3줄\n\n#태그1 #태그2 #태그3 #태그4 #태그5 (5개 딱 맞기)
+tiktok_tags : #태그 딱 5개만 공백 구분. 무브먼트 브랜드 태그 제외.
+${requiredKeywords.trim() ? `
+[📌 필수 포함 키워드 — 아래 키워드를 naver_clip_tags와 hashtags_30에 반드시 포함할 것]
+${requiredKeywords.trim()}
+` : ''}
 
 [컷 매칭 규칙 — ★매우 중요★]
 • 각 이미지를 제공할 때 앞에 "--- [원본 미디어 번호 media_idx: N] ---" 이라고 라벨을 뺙여두었습니다.
