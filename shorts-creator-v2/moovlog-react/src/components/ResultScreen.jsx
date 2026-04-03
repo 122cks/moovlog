@@ -6,7 +6,6 @@ import { extractThumbnail } from '../engine/VideoRenderer.js';
 import VideoPlayer  from './VideoPlayer.jsx';
 import SceneList    from './SceneList.jsx';
 import ExportPanel  from './ExportPanel.jsx';
-import SNSTags      from './SNSTags.jsx';
 import { getMarketingKits, searchMarketingKits, deleteMarketingKit } from '../engine/firebase.js';
 
 // ── 🔴 Auto-Recovery: 빈 오디오 씬 감지 + 개별 재합성 ────
@@ -226,50 +225,103 @@ function HookPicker({ variations, script, setScript, addToast }) {
   );
 }
 
-// ── 마케팅 에셋 복사 버튼 섹션 ─────────────────────────────
-function MarketingAssets({ marketing, addToast }) {
-  if (!marketing) return null;
-  const copy = async (text, label) => {
-    try { await navigator.clipboard.writeText(text); addToast(`${label} 복사 완료! ✨`, 'ok'); }
-    catch { addToast('복사 실패 — 직접 선택해서 복사해주세요', 'err'); }
+// ── 📣 마케팅 키트 탭 버튼 UI ─────────────────────────────
+function MarketingKitTabs({ script, addToast }) {
+  const [activeTab, setActiveTab] = useState(null);
+  if (!script) return null;
+
+  const pNaver = (text) => {
+    const raw = String(text || '');
+    const t = raw.startsWith('#협찬') ? raw : '#협찬 ' + raw;
+    if (t.length <= 300) return t;
+    const cut = t.slice(0, 300);
+    const sp = cut.lastIndexOf(' ');
+    return sp > 0 ? cut.slice(0, sp) : cut;
   };
+  const pShorts = (text) => {
+    const raw = String(text || '');
+    if (raw.length <= 100) return raw;
+    const cut = raw.slice(0, 100);
+    const sp = cut.lastIndexOf(' ');
+    return sp > 85 ? cut.slice(0, sp) : cut;
+  };
+  const pInsta = (cap) => {
+    if (!cap) return '';
+    const sep = cap.indexOf('\n\n');
+    if (sep !== -1) {
+      const desc = cap.slice(0, sep);
+      const tags = (cap.slice(sep + 2).match(/#[^\s#]+/g) || []).slice(0, 5);
+      return desc + '\n\n' + tags.join(' ');
+    }
+    const tags = (cap.match(/#[^\s#]+/g) || []).slice(0, 5);
+    return tags.length ? tags.join(' ') : cap;
+  };
+  const pTiktok = () => {
+    const cap = script?.instagram_caption || script?.marketing?.caption || '';
+    const sep = cap.indexOf('\n\n');
+    const body = sep !== -1 ? cap.slice(0, sep)
+      : cap.split('\n').filter(l => !l.trim().startsWith('#')).join('\n').trim();
+    const tags = (script?.tiktok_tags || '').match(/#[^\s#]+/g) || [];
+    const tagStr = tags.slice(0, 5).join(' ');
+    return [body, tagStr].filter(Boolean).join('\n\n');
+  };
+
+  const TABS = [
+    { id: 'nclip',   label: 'N클립',   badge: '300자',     color: '#03c75a', text: pNaver(script.naver_clip_tags) },
+    { id: 'shorts',  label: '쇼츠',    badge: '100자',     color: '#ff0000', text: pShorts(script.youtube_shorts_tags) },
+    { id: 'insta',   label: '인스타',  badge: '본문+태그5', color: '#e1306c', text: pInsta(script.instagram_caption) },
+    { id: 'tiktok',  label: '틱톡',    badge: '본문+태그5', color: '#6fc2f5', text: pTiktok() },
+    { id: 'receipt', label: 'N영수증', badge: '한줄평',    color: '#03c75a', text: script?.marketing?.receipt_review || '' },
+  ].filter(t => t.text.trim());
+
+  if (!TABS.length) return null;
+
+  const active = TABS.find(t => t.id === activeTab);
+  const copy = async (text) => {
+    try { await navigator.clipboard.writeText(text); addToast('복사 완료! ✨', 'ok'); }
+    catch { addToast('복사 실패', 'err'); }
+  };
+
   return (
-    <div className="marketing-assets-box">
-      <p className="marketing-title"><i className="fas fa-rocket" /> 릴스 떡상 마케팅 키트</p>
-      {marketing.hook_title && (
-        <div className="marketing-row">
-          <span className="marketing-label">🎣 훅 제목</span>
-          <button className="marketing-copy-btn" onClick={() => copy(marketing.hook_title, '훅 제목')}>
-            <i className="fas fa-copy" /> 복사
+    <div className="marketing-assets-box" style={{ marginTop: 8 }}>
+      <p className="marketing-title" style={{ marginBottom: 10 }}>
+        <i className="fas fa-rocket" /> 마케팅 키트
+      </p>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(activeTab === tab.id ? null : tab.id)}
+            style={{
+              padding: '8px 14px', borderRadius: 22,
+              border: `1.5px solid ${activeTab === tab.id ? tab.color : '#333'}`,
+              background: activeTab === tab.id ? tab.color + '22' : 'transparent',
+              color: activeTab === tab.id ? tab.color : '#888',
+              fontSize: '0.82rem', fontWeight: activeTab === tab.id ? 800 : 500,
+              cursor: 'pointer', transition: 'all 0.15s',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            }}
+          >
+            <span>{tab.label}</span>
+            <span style={{ fontSize: '0.6rem', opacity: 0.75 }}>{tab.badge}</span>
           </button>
-          <p className="marketing-text">{marketing.hook_title}</p>
-        </div>
-      )}
-      {marketing.caption && (
-        <div className="marketing-row">
-          <span className="marketing-label">✍️ 인스타 캡션</span>
-          <button className="marketing-copy-btn" onClick={() => copy(marketing.caption, '인스타 캡션')}>
-            <i className="fas fa-copy" /> 복사
-          </button>
-          <p className="marketing-text" style={{ whiteSpace: 'pre-line', fontSize: '0.75rem' }}>{marketing.caption}</p>
-        </div>
-      )}
-      {marketing.hashtags_30 && (
-        <div className="marketing-row">
-          <span className="marketing-label">🏷️ 해시태그 30개</span>
-          <button className="marketing-copy-btn" onClick={() => copy(marketing.hashtags_30, '해시태그 30개')}>
-            <i className="fas fa-copy" /> 한번에 복사
-          </button>
-          <p className="marketing-text" style={{ fontSize: '0.68rem', lineHeight: 1.8, color: '#a855f7' }}>{marketing.hashtags_30}</p>
-        </div>
-      )}
-      {marketing.receipt_review && (
-        <div className="marketing-row">
-          <span className="marketing-label">🧢 네이버 영수증 리뷰</span>
-          <button className="marketing-copy-btn" onClick={() => copy(marketing.receipt_review, '영수증 리뷰')}>
-            <i className="fas fa-copy" /> 복사
-          </button>
-          <p className="marketing-text">{marketing.receipt_review}</p>
+        ))}
+      </div>
+      {active && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: '0.68rem', color: '#555' }}>{active.text.length}자</span>
+            <button className="marketing-copy-btn" style={{ float: 'none' }} onClick={() => copy(active.text)}>
+              <i className="fas fa-copy" /> 복사
+            </button>
+          </div>
+          <p className="marketing-text" style={{
+            whiteSpace: 'pre-line', background: 'rgba(0,0,0,0.3)',
+            borderRadius: 8, padding: '10px 14px', margin: 0, fontSize: '0.78rem',
+            color: (active.id === 'nclip' || active.id === 'shorts') ? '#a855f7' : '#ddd',
+          }}>
+            {active.text}
+          </p>
         </div>
       )}
     </div>
@@ -384,18 +436,8 @@ export default function ResultScreen() {
         {/* 저장 패널 */}
         <ExportPanel />
 
-        {/* 마케팅 에셋 키트 — 파이프라인 결과에도 표시(top-level 필드 폴백) */}
-        {(script?.marketing || script?.hook_title || script?.caption) && (
-          <MarketingAssets
-            marketing={script.marketing || {
-              hook_title:     script.hook_title || '',
-              caption:        script.caption || '',
-              hashtags_30:    script.hashtags_30 || '',
-              receipt_review: script.receipt_review || '',
-            }}
-            addToast={addToast}
-          />
-        )}
+        {/* 마케팅 키트 탭 버튼 */}
+        {script && <MarketingKitTabs script={script} addToast={addToast} />}
 
         {/* 🗂️ 마케팅 키트 이력 / 로드된 키트 통합 패널 */}
         <div ref={kitPanelRef} className="marketing-assets-box" style={{ marginTop: 8, ...(loadedKit ? { border: '1.5px solid #7c3aed66', background: 'rgba(124,58,237,0.07)' } : {}) }}>
@@ -557,8 +599,6 @@ export default function ResultScreen() {
           <HookPicker variations={script.hook_variations} script={script} setScript={setScript} addToast={addToast} />
         )}
 
-        {/* SNS 태그 */}
-        {script && <SNSTags script={script} />}
 
         {/* 다시 만들기 */}
         <button className="re-btn" onClick={doReset}>

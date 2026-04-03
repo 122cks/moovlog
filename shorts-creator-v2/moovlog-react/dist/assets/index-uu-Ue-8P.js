@@ -1814,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.58" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.59" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2493,6 +2493,27 @@ function tokenOverlapScore(tokens, text) {
   return score;
 }
 
+// ─── 음식 카테고리 감지 (나레이션-영상 불일치 2단계 교정용) ──────────
+const FOOD_CATEGORY_MAP = [
+  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음'] },
+  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '겉절이', '나물', '조림', '무침', '깻잎', '잡채'] },
+  { cat: 'soup',       kw: ['찌개', '계란찜', '된장', '부대찌개', '김치찌개', '탕', '전골', '국물', '뚝배기'] },
+  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료'] },
+  { cat: 'meat',       kw: ['고기', '삼겹살', '갈비', '목살', '구이', '육즙', '숯불', '불판', '원육', '마블링', '곱창', '항정살'] },
+  { cat: 'table',      kw: ['상차림', '차림', '한 상', '테이블 세팅', '올라왔'] },
+  { cat: 'noodle',     kw: ['냉면', '국수', '라면', '면 요리'] },
+  { cat: 'rice',       kw: ['공기밥', '쌀밥', '흰밥', '돌솥밥'] },
+  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구'] },
+];
+
+function detectFoodCategory(text) {
+  const t = String(text || '').toLowerCase();
+  for (const { cat, kw } of FOOD_CATEGORY_MAP) {
+    if (kw.some(w => t.includes(w))) return cat;
+  }
+  return null;
+}
+
 function refineScenesForStoryboard(scenes, files, analysis) {
   if (!Array.isArray(scenes) || !scenes.length) {
     return { scenes: Array.isArray(scenes) ? scenes : [], mediaSwapCount: 0, subtitleFixCount: 0 };
@@ -2600,6 +2621,38 @@ function refineScenesForStoryboard(scenes, files, analysis) {
           subtitleFixCount++;
         }
       }
+    }
+  }
+
+  // ─── 2단계: 음식 카테고리 불일치 강제 교정 ─────────────────────────
+  // 씬 나레이션이 특정 음식(볶음밥, 밑반찬, 고기 등)을 명시했는데
+  // 배정된 미디어의 focus가 다른 카테고리면 올바른 미디어로 교체
+  for (let i = 0; i < refined.length - 1; i++) {
+    const sc = refined[i];
+    const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
+    const sceneCat = detectFoodCategory(sceneText);
+    if (!sceneCat) continue;
+
+    const midx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
+    const mediaFocusText = `${analysisMap[midx]?.focus || ''} ${analysisMap[midx]?.narration_hint || ''}`;
+    const mediaCat = detectFoodCategory(mediaFocusText);
+    if (mediaCat === sceneCat) continue; // 이미 일치
+
+    // 같은 카테고리이면서 미사용인 미디어 탐색 (foodie_score 높은 순)
+    const candidates = allMediaIdxs.filter(idx => {
+      if (idx === midx) return false;
+      if (usedMediaIdxs.has(idx)) return false;
+      if (analysisMap[idx]?.is_exterior) return false;
+      const fText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
+      return detectFoodCategory(fText) === sceneCat;
+    }).sort((a, b) => (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0));
+
+    if (candidates.length > 0) {
+      usedMediaIdxs.delete(midx);
+      sc.media_idx = candidates[0];
+      usedMediaIdxs.add(candidates[0]);
+      mediaSwapCount++;
+      console.log(`[CategoryFix] 씬 ${i}: '${sceneCat}' 나레이션 → 미디어 ${midx}(${mediaCat || '?'}) → ${candidates[0]}(${sceneCat}) 교체`);
     }
   }
 
@@ -5674,72 +5727,6 @@ async function doExportWebCodecs(script, audioBuffers, restaurantName, setBtnTex
   });
 }
 
-function processNaver(text) {
-  const raw = text || "";
-  const t = raw.startsWith("#협찬") ? raw : "#협찬 " + raw;
-  if (t.length <= 300) return t;
-  const cut = t.slice(0, 300);
-  const sp = cut.lastIndexOf(" ");
-  return sp > 0 ? cut.slice(0, sp) : cut;
-}
-function processYoutube(text) {
-  const raw = text || "";
-  if (raw.length <= 100) return raw;
-  const cut = raw.slice(0, 100);
-  const sp = cut.lastIndexOf(" ");
-  return sp > 85 ? cut.slice(0, sp) : cut;
-}
-function processTikTok(text) {
-  const tags = (text || "").match(/#[^\s#]+/g) || [];
-  return tags.slice(0, 5).join(" ");
-}
-function processInsta(caption) {
-  if (!caption) return "";
-  const sep = caption.indexOf("\n\n");
-  if (sep !== -1) {
-    const desc = caption.slice(0, sep);
-    const tags2 = (caption.slice(sep + 2).match(/#[^\s#]+/g) || []).slice(0, 5);
-    return desc + "\n\n" + tags2.join(" ");
-  }
-  const tags = (caption.match(/#[^\s#]+/g) || []).slice(0, 5);
-  return tags.length ? tags.join(" ") : caption;
-}
-function SNSTags({ script }) {
-  if (!script) return null;
-  const { addToast } = useVideoStore();
-  const copy = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      addToast("클립보드 복사 완료!", "ok");
-    } catch {
-      addToast("복사 실패", "err");
-    }
-  };
-  const tags = [
-    { badge: "naver", label: "N 클립", limit: "300자 (#협찬 포함)", text: processNaver(script.naver_clip_tags) },
-    { badge: "youtube", label: "▶ 쇼츠", limit: "100자 이내", text: processYoutube(script.youtube_shorts_tags) },
-    { badge: "insta", label: "◎ 릴스", limit: "캡션 + 5개 태그", text: processInsta(script.instagram_caption) },
-    { badge: "tiktok", label: "♪ 틱톡", limit: "5개만", text: processTikTok(script.tiktok_tags) }
-  ];
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sns-wrap", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "sns-title", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-hashtag" }),
-      " SNS 플랫폼별 태그"
-    ] }),
-    tags.map((t, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sns-card", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sns-card-head", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `sns-badge ${t.badge}`, children: t.label }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sns-limit", children: t.limit }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "sns-copy-btn", onClick: () => copy(t.text), children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
-          " 복사"
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sns-text", children: t.text })
-    ] }, i))
-  ] });
-}
-
 function AutoRecovery({ scenes, audioBuffers, addToast }) {
   const { updateAudioBuffer, updateScene } = useVideoStore();
   const [recovering, setRecovering] = reactExports.useState({});
@@ -5962,52 +5949,111 @@ function HookPicker({ variations, script, setScript, addToast }) {
     ] }, i)) })
   ] });
 }
-function MarketingAssets({ marketing, addToast }) {
-  if (!marketing) return null;
-  const copy = async (text, label) => {
+function MarketingKitTabs({ script, addToast }) {
+  const [activeTab, setActiveTab] = reactExports.useState(null);
+  if (!script) return null;
+  const pNaver = (text) => {
+    const raw = String(text || "");
+    const t = raw.startsWith("#협찬") ? raw : "#협찬 " + raw;
+    if (t.length <= 300) return t;
+    const cut = t.slice(0, 300);
+    const sp = cut.lastIndexOf(" ");
+    return sp > 0 ? cut.slice(0, sp) : cut;
+  };
+  const pShorts = (text) => {
+    const raw = String(text || "");
+    if (raw.length <= 100) return raw;
+    const cut = raw.slice(0, 100);
+    const sp = cut.lastIndexOf(" ");
+    return sp > 85 ? cut.slice(0, sp) : cut;
+  };
+  const pInsta = (cap) => {
+    if (!cap) return "";
+    const sep = cap.indexOf("\n\n");
+    if (sep !== -1) {
+      const desc = cap.slice(0, sep);
+      const tags2 = (cap.slice(sep + 2).match(/#[^\s#]+/g) || []).slice(0, 5);
+      return desc + "\n\n" + tags2.join(" ");
+    }
+    const tags = (cap.match(/#[^\s#]+/g) || []).slice(0, 5);
+    return tags.length ? tags.join(" ") : cap;
+  };
+  const pTiktok = () => {
+    const cap = script?.instagram_caption || script?.marketing?.caption || "";
+    const sep = cap.indexOf("\n\n");
+    const body = sep !== -1 ? cap.slice(0, sep) : cap.split("\n").filter((l) => !l.trim().startsWith("#")).join("\n").trim();
+    const tags = (script?.tiktok_tags || "").match(/#[^\s#]+/g) || [];
+    const tagStr = tags.slice(0, 5).join(" ");
+    return [body, tagStr].filter(Boolean).join("\n\n");
+  };
+  const TABS = [
+    { id: "nclip", label: "N클립", badge: "300자", color: "#03c75a", text: pNaver(script.naver_clip_tags) },
+    { id: "shorts", label: "쇼츠", badge: "100자", color: "#ff0000", text: pShorts(script.youtube_shorts_tags) },
+    { id: "insta", label: "인스타", badge: "본문+태그5", color: "#e1306c", text: pInsta(script.instagram_caption) },
+    { id: "tiktok", label: "틱톡", badge: "본문+태그5", color: "#6fc2f5", text: pTiktok() },
+    { id: "receipt", label: "N영수증", badge: "한줄평", color: "#03c75a", text: script?.marketing?.receipt_review || "" }
+  ].filter((t) => t.text.trim());
+  if (!TABS.length) return null;
+  const active = TABS.find((t) => t.id === activeTab);
+  const copy = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
-      addToast(`${label} 복사 완료! ✨`, "ok");
+      addToast("복사 완료! ✨", "ok");
     } catch {
-      addToast("복사 실패 — 직접 선택해서 복사해주세요", "err");
+      addToast("복사 실패", "err");
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-assets-box", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "marketing-title", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-assets-box", style: { marginTop: 8 }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "marketing-title", style: { marginBottom: 10 }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-rocket" }),
-      " 릴스 떡상 마케팅 키트"
+      " 마케팅 키트"
     ] }),
-    marketing.hook_title && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", children: "🎣 훅 제목" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", onClick: () => copy(marketing.hook_title, "훅 제목"), children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
-        " 복사"
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" }, children: TABS.map((tab) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        onClick: () => setActiveTab(activeTab === tab.id ? null : tab.id),
+        style: {
+          padding: "8px 14px",
+          borderRadius: 22,
+          border: `1.5px solid ${activeTab === tab.id ? tab.color : "#333"}`,
+          background: activeTab === tab.id ? tab.color + "22" : "transparent",
+          color: activeTab === tab.id ? tab.color : "#888",
+          fontSize: "0.82rem",
+          fontWeight: activeTab === tab.id ? 800 : 500,
+          cursor: "pointer",
+          transition: "all 0.15s",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 2
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tab.label }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.6rem", opacity: 0.75 }, children: tab.badge })
+        ]
+      },
+      tab.id
+    )) }),
+    active && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 12 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.68rem", color: "#555" }, children: [
+          active.text.length,
+          "자"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", style: { float: "none" }, onClick: () => copy(active.text), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
+          " 복사"
+        ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-text", children: marketing.hook_title })
-    ] }),
-    marketing.caption && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", children: "✍️ 인스타 캡션" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", onClick: () => copy(marketing.caption, "인스타 캡션"), children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
-        " 복사"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-text", style: { whiteSpace: "pre-line", fontSize: "0.75rem" }, children: marketing.caption })
-    ] }),
-    marketing.hashtags_30 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", children: "🏷️ 해시태그 30개" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", onClick: () => copy(marketing.hashtags_30, "해시태그 30개"), children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
-        " 한번에 복사"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-text", style: { fontSize: "0.68rem", lineHeight: 1.8, color: "#a855f7" }, children: marketing.hashtags_30 })
-    ] }),
-    marketing.receipt_review && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "marketing-row", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "marketing-label", children: "🧢 네이버 영수증 리뷰" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "marketing-copy-btn", onClick: () => copy(marketing.receipt_review, "영수증 리뷰"), children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
-        " 복사"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-text", children: marketing.receipt_review })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-text", style: {
+        whiteSpace: "pre-line",
+        background: "rgba(0,0,0,0.3)",
+        borderRadius: 8,
+        padding: "10px 14px",
+        margin: 0,
+        fontSize: "0.78rem",
+        color: active.id === "nclip" || active.id === "shorts" ? "#a855f7" : "#ddd"
+      }, children: active.text })
     ] })
   ] });
 }
@@ -6109,18 +6155,7 @@ function ResultScreen() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(ThumbnailMaker, { scenes: script?.scenes || [], files, script, addToast }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(SceneList, {}),
     /* @__PURE__ */ jsxRuntimeExports.jsx(ExportPanel, {}),
-    (script?.marketing || script?.hook_title || script?.caption) && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      MarketingAssets,
-      {
-        marketing: script.marketing || {
-          hook_title: script.hook_title || "",
-          caption: script.caption || "",
-          hashtags_30: script.hashtags_30 || "",
-          receipt_review: script.receipt_review || ""
-        },
-        addToast
-      }
-    ),
+    script && /* @__PURE__ */ jsxRuntimeExports.jsx(MarketingKitTabs, { script, addToast }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: kitPanelRef, className: "marketing-assets-box", style: { marginTop: 8, ...loadedKit ? { border: "1.5px solid #7c3aed66", background: "rgba(124,58,237,0.07)" } : {} }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "marketing-title", style: { margin: 0 }, children: loadedKit ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -6285,7 +6320,6 @@ function ResultScreen() {
       ] })
     ] }),
     script?.hook_variations?.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(HookPicker, { variations: script.hook_variations, script, setScript, addToast }),
-    script && /* @__PURE__ */ jsxRuntimeExports.jsx(SNSTags, { script }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "re-btn", onClick: doReset, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-redo" }),
       " 다시 만들기"

@@ -72,6 +72,27 @@ function tokenOverlapScore(tokens, text) {
   return score;
 }
 
+// ─── 음식 카테고리 감지 (나레이션-영상 불일치 2단계 교정용) ──────────
+const FOOD_CATEGORY_MAP = [
+  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음'] },
+  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '겉절이', '나물', '조림', '무침', '깻잎', '잡채'] },
+  { cat: 'soup',       kw: ['찌개', '계란찜', '된장', '부대찌개', '김치찌개', '탕', '전골', '국물', '뚝배기'] },
+  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료'] },
+  { cat: 'meat',       kw: ['고기', '삼겹살', '갈비', '목살', '구이', '육즙', '숯불', '불판', '원육', '마블링', '곱창', '항정살'] },
+  { cat: 'table',      kw: ['상차림', '차림', '한 상', '테이블 세팅', '올라왔'] },
+  { cat: 'noodle',     kw: ['냉면', '국수', '라면', '면 요리'] },
+  { cat: 'rice',       kw: ['공기밥', '쌀밥', '흰밥', '돌솥밥'] },
+  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구'] },
+];
+
+function detectFoodCategory(text) {
+  const t = String(text || '').toLowerCase();
+  for (const { cat, kw } of FOOD_CATEGORY_MAP) {
+    if (kw.some(w => t.includes(w))) return cat;
+  }
+  return null;
+}
+
 function refineScenesForStoryboard(scenes, files, analysis) {
   if (!Array.isArray(scenes) || !scenes.length) {
     return { scenes: Array.isArray(scenes) ? scenes : [], mediaSwapCount: 0, subtitleFixCount: 0 };
@@ -179,6 +200,38 @@ function refineScenesForStoryboard(scenes, files, analysis) {
           subtitleFixCount++;
         }
       }
+    }
+  }
+
+  // ─── 2단계: 음식 카테고리 불일치 강제 교정 ─────────────────────────
+  // 씬 나레이션이 특정 음식(볶음밥, 밑반찬, 고기 등)을 명시했는데
+  // 배정된 미디어의 focus가 다른 카테고리면 올바른 미디어로 교체
+  for (let i = 0; i < refined.length - 1; i++) {
+    const sc = refined[i];
+    const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
+    const sceneCat = detectFoodCategory(sceneText);
+    if (!sceneCat) continue;
+
+    const midx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
+    const mediaFocusText = `${analysisMap[midx]?.focus || ''} ${analysisMap[midx]?.narration_hint || ''}`;
+    const mediaCat = detectFoodCategory(mediaFocusText);
+    if (mediaCat === sceneCat) continue; // 이미 일치
+
+    // 같은 카테고리이면서 미사용인 미디어 탐색 (foodie_score 높은 순)
+    const candidates = allMediaIdxs.filter(idx => {
+      if (idx === midx) return false;
+      if (usedMediaIdxs.has(idx)) return false;
+      if (analysisMap[idx]?.is_exterior) return false;
+      const fText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
+      return detectFoodCategory(fText) === sceneCat;
+    }).sort((a, b) => (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0));
+
+    if (candidates.length > 0) {
+      usedMediaIdxs.delete(midx);
+      sc.media_idx = candidates[0];
+      usedMediaIdxs.add(candidates[0]);
+      mediaSwapCount++;
+      console.log(`[CategoryFix] 씬 ${i}: '${sceneCat}' 나레이션 → 미디어 ${midx}(${mediaCat || '?'}) → ${candidates[0]}(${sceneCat}) 교체`);
     }
   }
 
