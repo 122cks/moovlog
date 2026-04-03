@@ -288,7 +288,7 @@ export default function UploadSection() {
             <i className="fas fa-search" />
           </button>
         </div>
-        <div ref={kitListRef} style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, WebkitOverflowScrolling: 'touch' }}>
+        <div ref={kitListRef} style={{ maxHeight: '55vh', overflowY: 'scroll', display: 'flex', flexDirection: 'column', gap: 6, overflowX: 'hidden' }}>
           {kitHistory.length === 0 && !kitLoading && (
             <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '10px 0', fontSize: '0.78rem' }}>
               저장된 마케팅 키트가 없습니다

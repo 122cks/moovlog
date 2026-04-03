@@ -214,7 +214,7 @@ export const useVideoStore = create(
           if (I.has(ext)) return 'image';
           return null;
         };
-        const pairs = [...newFiles].map(f => [f, getType(f)]).filter(([, t]) => t).slice(0, 30 - s.files.length);
+        const pairs = [...newFiles].map(f => [f, getType(f)]).filter(([, t]) => t).slice(0, 50 - s.files.length);
         const items = pairs.map(([f, t]) => ({ file: f, url: URL.createObjectURL(f), type: t }));
         return { files: [...s.files, ...items] };
       }, false, 'addFiles'),
@@ -223,7 +223,7 @@ export const useVideoStore = create(
       addFilesAsync: async (newFiles) => {
         const { preprocessMediaFiles } = await import('../engine/mediaPreprocess.js');
         const { files: cur, addToast } = get();
-        const limit = 30 - cur.length;
+        const limit = 50 - cur.length;
         if (limit <= 0) return;
         const arr = [...newFiles].slice(0, limit);
         const big = arr.some(f => f.size > 50 * 1024 * 1024);

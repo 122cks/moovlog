@@ -204,26 +204,32 @@ export async function visionAnalysis(restaurantName, researchData = '', restaura
 
   // ?? 10+10+10 諛곗튂 遺꾪븷 (理쒕? 30媛? ??
   const VISION_BATCH = 10;
-  const totalMedia = Math.min(files.length, 30);
+  const totalMedia = Math.min(files.length, 50);
   const slice0 = files.slice(0, Math.min(VISION_BATCH, totalMedia));
   const slice1 = files.slice(VISION_BATCH, Math.min(VISION_BATCH * 2, totalMedia));
-  const slice2 = files.slice(VISION_BATCH * 2, totalMedia);
+  const slice2 = files.slice(VISION_BATCH * 2, Math.min(VISION_BATCH * 3, totalMedia));
+  const slice3 = files.slice(VISION_BATCH * 3, Math.min(VISION_BATCH * 4, totalMedia));
+  const slice4 = files.slice(VISION_BATCH * 4, totalMedia);
 
   if (!slice0.length) {
     return { keywords: [restaurantName, '留쏆쭛'], mood: '媛먯꽦?곸씤', per_image: [], recommended_order: [] };
   }
 
   // 諛곗튂 parts 蹂묐젹 鍮뚮뱶 (?뚯씪蹂?洹몃９ ?좎?)
-  const [filePartsGroup0, filePartsGroup1, filePartsGroup2] = await Promise.all([
+  const [filePartsGroup0, filePartsGroup1, filePartsGroup2, filePartsGroup3, filePartsGroup4] = await Promise.all([
     buildBatchPartsGrouped(slice0, 0),
     slice1.length ? buildBatchPartsGrouped(slice1, VISION_BATCH) : Promise.resolve([]),
     slice2.length ? buildBatchPartsGrouped(slice2, VISION_BATCH * 2) : Promise.resolve([]),
+    slice3.length ? buildBatchPartsGrouped(slice3, VISION_BATCH * 3) : Promise.resolve([]),
+    slice4.length ? buildBatchPartsGrouped(slice4, VISION_BATCH * 4) : Promise.resolve([]),
   ]);
   // 1李??⑥뒪??flat parts / 2李??⑥뒪???뚯씪蹂?洹몃９ ?꾩껜 李몄“
   const parts0 = filePartsGroup0.flat();
   const parts1 = filePartsGroup1.flat();
   const parts2 = filePartsGroup2.flat();
-  const allFilePartsGroups = [...filePartsGroup0, ...filePartsGroup1, ...filePartsGroup2];
+  const parts3 = filePartsGroup3.flat();
+  const parts4 = filePartsGroup4.flat();
+  const allFilePartsGroups = [...filePartsGroup0, ...filePartsGroup1, ...filePartsGroup2, ...filePartsGroup3, ...filePartsGroup4];
 
   // ?? 1踰덉㎏ ?⑥뒪: 湲곕낯 鍮꾩＜??遺꾩꽍 ??
   const typeHint = restaurantType && restaurantType !== 'auto'
@@ -268,10 +274,12 @@ JSON留?諛섑솚:
     return JSON.parse(_s >= 0 && _e > _s ? raw.slice(_s, _e + 1) : raw.replace(/```json|```/g, '').trim());
   };
 
-  const [pass1Result0, pass1Result1, pass1Result2] = await Promise.all([
+  const [pass1Result0, pass1Result1, pass1Result2, pass1Result3, pass1Result4] = await Promise.all([
     callPass1(parts0).catch(() => ({ keywords: [restaurantName], mood: 'unknown', per_image: [], recommended_order: [] })),
     parts1.length ? callPass1(parts1).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
     parts2.length ? callPass1(parts2).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
+    parts3.length ? callPass1(parts3).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
+    parts4.length ? callPass1(parts4).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
   ]);
 
   // 諛곗튂 寃곌낵 蹂묓빀 ??媛?諛곗튂 per_image idx??VISION_BATCH ?ㅽ봽???곸슜
@@ -290,9 +298,14 @@ JSON留?諛섑솚:
     };
   };
   const firstResult = mergeBatch(
-    mergeBatch(pass1Result0, pass1Result1, VISION_BATCH),
-    pass1Result2,
-    VISION_BATCH * 2
+    mergeBatch(
+      mergeBatch(
+        mergeBatch(pass1Result0, pass1Result1, VISION_BATCH),
+        pass1Result2, VISION_BATCH * 2
+      ),
+      pass1Result3, VISION_BATCH * 3
+    ),
+    pass1Result4, VISION_BATCH * 4
   );
 
   // ?? 2踰덉㎏ ?⑥뒪: narration_hint ?앹꽦 (議대뙎留먃룹젙蹂댁쟾?? ??

@@ -1,10 +1,188 @@
 // src/components/DrivePicker.jsx
-// v2.46: 로그인 반복 버그 수정 — loadToken() 직접 확인, useRef tokenClient 재사용, 401 자동 재인증
-import { useEffect, useState, useRef } from 'react';
+// v2.51: Google Picker(iframe/popup) → Drive REST API 직접 브라우저로 교체
+//   COOP same-origin이 docs.google.com 팝업 통신을 차단하는 문제 해결
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useVideoStore } from '../store/videoStore.js';
 import { saveToken, loadToken, clearToken } from '../engine/AuthService.js';
 
-const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GOOGLE_DRIVE_API || '';
+const DRIVE_ICON = (
+  <svg width="16" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+    <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+    <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+    <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+    <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+    <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+    <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+  </svg>
+);
+
+const DRIVE_Q = "(mimeType='image/png' or mimeType='image/jpeg' or mimeType='image/jpg' or mimeType='image/webp' or mimeType='video/mp4' or mimeType='video/quicktime' or mimeType='video/x-m4v') and trashed=false";
+
+async function listDriveFiles(accessToken, pageToken = null, nameFilter = '') {
+  let q = DRIVE_Q;
+  if (nameFilter.trim()) q += ` and name contains '${nameFilter.replace(/'/g, "\\'")}'`;
+  const params = new URLSearchParams({
+    q,
+    fields: 'nextPageToken,files(id,name,mimeType,thumbnailLink,size)',
+    pageSize: '50',
+    orderBy: 'modifiedTime desc',
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (res.status === 401) throw Object.assign(new Error('TOKEN_EXPIRED'), { code: 401 });
+  if (!res.ok) throw new Error(`Drive API 오류 (${res.status})`);
+  return res.json();
+}
+
+function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
+  const [driveFiles, setDriveFiles] = useState([]);
+  const [listLoading, setListLoading] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [search, setSearch] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const lastFilter = useRef('');
+
+  const loadFiles = useCallback(async (reset, nameFilter) => {
+    setListLoading(true);
+    try {
+      const pageToken = reset ? null : nextPageToken;
+      const result = await listDriveFiles(accessToken, pageToken, nameFilter);
+      setDriveFiles(prev => reset ? (result.files || []) : [...prev, ...(result.files || [])]);
+      setNextPageToken(result.nextPageToken || null);
+    } catch (err) {
+      addToast(err.message || 'Drive 파일 목록 오류', 'err');
+    } finally {
+      setListLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, nextPageToken]);
+
+  useEffect(() => { loadFiles(true, ''); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleSelect = (id) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    lastFilter.current = search;
+    loadFiles(true, search);
+  };
+
+  const handleConfirm = async () => {
+    const picked = driveFiles.filter(f => selected.has(f.id));
+    if (!picked.length) { addToast('선택된 파일이 없습니다.', 'err'); return; }
+    setDownloading(true);
+    addToast(`${picked.length}개 파일 다운로드 중...`, 'inf');
+    try {
+      const files = await Promise.all(picked.map(async (doc) => {
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?alt=media`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!res.ok) throw new Error(`'${doc.name}' 다운로드 실패 (${res.status})`);
+        const blob = await res.blob();
+        if (!blob.size) throw new Error(`'${doc.name}' 공유 권한을 확인하세요.`);
+        return new File([blob], doc.name, { type: doc.mimeType || blob.type });
+      }));
+      onConfirm(files);
+    } catch (err) {
+      addToast(err.message || '다운로드 중 오류 발생', 'err');
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return createPortal(
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 9999, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ background: '#1a1a2e', borderRadius: 16, width: 'min(96vw, 560px)', maxHeight: '88vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.1)' }}>
+        {/* 헤더 */}
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontWeight: 700, color: '#fff', fontSize: '0.92rem' }}>
+            {DRIVE_ICON} &nbsp;Google Drive 파일 선택
+          </span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1 }}>✕</button>
+        </div>
+        {/* 검색 */}
+        <form onSubmit={handleSearch} style={{ padding: '10px 18px', display: 'flex', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="파일명 검색..."
+            style={{ flex: 1, background: '#111', border: '1px solid #333', borderRadius: 8, padding: '7px 11px', color: '#fff', fontSize: '0.8rem' }}
+          />
+          <button type="submit" style={{ background: '#7c3aed', border: 'none', borderRadius: 8, padding: '7px 14px', color: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}>검색</button>
+        </form>
+        {/* 파일 그리드 */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 18px' }}>
+          {listLoading && driveFiles.length === 0 && (
+            <p style={{ color: '#888', textAlign: 'center', padding: '30px 0', fontSize: '0.82rem' }}>
+              <i className="fas fa-spinner fa-spin" style={{ marginRight: 8 }} />불러오는 중...
+            </p>
+          )}
+          {!listLoading && driveFiles.length === 0 && (
+            <p style={{ color: '#666', textAlign: 'center', padding: '30px 0', fontSize: '0.82rem' }}>파일이 없습니다</p>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8 }}>
+            {driveFiles.map(file => {
+              const isSel = selected.has(file.id);
+              const isVid = file.mimeType?.startsWith('video/');
+              return (
+                <button
+                  key={file.id}
+                  onClick={() => toggleSelect(file.id)}
+                  style={{ background: isSel ? 'rgba(124,58,237,0.22)' : 'rgba(255,255,255,0.04)', border: `2px solid ${isSel ? '#7c3aed' : 'transparent'}`, borderRadius: 10, padding: 5, cursor: 'pointer', textAlign: 'left', position: 'relative', transition: 'all 0.12s' }}
+                >
+                  {isSel && (
+                    <div style={{ position: 'absolute', top: 3, right: 3, background: '#7c3aed', borderRadius: '50%', width: 17, height: 17, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.58rem', color: '#fff', zIndex: 1 }}>✓</div>
+                  )}
+                  <div style={{ width: '100%', aspectRatio: '1', background: '#222', borderRadius: 6, marginBottom: 4, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {file.thumbnailLink
+                      ? <img src={file.thumbnailLink} alt={file.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" referrerPolicy="no-referrer" />
+                      : <span style={{ fontSize: '1.4rem' }}>{isVid ? '🎬' : '🖼️'}</span>
+                    }
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.6rem', color: '#ccc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>{file.name}</p>
+                </button>
+              );
+            })}
+          </div>
+          {nextPageToken && !listLoading && (
+            <button
+              onClick={() => loadFiles(false, lastFilter.current)}
+              style={{ display: 'block', margin: '12px auto 0', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, padding: '7px 20px', color: '#ccc', cursor: 'pointer', fontSize: '0.78rem' }}
+            >더 불러오기</button>
+          )}
+          {listLoading && driveFiles.length > 0 && (
+            <p style={{ color: '#888', textAlign: 'center', padding: '10px 0', fontSize: '0.78rem' }}><i className="fas fa-spinner fa-spin" /></p>
+          )}
+        </div>
+        {/* 하단 */}
+        <div style={{ padding: '12px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ color: '#888', fontSize: '0.76rem' }}>{selected.size > 0 ? `${selected.size}개 선택됨` : '파일을 클릭해서 선택하세요'}</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onClose} style={{ background: 'none', border: '1px solid #444', borderRadius: 8, padding: '7px 14px', color: '#aaa', cursor: 'pointer', fontSize: '0.8rem' }}>취소</button>
+            <button
+              onClick={handleConfirm}
+              disabled={!selected.size || downloading}
+              style={{ background: selected.size && !downloading ? '#7c3aed' : '#444', border: 'none', borderRadius: 8, padding: '7px 14px', color: '#fff', cursor: selected.size ? 'pointer' : 'not-allowed', fontSize: '0.8rem' }}
+            >{downloading ? '다운로드 중...' : `${selected.size || 0}개 추가`}</button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 function loadScript(src) {
   return new Promise((resolve) => {
@@ -18,8 +196,7 @@ function loadScript(src) {
 
 export default function DrivePicker({ addFiles: addFilesProp }) {
   const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(false);
-  // tokenClient는 한 번만 생성하고 재사용 (매 클릭마다 새로 만들면 계정 선택 팝업 반복됨)
+  const [modalToken, setModalToken] = useState(null); // null = 닫힘, string = 열림
   const tokenClientRef = useRef(null);
   const clientIdRef    = useRef('');
 
@@ -27,15 +204,7 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
   const addFiles = addFilesProp || storeAddFilesAsync;
 
   useEffect(() => {
-    (async () => {
-      await Promise.all([
-        loadScript('https://apis.google.com/js/api.js').then(
-          () => new Promise(r => window.gapi.load('picker', r))
-        ),
-        loadScript('https://accounts.google.com/gsi/client'),
-      ]);
-      setReady(true);
-    })();
+    loadScript('https://accounts.google.com/gsi/client').then(() => setReady(true));
   }, []);
 
   const getClientId = () => {
@@ -52,27 +221,6 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
     return id.trim();
   };
 
-  const openPicker = (accessToken, clientId) => {
-    const appId = clientId.split('-')[0];
-    const myView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS);
-    myView.setMimeTypes('image/png,image/jpeg,image/jpg,image/webp,video/mp4,video/quicktime,video/x-m4v');
-    const sharedView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS);
-    sharedView.setMimeTypes('image/png,image/jpeg,image/jpg,image/webp,video/mp4,video/quicktime,video/x-m4v');
-    sharedView.setOwnedByMe(false);
-
-    new window.google.picker.PickerBuilder()
-      .addView(myView)
-      .addView(sharedView)
-      .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
-      .setOAuthToken(accessToken)
-      .setDeveloperKey(API_KEY)
-      .setAppId(appId)
-      .setCallback((data) => pickerCallback(data, accessToken))
-      .build()
-      .setVisible(true);
-  };
-
-  // 새 토큰 요청 — tokenClient를 캐싱하여 재사용
   const requestNewToken = (clientId) => {
     if (!tokenClientRef.current || clientIdRef.current !== clientId) {
       clientIdRef.current = clientId;
@@ -83,93 +231,66 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
           if (resp.error) {
             clearToken();
             if (resp.error === 'redirect_uri_mismatch' || resp.error === 'idpiframe_initialization_failed') {
-              addToast(
-                'GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.',
-                'err'
-              );
+              addToast('GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.', 'err');
             } else if (resp.error !== 'popup_closed_by_user' && resp.error !== 'access_denied') {
               addToast('Google 로그인 실패: ' + resp.error, 'err');
             }
             return;
           }
           saveToken(resp.access_token);
-          openPicker(resp.access_token, clientId);
+          setModalToken(resp.access_token);
         },
       });
-      // 신규 tokenClient: 계정 선택 팝업 표시
       tokenClientRef.current.requestAccessToken({ prompt: 'select_account' });
     } else {
-      // 기존 tokenClient 재사용: 팝업 없이 재인증 시도, 실패 시 계정 선택
       tokenClientRef.current.requestAccessToken({ prompt: '' });
     }
   };
 
   const handleClick = () => {
     if (!ready) { addToast('Google API 로딩 중...', 'inf'); return; }
-    if (!API_KEY) { addToast('Google API 키가 설정되지 않았습니다.', 'err'); return; }
     const clientId = getClientId();
     if (!clientId) { addToast('클라이언트 ID가 필요합니다.', 'err'); return; }
 
-    // localStorage TTL 기반으로 유효 토큰 확인 (React state X → 항상 최신 상태 반영)
     const validToken = loadToken();
     if (validToken) {
-      openPicker(validToken, clientId);
+      setModalToken(validToken);
       return;
     }
-
-    // 유효 토큰 없음 → 로그인 팝업 (tokenClient 재사용으로 반복 팝업 방지)
     requestNewToken(clientId);
   };
 
-  const pickerCallback = async (data, accessToken) => {
-    if (data.action !== window.google.picker.Action.PICKED) return;
-    const docs = data.docs || [];
-    if (!docs.length) return;
-    setLoading(true);
-    addToast(`${docs.length}개 파일 다운로드 중...`, 'inf');
-    try {
-      const files = await Promise.all(docs.map(async (doc) => {
-        const res = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?alt=media`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        if (res.status === 401) {
-          // 토큰 만료 → 삭제하고 tokenClient 리셋 (다음 클릭 시 재로그인)
-          clearToken();
-          tokenClientRef.current = null;
-          throw new Error('인증이 만료되었습니다. 다시 버튼을 눌러 로그인해주세요.');
-        }
-        if (!res.ok) throw new Error(`'${doc.name}' 다운로드 실패 (${res.status})`);
-        const blob = await res.blob();
-        if (!blob.size) throw new Error(`'${doc.name}' 파일을 읽을 수 없습니다. Drive 공유 권한을 확인하세요.`);
-        return new File([blob], doc.name, { type: doc.mimeType || blob.type });
-      }));
-      addFiles(files);
-      addToast(`${files.length}개 파일을 드라이브에서 추가했습니다!`, 'ok');
-    } catch (err) {
-      console.error('[DrivePicker]', err);
-      addToast(err.message || '파일 다운로드 중 오류 발생', 'err');
-    } finally {
-      setLoading(false);
-    }
+  const handleConfirm = (files) => {
+    addFiles(files);
+    addToast(`${files.length}개 파일을 드라이브에서 추가했습니다!`, 'ok');
+    setModalToken(null);
   };
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={loading}
-      className="drive-import-btn"
-      title="Google Drive에서 사진/영상 불러오기"
-    >
-      <svg width="18" height="15" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
-        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
-        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
-      </svg>
-      {loading ? '다운로드 중...' : '드라이브에서 가져오기'}
-    </button>
+    <>
+      <button
+        onClick={handleClick}
+        className="drive-import-btn"
+        title="Google Drive에서 사진/영상 불러오기"
+      >
+        <svg width="18" height="15" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+          <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+          <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+          <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+          <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+          <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+        </svg>
+        드라이브에서 가져오기
+      </button>
+      {modalToken && (
+        <DriveBrowserModal
+          accessToken={modalToken}
+          onClose={() => setModalToken(null)}
+          onConfirm={handleConfirm}
+          addToast={addToast}
+        />
+      )}
+    </>
   );
 }

@@ -1,5 +1,5 @@
-import { c as create, d as devtools, i as initializeApp, g as getStorage, a as getFirestore, b as ref, u as uploadBytes, e as getDownloadURL, f as addDoc, h as collection, s as serverTimestamp, j as updateDoc, k as doc, q as query, o as orderBy, l as limit, m as getDocs, w as where, n as deleteDoc, p as jsxRuntimeExports, t as reactExports, F as FFmpeg, v as toBlobURL, x as fetchFile, M as Muxer, y as Muxer$1, z as Mp4Muxer, W as WebmMuxer, A as client, R as React } from './vendor-rbkzMVFu.js';
-import './vendor-firebase-5k9doEZj.js';
+import { c as create, d as devtools, i as initializeApp, g as getStorage, a as getFirestore, b as ref, u as uploadBytes, e as getDownloadURL, f as addDoc, h as collection, s as serverTimestamp, j as updateDoc, k as doc, q as query, o as orderBy, l as limit, m as getDocs, w as where, n as deleteDoc, p as jsxRuntimeExports, t as reactExports, v as reactDomExports, F as FFmpeg, x as toBlobURL, y as fetchFile, M as Muxer, z as Muxer$1, A as Mp4Muxer, W as WebmMuxer, B as client, R as React } from './vendor-_TA3R0fS.js';
+import './vendor-firebase-DkG2A0lU.js';
 
 true&&(function polyfill() {
   const relList = document.createElement("link").relList;
@@ -320,7 +320,7 @@ const useVideoStore = create(
           if (I.has(ext)) return 'image';
           return null;
         };
-        const pairs = [...newFiles].map(f => [f, getType(f)]).filter(([, t]) => t).slice(0, 30 - s.files.length);
+        const pairs = [...newFiles].map(f => [f, getType(f)]).filter(([, t]) => t).slice(0, 50 - s.files.length);
         const items = pairs.map(([f, t]) => ({ file: f, url: URL.createObjectURL(f), type: t }));
         return { files: [...s.files, ...items] };
       }, false, 'addFiles'),
@@ -329,7 +329,7 @@ const useVideoStore = create(
       addFilesAsync: async (newFiles) => {
         const { preprocessMediaFiles } = await __vitePreload(async () => { const { preprocessMediaFiles } = await import('./mediaPreprocess-HVM__Ilm.js');return { preprocessMediaFiles }},true?[]:void 0);
         const { files: cur, addToast } = get();
-        const limit = 30 - cur.length;
+        const limit = 50 - cur.length;
         if (limit <= 0) return;
         const arr = [...newFiles].slice(0, limit);
         const big = arr.some(f => f.size > 50 * 1024 * 1024);
@@ -1094,22 +1094,28 @@ async function visionAnalysis(restaurantName, researchData = "", restaurantType 
     }
   }));
   const VISION_BATCH = 10;
-  const totalMedia = Math.min(files.length, 30);
+  const totalMedia = Math.min(files.length, 50);
   const slice0 = files.slice(0, Math.min(VISION_BATCH, totalMedia));
   const slice1 = files.slice(VISION_BATCH, Math.min(VISION_BATCH * 2, totalMedia));
-  const slice2 = files.slice(VISION_BATCH * 2, totalMedia);
+  const slice2 = files.slice(VISION_BATCH * 2, Math.min(VISION_BATCH * 3, totalMedia));
+  const slice3 = files.slice(VISION_BATCH * 3, Math.min(VISION_BATCH * 4, totalMedia));
+  const slice4 = files.slice(VISION_BATCH * 4, totalMedia);
   if (!slice0.length) {
     return { keywords: [restaurantName, "留쏆쭛"], mood: "媛먯꽦?곸씤", per_image: [], recommended_order: [] };
   }
-  const [filePartsGroup0, filePartsGroup1, filePartsGroup2] = await Promise.all([
+  const [filePartsGroup0, filePartsGroup1, filePartsGroup2, filePartsGroup3, filePartsGroup4] = await Promise.all([
     buildBatchPartsGrouped(slice0, 0),
     slice1.length ? buildBatchPartsGrouped(slice1, VISION_BATCH) : Promise.resolve([]),
-    slice2.length ? buildBatchPartsGrouped(slice2, VISION_BATCH * 2) : Promise.resolve([])
+    slice2.length ? buildBatchPartsGrouped(slice2, VISION_BATCH * 2) : Promise.resolve([]),
+    slice3.length ? buildBatchPartsGrouped(slice3, VISION_BATCH * 3) : Promise.resolve([]),
+    slice4.length ? buildBatchPartsGrouped(slice4, VISION_BATCH * 4) : Promise.resolve([])
   ]);
   const parts0 = filePartsGroup0.flat();
   const parts1 = filePartsGroup1.flat();
   const parts2 = filePartsGroup2.flat();
-  const allFilePartsGroups = [...filePartsGroup0, ...filePartsGroup1, ...filePartsGroup2];
+  const parts3 = filePartsGroup3.flat();
+  const parts4 = filePartsGroup4.flat();
+  const allFilePartsGroups = [...filePartsGroup0, ...filePartsGroup1, ...filePartsGroup2, ...filePartsGroup3, ...filePartsGroup4];
   const typeHint = restaurantType && restaurantType !== "auto" ? `
 [?낆껜 ?좏삎: ${restaurantType}] ?????좏삎???뱀꽦??留욊쾶 ?쒓렇?덉쿂 而룹쓣 ?곗꽑 遺꾨쪟?섏꽭??` : "";
   const prompt1 = `?뱀떊? 2026???몄뒪?洹몃옩 Reels 쨌 ?좏뒠釉?Shorts ?뚭퀬由ъ쬁 ?꾨Ц 鍮꾩＜???붾젆?곗엯?덈떎.
@@ -1151,10 +1157,12 @@ JSON留?諛섑솚:
     const _s = raw.indexOf("{"), _e = raw.lastIndexOf("}");
     return JSON.parse(_s >= 0 && _e > _s ? raw.slice(_s, _e + 1) : raw.replace(/```json|```/g, "").trim());
   };
-  const [pass1Result0, pass1Result1, pass1Result2] = await Promise.all([
+  const [pass1Result0, pass1Result1, pass1Result2, pass1Result3, pass1Result4] = await Promise.all([
     callPass1(parts0).catch(() => ({ keywords: [restaurantName], mood: "unknown", per_image: [], recommended_order: [] })),
     parts1.length ? callPass1(parts1).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
-    parts2.length ? callPass1(parts2).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null)
+    parts2.length ? callPass1(parts2).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
+    parts3.length ? callPass1(parts3).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null),
+    parts4.length ? callPass1(parts4).catch(() => ({ per_image: [], recommended_order: [] })) : Promise.resolve(null)
   ]);
   const mergeBatch = (base, extra, offset) => {
     if (!extra) return base;
@@ -1171,9 +1179,17 @@ JSON留?諛섑솚:
     };
   };
   const firstResult = mergeBatch(
-    mergeBatch(pass1Result0, pass1Result1, VISION_BATCH),
-    pass1Result2,
-    VISION_BATCH * 2
+    mergeBatch(
+      mergeBatch(
+        mergeBatch(pass1Result0, pass1Result1, VISION_BATCH),
+        pass1Result2,
+        VISION_BATCH * 2
+      ),
+      pass1Result3,
+      VISION_BATCH * 3
+    ),
+    pass1Result4,
+    VISION_BATCH * 4
   );
   const topIdxs = (firstResult.recommended_order || []).slice(0, Math.min(5, allFilePartsGroups.length));
   const topParts = topIdxs.length ? topIdxs.flatMap((idx) => allFilePartsGroups[idx] || []) : allFilePartsGroups.slice(0, 5).flat();
@@ -1797,7 +1813,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.50" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.51" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2983,7 +2999,174 @@ async function withAuthRetry(fn, getToken) {
   throw lastErr || new Error(`[AuthService] 재시도 ${MAX_RETRY}회 한도 초과`);
 }
 
-const API_KEY = undefined                                    || undefined                                      || "";
+const DRIVE_ICON = /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "16", height: "14", viewBox: "0 0 87.3 78", xmlns: "http://www.w3.org/2000/svg", "aria-hidden": "true", style: { verticalAlign: "middle" }, children: [
+  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z", fill: "#0066da" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z", fill: "#00ac47" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z", fill: "#ea4335" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z", fill: "#00832d" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z", fill: "#2684fc" }),
+  /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z", fill: "#ffba00" })
+] });
+const DRIVE_Q = "(mimeType='image/png' or mimeType='image/jpeg' or mimeType='image/jpg' or mimeType='image/webp' or mimeType='video/mp4' or mimeType='video/quicktime' or mimeType='video/x-m4v') and trashed=false";
+async function listDriveFiles(accessToken, pageToken = null, nameFilter = "") {
+  let q = DRIVE_Q;
+  if (nameFilter.trim()) q += ` and name contains '${nameFilter.replace(/'/g, "\\'")}'`;
+  const params = new URLSearchParams({
+    q,
+    fields: "nextPageToken,files(id,name,mimeType,thumbnailLink,size)",
+    pageSize: "50",
+    orderBy: "modifiedTime desc"
+  });
+  if (pageToken) params.set("pageToken", pageToken);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (res.status === 401) throw Object.assign(new Error("TOKEN_EXPIRED"), { code: 401 });
+  if (!res.ok) throw new Error(`Drive API 오류 (${res.status})`);
+  return res.json();
+}
+function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
+  const [driveFiles, setDriveFiles] = reactExports.useState([]);
+  const [listLoading, setListLoading] = reactExports.useState(false);
+  const [nextPageToken, setNextPageToken] = reactExports.useState(null);
+  const [selected, setSelected] = reactExports.useState(/* @__PURE__ */ new Set());
+  const [search, setSearch] = reactExports.useState("");
+  const [downloading, setDownloading] = reactExports.useState(false);
+  const lastFilter = reactExports.useRef("");
+  const loadFiles = reactExports.useCallback(async (reset, nameFilter) => {
+    setListLoading(true);
+    try {
+      const pageToken = reset ? null : nextPageToken;
+      const result = await listDriveFiles(accessToken, pageToken, nameFilter);
+      setDriveFiles((prev) => reset ? result.files || [] : [...prev, ...result.files || []]);
+      setNextPageToken(result.nextPageToken || null);
+    } catch (err) {
+      addToast(err.message || "Drive 파일 목록 오류", "err");
+    } finally {
+      setListLoading(false);
+    }
+  }, [accessToken, nextPageToken]);
+  reactExports.useEffect(() => {
+    loadFiles(true, "");
+  }, []);
+  const toggleSelect = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const handleSearch = (e) => {
+    e.preventDefault();
+    lastFilter.current = search;
+    loadFiles(true, search);
+  };
+  const handleConfirm = async () => {
+    const picked = driveFiles.filter((f) => selected.has(f.id));
+    if (!picked.length) {
+      addToast("선택된 파일이 없습니다.", "err");
+      return;
+    }
+    setDownloading(true);
+    addToast(`${picked.length}개 파일 다운로드 중...`, "inf");
+    try {
+      const files = await Promise.all(picked.map(async (doc) => {
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?alt=media`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (!res.ok) throw new Error(`'${doc.name}' 다운로드 실패 (${res.status})`);
+        const blob = await res.blob();
+        if (!blob.size) throw new Error(`'${doc.name}' 공유 권한을 확인하세요.`);
+        return new File([blob], doc.name, { type: doc.mimeType || blob.type });
+      }));
+      onConfirm(files);
+    } catch (err) {
+      addToast(err.message || "다운로드 중 오류 발생", "err");
+    } finally {
+      setDownloading(false);
+    }
+  };
+  return reactDomExports.createPortal(
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: { position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center" },
+        onClick: (e) => {
+          if (e.target === e.currentTarget) onClose();
+        },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "#1a1a2e", borderRadius: 16, width: "min(96vw, 560px)", maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.8)", border: "1px solid rgba(255,255,255,0.1)" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "14px 18px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontWeight: 700, color: "#fff", fontSize: "0.92rem" }, children: [
+              DRIVE_ICON,
+              "  Google Drive 파일 선택"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, style: { background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: "1.1rem", lineHeight: 1 }, children: "✕" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { onSubmit: handleSearch, style: { padding: "10px 18px", display: "flex", gap: 8, borderBottom: "1px solid rgba(255,255,255,0.08)" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: search,
+                onChange: (e) => setSearch(e.target.value),
+                placeholder: "파일명 검색...",
+                style: { flex: 1, background: "#111", border: "1px solid #333", borderRadius: 8, padding: "7px 11px", color: "#fff", fontSize: "0.8rem" }
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", style: { background: "#7c3aed", border: "none", borderRadius: 8, padding: "7px 14px", color: "#fff", cursor: "pointer", fontSize: "0.8rem" }, children: "검색" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, overflowY: "auto", padding: "12px 18px" }, children: [
+            listLoading && driveFiles.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { style: { color: "#888", textAlign: "center", padding: "30px 0", fontSize: "0.82rem" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-spinner fa-spin", style: { marginRight: 8 } }),
+              "불러오는 중..."
+            ] }),
+            !listLoading && driveFiles.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#666", textAlign: "center", padding: "30px 0", fontSize: "0.82rem" }, children: "파일이 없습니다" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8 }, children: driveFiles.map((file) => {
+              const isSel = selected.has(file.id);
+              const isVid = file.mimeType?.startsWith("video/");
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  onClick: () => toggleSelect(file.id),
+                  style: { background: isSel ? "rgba(124,58,237,0.22)" : "rgba(255,255,255,0.04)", border: `2px solid ${isSel ? "#7c3aed" : "transparent"}`, borderRadius: 10, padding: 5, cursor: "pointer", textAlign: "left", position: "relative", transition: "all 0.12s" },
+                  children: [
+                    isSel && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 3, right: 3, background: "#7c3aed", borderRadius: "50%", width: 17, height: 17, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.58rem", color: "#fff", zIndex: 1 }, children: "✓" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { width: "100%", aspectRatio: "1", background: "#222", borderRadius: 6, marginBottom: 4, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }, children: file.thumbnailLink ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: file.thumbnailLink, alt: file.name, style: { width: "100%", height: "100%", objectFit: "cover" }, loading: "lazy", referrerPolicy: "no-referrer" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "1.4rem" }, children: isVid ? "🎬" : "🖼️" }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { margin: 0, fontSize: "0.6rem", color: "#ccc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }, children: file.name })
+                  ]
+                },
+                file.id
+              );
+            }) }),
+            nextPageToken && !listLoading && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: () => loadFiles(false, lastFilter.current),
+                style: { display: "block", margin: "12px auto 0", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "7px 20px", color: "#ccc", cursor: "pointer", fontSize: "0.78rem" },
+                children: "더 불러오기"
+              }
+            ),
+            listLoading && driveFiles.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#888", textAlign: "center", padding: "10px 0", fontSize: "0.78rem" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-spinner fa-spin" }) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "12px 18px", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#888", fontSize: "0.76rem" }, children: selected.size > 0 ? `${selected.size}개 선택됨` : "파일을 클릭해서 선택하세요" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 8 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, style: { background: "none", border: "1px solid #444", borderRadius: 8, padding: "7px 14px", color: "#aaa", cursor: "pointer", fontSize: "0.8rem" }, children: "취소" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: handleConfirm,
+                  disabled: !selected.size || downloading,
+                  style: { background: selected.size && !downloading ? "#7c3aed" : "#444", border: "none", borderRadius: 8, padding: "7px 14px", color: "#fff", cursor: selected.size ? "pointer" : "not-allowed", fontSize: "0.8rem" },
+                  children: downloading ? "다운로드 중..." : `${selected.size || 0}개 추가`
+                }
+              )
+            ] })
+          ] })
+        ] })
+      }
+    ),
+    document.body
+  );
+}
 function loadScript(src) {
   return new Promise((resolve) => {
     if (document.querySelector(`script[src="${src}"]`)) {
@@ -3001,21 +3184,13 @@ function loadScript(src) {
 }
 function DrivePicker({ addFiles: addFilesProp }) {
   const [ready, setReady] = reactExports.useState(false);
-  const [loading, setLoading] = reactExports.useState(false);
+  const [modalToken, setModalToken] = reactExports.useState(null);
   const tokenClientRef = reactExports.useRef(null);
   const clientIdRef = reactExports.useRef("");
   const { addFilesAsync: storeAddFilesAsync, addToast } = useVideoStore();
   const addFiles = addFilesProp || storeAddFilesAsync;
   reactExports.useEffect(() => {
-    (async () => {
-      await Promise.all([
-        loadScript("https://apis.google.com/js/api.js").then(
-          () => new Promise((r) => window.gapi.load("picker", r))
-        ),
-        loadScript("https://accounts.google.com/gsi/client")
-      ]);
-      setReady(true);
-    })();
+    loadScript("https://accounts.google.com/gsi/client").then(() => setReady(true));
   }, []);
   const getClientId = () => {
     const envId = undefined                                      || "";
@@ -3030,15 +3205,6 @@ function DrivePicker({ addFiles: addFilesProp }) {
     }
     return id.trim();
   };
-  const openPicker = (accessToken, clientId) => {
-    const appId = clientId.split("-")[0];
-    const myView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS);
-    myView.setMimeTypes("image/png,image/jpeg,image/jpg,image/webp,video/mp4,video/quicktime,video/x-m4v");
-    const sharedView = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS);
-    sharedView.setMimeTypes("image/png,image/jpeg,image/jpg,image/webp,video/mp4,video/quicktime,video/x-m4v");
-    sharedView.setOwnedByMe(false);
-    new window.google.picker.PickerBuilder().addView(myView).addView(sharedView).enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED).setOAuthToken(accessToken).setDeveloperKey(API_KEY).setAppId(appId).setCallback((data) => pickerCallback(data, accessToken)).build().setVisible(true);
-  };
   const requestNewToken = (clientId) => {
     if (!tokenClientRef.current || clientIdRef.current !== clientId) {
       clientIdRef.current = clientId;
@@ -3049,17 +3215,14 @@ function DrivePicker({ addFiles: addFilesProp }) {
           if (resp.error) {
             clearToken();
             if (resp.error === "redirect_uri_mismatch" || resp.error === "idpiframe_initialization_failed") {
-              addToast(
-                'GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.',
-                "err"
-              );
+              addToast('GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.', "err");
             } else if (resp.error !== "popup_closed_by_user" && resp.error !== "access_denied") {
               addToast("Google 로그인 실패: " + resp.error, "err");
             }
             return;
           }
           saveToken(resp.access_token);
-          openPicker(resp.access_token, clientId);
+          setModalToken(resp.access_token);
         }
       });
       tokenClientRef.current.requestAccessToken({ prompt: "select_account" });
@@ -3072,10 +3235,6 @@ function DrivePicker({ addFiles: addFilesProp }) {
       addToast("Google API 로딩 중...", "inf");
       return;
     }
-    if (!API_KEY) {
-      addToast("Google API 키가 설정되지 않았습니다.", "err");
-      return;
-    }
     const clientId = getClientId();
     if (!clientId) {
       addToast("클라이언트 ID가 필요합니다.", "err");
@@ -3083,62 +3242,46 @@ function DrivePicker({ addFiles: addFilesProp }) {
     }
     const validToken = loadToken();
     if (validToken) {
-      openPicker(validToken, clientId);
+      setModalToken(validToken);
       return;
     }
     requestNewToken(clientId);
   };
-  const pickerCallback = async (data, accessToken) => {
-    if (data.action !== window.google.picker.Action.PICKED) return;
-    const docs = data.docs || [];
-    if (!docs.length) return;
-    setLoading(true);
-    addToast(`${docs.length}개 파일 다운로드 중...`, "inf");
-    try {
-      const files = await Promise.all(docs.map(async (doc) => {
-        const res = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?alt=media`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
-        if (res.status === 401) {
-          clearToken();
-          tokenClientRef.current = null;
-          throw new Error("인증이 만료되었습니다. 다시 버튼을 눌러 로그인해주세요.");
-        }
-        if (!res.ok) throw new Error(`'${doc.name}' 다운로드 실패 (${res.status})`);
-        const blob = await res.blob();
-        if (!blob.size) throw new Error(`'${doc.name}' 파일을 읽을 수 없습니다. Drive 공유 권한을 확인하세요.`);
-        return new File([blob], doc.name, { type: doc.mimeType || blob.type });
-      }));
-      addFiles(files);
-      addToast(`${files.length}개 파일을 드라이브에서 추가했습니다!`, "ok");
-    } catch (err) {
-      console.error("[DrivePicker]", err);
-      addToast(err.message || "파일 다운로드 중 오류 발생", "err");
-    } finally {
-      setLoading(false);
-    }
+  const handleConfirm = (files) => {
+    addFiles(files);
+    addToast(`${files.length}개 파일을 드라이브에서 추가했습니다!`, "ok");
+    setModalToken(null);
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "button",
-    {
-      onClick: handleClick,
-      disabled: loading,
-      className: "drive-import-btn",
-      title: "Google Drive에서 사진/영상 불러오기",
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "18", height: "15", viewBox: "0 0 87.3 78", xmlns: "http://www.w3.org/2000/svg", "aria-hidden": "true", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z", fill: "#0066da" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z", fill: "#00ac47" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z", fill: "#ea4335" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z", fill: "#00832d" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z", fill: "#2684fc" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z", fill: "#ffba00" })
-        ] }),
-        loading ? "다운로드 중..." : "드라이브에서 가져오기"
-      ]
-    }
-  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        onClick: handleClick,
+        className: "drive-import-btn",
+        title: "Google Drive에서 사진/영상 불러오기",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "18", height: "15", viewBox: "0 0 87.3 78", xmlns: "http://www.w3.org/2000/svg", "aria-hidden": "true", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z", fill: "#0066da" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z", fill: "#00ac47" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z", fill: "#ea4335" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z", fill: "#00832d" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z", fill: "#2684fc" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z", fill: "#ffba00" })
+          ] }),
+          "드라이브에서 가져오기"
+        ]
+      }
+    ),
+    modalToken && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      DriveBrowserModal,
+      {
+        accessToken: modalToken,
+        onClose: () => setModalToken(null),
+        onConfirm: handleConfirm,
+        addToast
+      }
+    )
+  ] });
 }
 
 function PromptInput() {
@@ -3453,7 +3596,7 @@ function UploadSection() {
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "re-btn", style: { minWidth: 40 }, onClick: () => loadKits(kitSearch), disabled: kitLoading, children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-search" }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: kitListRef, style: { maxHeight: 560, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, WebkitOverflowScrolling: "touch" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: kitListRef, style: { maxHeight: "55vh", overflowY: "scroll", display: "flex", flexDirection: "column", gap: 6, overflowX: "hidden" }, children: [
         kitHistory.length === 0 && !kitLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "var(--text-sub)", textAlign: "center", padding: "10px 0", fontSize: "0.78rem" }, children: "저장된 마케팅 키트가 없습니다" }),
         kitHistory.map((item) => {
           const isOpen = selectedKit?.id === item.id;
