@@ -1814,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.55" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.56" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2548,7 +2548,7 @@ function refineScenesForStoryboard(scenes, files, analysis) {
         }
       }
 
-      if (bestIdx !== curIdx && bestScore >= 2) {
+      if (bestIdx !== curIdx && bestScore >= 1) {
         // 외관은 마지막 씬에만 배치 — 비마지막 씬에 외관 content-matching 배정 차단
         if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
           // 외관 bestIdx는 중간 씬에 배정하지 않음
@@ -2814,7 +2814,8 @@ async function startMake() {
       }
     }
 
-    // ── 미사용 미디어 전체 활용 — content-aware 영상 배치 + 이미지 b-roll 보충 ──────
+    // ── 영상 무조건 우선 배치 — 그리디 content-aware 매칭 + 미사용 이미지 b-roll ──────
+    // ⚠️ 핵심 규칙: 영상이 있으면 무조건 이미지 씬보다 먼저 배치 (점수 임계값 없음)
     {
       const exteriorIdxSet = new Set(
         (analysis.per_image || []).filter(p => p.is_exterior).map(p => p.idx)
@@ -2824,48 +2825,79 @@ async function startMake() {
       const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
       const imageIdxs = files.map((f, i) => f.type === 'image' ? i : -1).filter(i => i >= 0);
 
-      // ① 미사용 영상 content-aware 배치 (자막·나레이션 내용과 매칭되는 씬에 우선 배치)
+      // ① 영상 무조건 우선 배치: 이미지 씬 → 미사용 영상 교체 (content score = 우선순위, 차단 아님)
       if (videoIdxs.length > 0) {
-        const getUsedVids = () => new Set(
+        const getUsedVidSet = () => new Set(
           finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0)
         );
-        // 외관 제외한 미사용 영상 목록
-        let unusedVids = videoIdxs.filter(i => !getUsedVids().has(i) && !exteriorIdxSet.has(i));
 
-        // 이미지 씬을 내용 일치하는 영상으로 교체 (blind 교체 → content-aware 교체)
-        for (let i = 0; i < finalScenes.length - 1 && unusedVids.length > 0; i++) {
-          if (files[finalScenes[i].media_idx]?.type !== 'image') continue;
-          const sc = finalScenes[i];
-          const sceneTokens = tokenizeText(`${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`);
+        // 비외관 미사용 영상 풀
+        let unusedVids = videoIdxs.filter(i => !getUsedVidSet().has(i) && !exteriorIdxSet.has(i));
 
-          let bestPos = -1, bestScore = 0;
-          for (let pi = 0; pi < unusedVids.length; pi++) {
-            const vFocus = `${analysisMap[unusedVids[pi]]?.focus || ''} ${analysisMap[unusedVids[pi]]?.narration_hint || ''}`;
-            const s = sceneTokens.length > 0 ? tokenOverlapScore(sceneTokens, vFocus) : 1;
-            if (s > bestScore) { bestScore = s; bestPos = pi; }
+        if (unusedVids.length > 0) {
+          // 이미지 씬 인덱스 목록 (CTA 마지막 씬 제외)
+          const imgSceneIdxs = [];
+          for (let i = 0; i < finalScenes.length - 1; i++) {
+            if (files[finalScenes[i].media_idx]?.type === 'image') imgSceneIdxs.push(i);
           }
-          // 내용 매칭 점수 >= 1이거나 씬에 텍스트 없을 때만 교체 (불일치 blind 교체 방지)
-          if (bestPos >= 0 && (bestScore >= 1 || sceneTokens.length === 0)) {
-            const vidIdx = unusedVids[bestPos];
-            const meta = analysisMap[vidIdx] || {};
-            finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
-            unusedVids.splice(bestPos, 1);
+
+          if (imgSceneIdxs.length > 0) {
+            // (씬 i, 영상 j, content score) 행렬 생성 → score DESC 그리디 배치
+            // bestPos=-1 방식 폐기: 점수가 0이어도 반드시 배치 (영상 무조건 우선)
+            const pairs = [];
+            for (const si of imgSceneIdxs) {
+              const sc = finalScenes[si];
+              const sceneTokens = tokenizeText(
+                `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`
+              );
+              for (const vi of unusedVids) {
+                const vText = `${analysisMap[vi]?.focus || ''} ${analysisMap[vi]?.narration_hint || ''}`;
+                const score = sceneTokens.length > 0 ? tokenOverlapScore(sceneTokens, vText) : 0;
+                pairs.push({ si, vi, score });
+              }
+            }
+            // 점수 높은 순 정렬 — 동점일 때 foodie_score 보조 기준
+            pairs.sort((a, b) =>
+              b.score - a.score ||
+              (analysisMap[b.vi]?.foodie_score || 0) - (analysisMap[a.vi]?.foodie_score || 0)
+            );
+
+            // 1패스: greedy 배치 (점수 >= 1인 쌍 우선)
+            const assignedScenes = new Set();
+            const assignedVids = new Set();
+            for (const { si, vi } of pairs) {
+              if (assignedScenes.has(si) || assignedVids.has(vi)) continue;
+              const meta = analysisMap[vi] || {};
+              finalScenes[si] = { ...finalScenes[si], media_idx: vi, best_start_pct: meta.best_start_pct || 0 };
+              assignedScenes.add(si);
+              assignedVids.add(vi);
+            }
+
+            // 2패스: 아직 미배치 이미지 씬 + 미배치 영상이 남아 있으면 순차 배치 (score 0이라도)
+            const remainingVids = unusedVids.filter(vi => !assignedVids.has(vi));
+            let rvi = 0;
+            for (const si of imgSceneIdxs) {
+              if (assignedScenes.has(si) || rvi >= remainingVids.length) continue;
+              const vi = remainingVids[rvi++];
+              const meta = analysisMap[vi] || {};
+              finalScenes[si] = { ...finalScenes[si], media_idx: vi, best_start_pct: meta.best_start_pct || 0 };
+            }
           }
         }
 
-        // 매칭 안 된 미사용 영상 → 몽타주 씬으로 삽입 (총 45초 이내)
-        unusedVids = videoIdxs.filter(i => !getUsedVids().has(i) && !exteriorIdxSet.has(i));
-        if (unusedVids.length > 0 && finalScenes.length > 0) {
+        // 여전히 미사용 영상 → 몽타주 씬으로 삽입 (총 45초 이내)
+        const remainingUnused = videoIdxs.filter(i => !getUsedVidSet().has(i) && !exteriorIdxSet.has(i));
+        if (remainingUnused.length > 0 && finalScenes.length > 0) {
           const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
           const budget = Math.max(0, 45 - currentTotal);
-          const canAdd = Math.min(unusedVids.length, Math.floor(budget / 2.0));
+          const canAdd = Math.min(remainingUnused.length, Math.floor(budget / 2.0));
           if (canAdd > 0) {
             const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
             const lastScene = finalScenes.pop();
             for (let i = 0; i < canAdd; i++) {
-              const vidIdx = unusedVids[i]; const meta = analysisMap[vidIdx] || {};
+              const vi = remainingUnused[i]; const meta = analysisMap[vi] || {};
               finalScenes.push({
-                media_idx: vidIdx, duration: Math.round(perDur * 10) / 10,
+                media_idx: vi, duration: Math.round(perDur * 10) / 10,
                 caption1: '', caption2: '', narration: '', effect: BROLL_EFFECTS[i % BROLL_EFFECTS.length],
                 subtitle_style: 'minimal', energy_level: 3, retention_strategy: 'build',
                 focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
@@ -2873,12 +2905,12 @@ async function startMake() {
               });
             }
             finalScenes.push(lastScene);
-            addToast(`미사용 영상 ${canAdd}개 → b-roll 삽입`, 'ok');
+            addToast(`미사용 영상 ${canAdd}개 → 몽타주 삽입`, 'ok');
           }
         }
       }
 
-      // ② 미사용 이미지 b-roll 보충 (foodie_score+aesthetic_score 상위 순, 총 45초 이내)
+      // ② 미사용 이미지 b-roll 보충 (foodie_score 상위 고품질만, 총 45초 이내)
       if (imageIdxs.length > 0 && finalScenes.length > 0) {
         const usedSet = new Set(finalScenes.map(s => s.media_idx));
         const unusedImgs = imageIdxs
@@ -2890,7 +2922,6 @@ async function startMake() {
         if (unusedImgs.length > 0) {
           const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
           const budget = Math.max(0, 45 - currentTotal);
-          // foodie_score >= 4 또는 aesthetic_score >= 60인 고품질 이미지만 추가
           const qualImgs = unusedImgs.filter(i =>
             (analysisMap[i]?.foodie_score || 0) >= 4 || (analysisMap[i]?.aesthetic_score || 0) >= 60
           );
@@ -3965,13 +3996,15 @@ async function getFFmpeg(onLog) {
     let lastErr;
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
-        // HEAD 요청으로 CDN 가용성 먼저 확인 (404 HTML을 blob URL로 만드는 것 방지)
+        // HEAD probe: CDN 가용성 확인 (CORS로 null 반환 시 → 실제 로드는 계속 시도)
         const [probeJs, probeWasm] = await Promise.all([
           fetch(`${cdn}/ffmpeg-core.js`,   { method: 'HEAD' }).catch(() => null),
           fetch(`${cdn}/ffmpeg-core.wasm`, { method: 'HEAD' }).catch(() => null),
         ]);
-        if (!probeJs?.ok)   throw new Error(`CDN ${cdn}/ffmpeg-core.js 응답 오류 (${probeJs?.status ?? 'network'})`);
-        if (!probeWasm?.ok) throw new Error(`CDN ${cdn}/ffmpeg-core.wasm 응답 오류 (${probeWasm?.status ?? 'network'})`);
+        // probe가 null이 아닌데 명시적 HTTP 오류 상태(4xx/5xx)면 이 CDN 스킵
+        if (probeJs   !== null && !probeJs.ok)   throw new Error(`CDN ffmpeg-core.js 응답 오류 (${probeJs.status})`);
+        if (probeWasm !== null && !probeWasm.ok) throw new Error(`CDN ffmpeg-core.wasm 응답 오류 (${probeWasm.status})`);
+        // probe=null(CORS 차단)이거나 ok=true면 실제 로드 시도
 
         const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript');
         const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');

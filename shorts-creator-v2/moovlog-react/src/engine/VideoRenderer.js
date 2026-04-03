@@ -39,13 +39,15 @@ async function getFFmpeg(onLog) {
     let lastErr;
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
-        // HEAD 요청으로 CDN 가용성 먼저 확인 (404 HTML을 blob URL로 만드는 것 방지)
+        // HEAD probe: CDN 가용성 확인 (CORS로 null 반환 시 → 실제 로드는 계속 시도)
         const [probeJs, probeWasm] = await Promise.all([
           fetch(`${cdn}/ffmpeg-core.js`,   { method: 'HEAD' }).catch(() => null),
           fetch(`${cdn}/ffmpeg-core.wasm`, { method: 'HEAD' }).catch(() => null),
         ]);
-        if (!probeJs?.ok)   throw new Error(`CDN ${cdn}/ffmpeg-core.js 응답 오류 (${probeJs?.status ?? 'network'})`);
-        if (!probeWasm?.ok) throw new Error(`CDN ${cdn}/ffmpeg-core.wasm 응답 오류 (${probeWasm?.status ?? 'network'})`);
+        // probe가 null이 아닌데 명시적 HTTP 오류 상태(4xx/5xx)면 이 CDN 스킵
+        if (probeJs   !== null && !probeJs.ok)   throw new Error(`CDN ffmpeg-core.js 응답 오류 (${probeJs.status})`);
+        if (probeWasm !== null && !probeWasm.ok) throw new Error(`CDN ffmpeg-core.wasm 응답 오류 (${probeWasm.status})`);
+        // probe=null(CORS 차단)이거나 ok=true면 실제 로드 시도
 
         const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript');
         const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');
