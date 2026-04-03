@@ -290,6 +290,9 @@ const INITIAL = {
   // 유저 프롬프트
   userPrompt: '',
 
+  // 필수 포함 키워드 (마케팅 키트 태그에 반드시 넣을 키워드)
+  requiredKeywords: '',
+
   // 플랫폼 최적화
   targetPlatform: 'reels', // 'reels' | 'shorts' | 'tiktok'
 
@@ -426,6 +429,9 @@ const useVideoStore = create(
 
       // ── 유저 프롬프트 ──────────────────────────────────────
       setUserPrompt: (userPrompt) => set({ userPrompt }, false, 'setUserPrompt'),
+
+      // ── 필수 키워드 ────────────────────────────────────────
+      setRequiredKeywords: (requiredKeywords) => set({ requiredKeywords }, false, 'setRequiredKeywords'),
 
       // ── Firebase ───────────────────────────────────────────
       setSessionDocId: (sessionDocId) => set({ sessionDocId }, false, 'setSessionDocId'),
@@ -670,11 +676,20 @@ async function saveMarketingKit(data) {
 async function getMarketingKits(limitN = 20) {
   if (!db) return [];
   try {
-    const q = query(collection(db, "marketing_kits"), orderBy("createdAt", "desc"), limit(limitN));
+    const fetchN = Math.max(limitN * 4, 80);
+    const q = query(collection(db, "marketing_kits"), orderBy("createdAt", "desc"), limit(fetchN));
     const snap = await getDocs(q);
+    const seen = /* @__PURE__ */ new Set();
     const results = [];
-    snap.forEach((d) => results.push({ id: d.id, ...d.data() }));
-    return results;
+    snap.forEach((d) => {
+      const data = { id: d.id, ...d.data() };
+      const key = data.restaurantKey || String(data.restaurant || "").trim().toLowerCase().replace(/\s+/g, " ");
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push(data);
+      }
+    });
+    return results.slice(0, limitN);
   } catch (e) {
     console.warn("[Firebase] 마케팅 키트 목록 실패:", e.message);
     return [];
@@ -689,11 +704,25 @@ async function searchMarketingKits(keyword) {
       orderBy("restaurant"),
       where("restaurant", ">=", kw),
       where("restaurant", "<=", kw + ""),
-      limit(30)
+      limit(60)
     );
     const snap = await getDocs(q);
+    const seen = /* @__PURE__ */ new Set();
     const results = [];
-    snap.forEach((d) => results.push({ id: d.id, ...d.data() }));
+    const docs = [];
+    snap.forEach((d) => docs.push({ id: d.id, ...d.data() }));
+    docs.sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? 0;
+      const tb = b.createdAt?.toMillis?.() ?? 0;
+      return tb - ta;
+    });
+    docs.forEach((data) => {
+      const key = data.restaurantKey || String(data.restaurant || "").trim().toLowerCase().replace(/\s+/g, " ");
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push(data);
+      }
+    });
     return results;
   } catch (e) {
     console.warn("[Firebase] 마케팅 키트 검색 실패:", e.message);
@@ -1768,7 +1797,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.49" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.50" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -1844,7 +1873,7 @@ function StepItem({ n, label }) {
   ] });
 }
 
-async function generateScript(restaurantName, analysis, userPrompt = "", researchData = "", restaurantType = "") {
+async function generateScript(restaurantName, analysis, userPrompt = "", researchData = "", restaurantType = "", requiredKeywords = "") {
   const { files, selectedTemplate, selectedHook } = useVideoStore.getState();
   const pi = analysis.per_image || [];
   const order = analysis.recommended_order?.length ? analysis.recommended_order : files.map((_, i) => i);
@@ -1894,7 +1923,7 @@ async function generateScript(restaurantName, analysis, userPrompt = "", researc
 duration 1.5초 미만 씬 → narration 비우거나 단어 1~2개만.
 ` : "";
   const restaurantTypeHint = restaurantType ? "[업체 유형: " + restaurantType + "] — 이 업체 유형의 2026 트렌드·분위기·고객층에 최적화된 나레이션과 자막 스타일을 적용하세요.\n" : "";
-  const prompt = `당신은 텐션 넘치는 친근한 2030 맛집 크리에이터 "무브먼트(MOOVLOG)"입니다. 친한 친구에게 찐맛집을 신나게 소개하듯 생동감 넘치는 구어체로 나레이션을 작성하세요.
+  const prompt = `당신은 담백하고 신뢰감 있는 2030 맛집 크리에이터 "무브먼트(MOOVLOG)"입니다. 친한 지인에게 좋은 맛집을 추천하듯, 과장 없이 현실감 있는 구어체로 나레이션을 작성하세요.
 2026 릴스/쇼츠: 첫 컷 임팩트, 정보 밀도, 존댓말 나레이션, 자막 임팩트.
 ${trendInstruction}${getPersonaPrompt(analysis.detected_theme, analysis.mood)}
 ${restaurantTypeHint}
@@ -1968,7 +1997,7 @@ ${imgSummary || "분석 없음"}
 
 1. 금지어(AI 단골 멘트): "환상적인", "다채로운", "입안 가득 퍼지는", "조화를 이루는", "오감을 사로잡는", "선사합니다" ➡️ 100% 사용 금지.
 2. 불완전함의 미학: 문장을 너무 매끄럽게 다듬지 마세요. 진짜 사람이 즉흥적으로 말하듯 살짝 문법이 어긋나거나 투박한 '입말(구어체)'을 쓰세요.
-3. 감탄사와 추임새 적극 활용: "와..", "솔직히 말해서", "아니 근데", "진짜", "이거 보세요" 같은 현실적인 추임새를 문장 앞이나 중간에 자연스럽게 섞으세요.
+3. 감탄사와 추임새 적절히 활용: "와..", "아니 근데", "이거 보실래요", "사실은" 같은 현실적인 추임새를 문장 앞이나 중간에 자연스럽게 섞으세요. (단, "솔직히", "진짜" 반복 금지)
 4. 시청자와의 티키타카: 혼잣말만 하지 말고, "다들 아시죠?", "궁금하지 않으세요?"처럼 시청자에게 말을 거는 화법을 넣으세요.
 5. 지역 밀착형 현실 멘트: 평범한 리뷰가 아니라, 동네 맛집을 꿰뚫고 있는 사람처럼 "여기 점심시간엔 무조건 웨이팅입니다", "근처 직장인들 성지죠" 같은 현실적인 묘사를 추가하세요.
 
@@ -2040,7 +2069,8 @@ ${imgSummary || "분석 없음"}
 • 자신감 없는 어미 금지: "~인 것 같아요", "~보이네요" 대신 능동태로 확신하여 말하세요.
 • 철 지난 유행어 완전 차단: '찢었다', '폼 미쳤다', 'JMT', '갓성비', '레전드', '밥도둑', '꿀맛', '비주얼 깡패', '마약 ○○', '폭풍 흡입', '순삭', '맛집 인정', '소름 돋는', '겉바속촉', '둘이 먹다 하나 죽어도 모를' 절대 금지.
 • "텐션 높음"의 올바른 해석: 크게 소리치는 것이 아님. 트렌디한 2030 직장인이 세련되게 고급 정보 공유하는 '담백하지만 확신에 찬 톤' 이 진짜 텐션.
-• '솔직히' 남발 금지, '여러분~' 집합 호명 금지, "오늘은 어디를 가볼까요?" 식 도입 절대 금지.
+• '솔직히', '진짜' 연속 반복 및 문장 시작 남발 절대 금지, '여러분~' 집합 호명 금지, "오늘은 어디를 가볼까요?" 식 도입 절대 금지.
+• '여기 안 가면 손해', '인생 맛집 실화', '가지 않으면 후회' 류 과장형 손실 유발 캐치프레이즈 절대 금지.
 • 클라이맥스 씬에서는 나레이션을 비우거나 한 단어로만 두어 현장음이 돋보이게 하세요.
 
 [🎥 Show, Don't Tell — 침샘 자극 오감 묘사법]
@@ -2074,9 +2104,15 @@ ${imgSummary || "분석 없음"}
 
 [★ SNS 태그 규칙 — 반드시 준수]
 naver_clip_tags : #협찬 으로 시작, 이어서 지역·음식·분위기 태그 공백 나열, 총 300자 이내
-youtube_shorts_tags : 핵심 태그 5~8개 100자 이내
-instagram_caption : 감성 소개 2~3줄\\n\\n#태그1 #태그2 #태그3 #태그4 #태그5 (5개 딱 맞기)
-tiktok_tags : #태그 딱 5개만 공백 구분
+youtube_shorts_tags : 핵심 태그 5~8개, 공백 포함 100자 이내. ⚠️ 무브먼트·무브먼트픽 등 브랜드 자체 태그 절대 제외. 음식점 이름·지역·메뉴 중심 태그만 사용.
+instagram_caption : 감성 소개 2~3줄
+
+#태그1 #태그2 #태그3 #태그4 #태그5 (5개 딱 맞기)
+tiktok_tags : #태그 딱 5개만 공백 구분. 무브먼트 브랜드 태그 제외.
+${requiredKeywords.trim() ? `
+[📌 필수 포함 키워드 — 아래 키워드를 naver_clip_tags와 hashtags_30에 반드시 포함할 것]
+${requiredKeywords.trim()}
+` : ""}
 
 [컷 매칭 규칙 — ★매우 중요★]
 • 각 이미지를 제공할 때 앞에 "--- [원본 미디어 번호 media_idx: N] ---" 이라고 라벨을 뺙여두었습니다.
@@ -2108,8 +2144,9 @@ ${exteriorIdx !== void 0 ? "• 가게 외관 사진(" + exteriorIdx + "번)은 
 기준 미달 항목은 즉시 수정 후 출력하세요.
 
 [📣 마케팅 에셋 생성 — JSON에 marketing 필드 반드시 포함]
-• hook_title: 클릭을 유도하는 릴스 제목. "무브먼트픽 🔥 여기 안 가면 진짜 손해", "내돈내산 솔직 후기 — 이 집 혼자 알고 싶었어" 처럼 무브먼트 퍼스널 브랜딩 + 강렬한 훅 문구를 결합할 것.
-• caption: 인스타그램 본문 캡션. "저 진짜 이 집만큼은 혼자 알고 싶었는데 😅" 처럼 무브먼트 1인칭 페르소나(내돈내산 찐 추천)를 첫 문장에 넣고, 감성 2~3문장 + 방문자 액션 유도 (저장, 좋아요, 댓글). 줄바꿈은 \\n 사용.
+• hook_title: 클릭을 유도하는 릴스 제목. "무브먼트픽 🔥 직접 다녀온 리얼 후기", "내돈내산 솔직 후기 — 이 집 혼자 알고 싶었어" 처럼 무브먼트 퍼스널 브랜딩 + 강렬한 훅 문구를 결합할 것. ⚠️ "여기 안 가면 손해", "인생 맛집 실화" 등 과장 캐치프레이즈 절대 금지.
+• caption: 인스타그램 본문 캡션. "이 집만큼은 혼자 알고 싶었는데 😅" 처럼 무브먼트 1인칭 페르소나(내돈내산 찐 추천)를 첫 문장에 넣고, 감성 2~3문장 + 방문자 액션 유도 (저장, 좋아요, 댓글). 줄바꿈은 
+ 사용. ⚠️ "진짜", "솔직히" 반복 남발 금지.
 • hashtags_30: 지역 태그 5개 + 음식 카테고리 태그 10개 + 분위기/감성 태그 5개 + 2026 트렌딩 태그 10개. 공백으로 구분, 정확히 30개.
 • receipt_review: 네이버 영수증 리뷰용 10~20자 극잘형 한 줄 평 (예: "사장님 친절하고 고기 질 짱. 재방문 200%"). 실제 식당에 갔다 온 사람이 쏴 마음으로 남기는 리얼 훅구체.
 
@@ -2395,30 +2432,29 @@ function refineScenesForStoryboard(scenes, files, analysis) {
   let mediaSwapCount = 0;
   let subtitleFixCount = 0;
 
-  // 전체 스토리보드 확정 후 영상 컷을 사이사이에 배치
-  const videoIdxs = files.map((f, i) => (f.type === 'video' ? i : -1)).filter(i => i >= 0);
-  if (videoIdxs.length) {
-    let videoCursor = 0;
-    for (let i = 0; i < refined.length; i++) {
-      const curIdx = Number.isInteger(refined[i].media_idx) ? refined[i].media_idx : i;
-      const curType = files[curIdx]?.type;
-      const preferVideo = i === 0 || i % 2 === 1;
-      if (preferVideo && curType !== 'video') {
-        refined[i].media_idx = videoIdxs[videoCursor % videoIdxs.length];
-        videoCursor++;
-        mediaSwapCount++;
-      } else if (curType === 'video') {
-        videoCursor++;
-      }
-    }
-  }
-
   // 외관 컷은 마지막 CTA에 고정
   const exteriorIdx = analysis?.per_image?.find(p => p?.is_exterior === true)?.idx;
   if (Number.isInteger(exteriorIdx) && refined.length && files[exteriorIdx]) {
     const lastIdx = refined.length - 1;
     if (refined[lastIdx].media_idx !== exteriorIdx) {
       refined[lastIdx].media_idx = exteriorIdx;
+      mediaSwapCount++;
+    }
+  }
+
+  // [팟바란 영상 두 자리 코드 제거]
+  // 기존 코드: 0번째 + 짝수 위치에 무조건 영상 순환 배치 → 자막과 다른 영상이 튜어나는 문제 발생
+  // 수정: Gemini가 직접 할당한 media_idx 신뢰. 콘텐츠 매칭 기반으로만 보정.
+  // 단, 영상 파일 중 상당히 더 잘 맞는 것이 있으면 서브스티 스왓
+  const videoIdxs = files.map((f, i) => (f.type === 'video' ? i : -1)).filter(i => i >= 0);
+  if (videoIdxs.length) {
+    // 영상을 주입할 지 마 어느 술지 가장 잘 맞는 요소로 결정
+    // 영상 사용륙이 0개이면 첫 번째 씨 + 홀수 았는 씨에 영상 서브스티만 (콘텐츠 스코어 확인)
+    const usedVideoIdxSet = new Set(refined.filter(s => files[s.media_idx]?.type === 'video').map(s => s.media_idx));
+    const unusedVideoIdxs = videoIdxs.filter(i => !usedVideoIdxSet.has(i));
+    // 영상이 전혀 사용되지 앤으면 첫 씨에라도 넓음
+    if (usedVideoIdxSet.size === 0 && videoIdxs.length > 0 && refined.length > 0) {
+      refined[0].media_idx = videoIdxs[0];
       mediaSwapCount++;
     }
   }
@@ -2485,6 +2521,7 @@ async function startMake() {
     setAudioBuffers, setLoaded, setShowResult,
     addToast, setAutoStyleName, setTemplate, setHook,
     hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis,
+    requiredKeywords,
   } = store;
 
   if (!files.length) { addToast('이미지 또는 영상을 올려주세요', 'err'); return; }
@@ -2587,7 +2624,7 @@ async function startMake() {
 
     // ── STEP 4: 전체 스토리보드 우선 설계 ─────────────────────────────
     setPipeline(4, '전체 스토리보드 설계 중...', '먼저 내러티브 구조를 완성하고 컷 배치는 다음 단계에서 보정합니다');
-    let workingScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
+    let workingScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType, (useVideoStore.getState().requiredKeywords || '').trim());
     workingScript = flattenBlocksToScenes(workingScript);
     setScript(workingScript);
     donePipelineStep(4);
@@ -2703,27 +2740,52 @@ async function startMake() {
       }
     }
 
-    // ── 영상 우선 배치: 사용 없는 영상을 이미지 새으로 교체 (이미지 최대 35%) ──────
+    // ── 영상 우선 배치 — 미사용 영상 전체 활용 ─────────────────────────────
     {
       const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
       if (videoIdxs.length > 0) {
-        const usedVideos = new Set(finalScenes.filter(s => files[s.media_idx]?.type === 'video').map(s => s.media_idx));
-        const unusedVideos = videoIdxs.filter(i => !usedVideos.has(i));
-        if (unusedVideos.length > 0) {
-          const maxImages = Math.ceil(finalScenes.length * 0.35);
-          const imageScenes = finalScenes.reduce((acc, s, i) => { if (files[s.media_idx]?.type === 'image') acc.push(i); return acc; }, []);
-          const excess = imageScenes.length - maxImages;
-          if (excess > 0) {
-            let pool = [...unusedVideos], swapped = 0;
-            for (let i = 0; i < finalScenes.length && swapped < excess && pool.length; i++) {
-              if (files[finalScenes[i].media_idx]?.type === 'image') {
-                const vidIdx = pool.shift();
-                const meta = analysisMap[vidIdx] || {};
-                finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
-                swapped++;
-              }
+        // 1단계: 이미지에 배정된 씬을 미사용 영상으로 교체 (CTA 마지막 씬 제외)
+        const getUsed = () => new Set(finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0));
+        let unusedVideos = () => videoIdxs.filter(i => !getUsed().has(i));
+
+        let pool = unusedVideos();
+        for (let i = 0; i < finalScenes.length - 1 && pool.length > 0; i++) {
+          if (files[finalScenes[i].media_idx]?.type === 'image') {
+            const vidIdx = pool.shift();
+            const meta = analysisMap[vidIdx] || {};
+            finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
+          }
+        }
+
+        // 2단계: 여전히 미사용 영상이 있으면 추가 몽타주 씬으로 삽입 (총 58초 이내)
+        const remaining = unusedVideos();
+        if (remaining.length > 0) {
+          const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
+          const budget = Math.max(0, 58 - currentTotal);
+          if (budget > 1.0) {
+            const canAdd    = Math.min(remaining.length, Math.floor(budget / 1.5));
+            const perDur    = canAdd > 0 ? Math.max(1.5, Math.min(2.5, budget / canAdd)) : 1.5;
+            const lastScene = finalScenes.pop(); // CTA 마지막 씬 보존
+            const EFFECTS   = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
+            for (let i = 0; i < canAdd; i++) {
+              const vidIdx = remaining[i];
+              const meta   = analysisMap[vidIdx] || {};
+              finalScenes.push({
+                media_idx:        vidIdx,
+                duration:         Math.round(perDur * 10) / 10,
+                caption1:         '', caption2: '', narration: '',
+                effect:           EFFECTS[i % EFFECTS.length],
+                subtitle_style:   'minimal',
+                energy_level:     3,
+                retention_strategy: 'build',
+                focus_coords:     meta.focus_coords    || null,
+                aesthetic_score:  meta.aesthetic_score || null,
+                foodie_score:     meta.foodie_score    || null,
+                best_start_pct:   meta.best_start_pct  || 0,
+              });
             }
-            if (swapped > 0) console.log(`[Pipeline] 영상 우선: ${swapped}개 이미지 사이년 → 영상으로 교체`);
+            finalScenes.push(lastScene); // CTA 복원
+            if (canAdd > 0) addToast(`미사용 영상 ${canAdd}개 → 몽타주 씬으로 자동 추가`, 'ok');
           }
         }
       }
@@ -3128,15 +3190,21 @@ function UploadSection() {
     setAspectRatio,
     restaurantType,
     setRestaurantType,
+    requiredKeywords,
+    setRequiredKeywords,
     addToast
   } = useVideoStore();
   const fileInputRef = reactExports.useRef();
   const dropRef = reactExports.useRef();
+  const kitListRef = reactExports.useRef();
+  const itemRefs = reactExports.useRef({});
   const [kitHistory, setKitHistory] = reactExports.useState([]);
   const [kitSearch, setKitSearch] = reactExports.useState("");
   const [kitLoading, setKitLoading] = reactExports.useState(false);
+  const [selectedKit, setSelectedKit] = reactExports.useState(null);
   const loadKits = reactExports.useCallback(async (kw = "") => {
     setKitLoading(true);
+    setSelectedKit(null);
     try {
       const r = kw.trim() ? await searchMarketingKits(kw.trim()) : await getMarketingKits(20);
       setKitHistory(r);
@@ -3324,6 +3392,23 @@ function UploadSection() {
       ))
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(PromptInput, {}),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: "12px", width: "100%" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { style: { display: "block", marginBottom: "8px", fontWeight: "700", color: "#aaa", fontSize: "0.82rem" }, children: [
+        "📌 필수 포함 키워드 ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#555", fontWeight: "400" }, children: "(선택 — 주요 SNS 태그에 반드시 포함)" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          type: "text",
+          className: "name-input",
+          style: { fontSize: "0.85rem", padding: "9px 12px", width: "100%", boxSizing: "border-box" },
+          placeholder: "예: 부개동맛집, 인천삼겹살, 숙성삼겹살 (쉼표 구분)",
+          value: requiredKeywords,
+          onChange: (e) => setRequiredKeywords(e.target.value)
+        }
+      )
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
       {
@@ -3368,33 +3453,116 @@ function UploadSection() {
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "re-btn", style: { minWidth: 40 }, onClick: () => loadKits(kitSearch), disabled: kitLoading, children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-search" }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { maxHeight: 220, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: kitListRef, style: { maxHeight: 560, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, WebkitOverflowScrolling: "touch" }, children: [
         kitHistory.length === 0 && !kitLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "var(--text-sub)", textAlign: "center", padding: "10px 0", fontSize: "0.78rem" }, children: "저장된 마케팅 키트가 없습니다" }),
-        kitHistory.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            onClick: () => {
-              setRestaurantName(item.restaurant || "");
-              addToast(`「${item.restaurant}」 불러오기 완료`, "ok");
+        kitHistory.map((item) => {
+          const isOpen = selectedKit?.id === item.id;
+          const dateStr = item.createdAt?.toDate?.()?.toLocaleDateString("ko-KR") || "";
+          const SNS_ROWS = [
+            { label: "✍️ 인스타 캡션", val: item.caption },
+            { label: "📎 N클립 태그", val: item.naverClipTags },
+            { label: "▶ 쇼츠 태그", val: item.youtubeShortsTags },
+            { label: "◎ 릴스 캡션", val: item.instagramCaption },
+            { label: "♪ 틱톡 태그", val: item.tiktokTags },
+            { label: "🎣 훅 제목", val: item.hookTitle },
+            { label: "🏷️ 해시태그 30개", val: item.hashtags30 },
+            { label: "🧾 영수증 리뷰", val: item.receiptReview }
+          ].filter((r) => r.val);
+          const hookVars = Array.isArray(item.hookVariations) ? item.hookVariations.filter((h) => h?.caption1) : [];
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              ref: (el) => {
+                itemRefs.current[item.id] = el;
+              },
+              style: { border: `1px solid ${isOpen ? "#7c3aed66" : "#333"}`, borderRadius: 10, overflow: "hidden", background: isOpen ? "rgba(124,58,237,0.06)" : "#1e1e1e", transition: "border-color 0.15s" },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "button",
+                  {
+                    onClick: () => {
+                      if (isOpen) {
+                        setSelectedKit(null);
+                      } else {
+                        setRestaurantName(item.restaurant || "");
+                        setSelectedKit(item);
+                        addToast(`「${item.restaurant}」 불러오기 완료`, "ok");
+                        setTimeout(() => {
+                          const el = itemRefs.current[item.id];
+                          const container = kitListRef.current;
+                          if (el && container) {
+                            const containerRect = container.getBoundingClientRect();
+                            const elRect = el.getBoundingClientRect();
+                            container.scrollTop += elRect.top - containerRect.top - 8;
+                          }
+                        }, 80);
+                      }
+                    },
+                    style: {
+                      width: "100%",
+                      background: "none",
+                      border: "none",
+                      padding: "9px 14px",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    },
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontWeight: 700, fontSize: "0.85rem", color: isOpen ? "#c4b5fd" : "#eee" }, children: item.restaurant || "—" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.68rem", color: "var(--text-sub)", whiteSpace: "nowrap" }, children: dateStr }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fas fa-chevron-${isOpen ? "up" : "down"}`, style: { fontSize: "0.7rem", color: "#666" } })
+                      ] })
+                    ]
+                  }
+                ),
+                isOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 8 }, children: [
+                  SNS_ROWS.length === 0 && hookVars.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#666", fontSize: "0.75rem", fontStyle: "italic", margin: 0 }, children: "저장된 태그 데이터가 없습니다" }),
+                  hookVars.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "8px 10px" }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { margin: "0 0 6px", fontSize: "0.7rem", fontWeight: 700, color: "#a78bfa" }, children: "🎯 AI PD의 3종 훅 전략" }),
+                    hookVars.map((h, hi) => {
+                      const typeLabel = h.type === "shock" ? "🔥 충격형" : h.type === "info" ? "ℹ️ 정보형" : "👤 1인칭";
+                      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: 4 }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.68rem", color: "#f59e0b", fontWeight: 700 }, children: typeLabel }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.72rem", color: "#ddd", marginLeft: 6 }, children: [
+                          h.caption1,
+                          h.caption2 ? ` / ${h.caption2}` : ""
+                        ] })
+                      ] }, hi);
+                    })
+                  ] }),
+                  SNS_ROWS.map(({ label, val }) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "8px 10px" }, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.7rem", fontWeight: 700, color: "#a78bfa" }, children: label }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "button",
+                        {
+                          onClick: async () => {
+                            try {
+                              await navigator.clipboard.writeText(val);
+                              addToast(`${label} 복사 완료 ✨`, "ok");
+                            } catch {
+                              addToast("복사 실패", "err");
+                            }
+                          },
+                          style: { background: "none", border: "1px solid #444", borderRadius: 5, padding: "2px 7px", cursor: "pointer", color: "#aaa", fontSize: "0.65rem" },
+                          children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
+                            " 복사"
+                          ]
+                        }
+                      )
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { margin: 0, fontSize: "0.73rem", color: label.includes("태그") || label.includes("해시") ? "#a855f7" : "#ddd", whiteSpace: "pre-line", lineHeight: 1.6 }, children: val })
+                  ] }, label))
+                ] })
+              ]
             },
-            style: {
-              background: "#1e1e1e",
-              border: "1px solid #333",
-              borderRadius: 10,
-              padding: "9px 14px",
-              cursor: "pointer",
-              textAlign: "left",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontWeight: 700, fontSize: "0.85rem", color: "#eee" }, children: item.restaurant || "—" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.68rem", color: "var(--text-sub)", marginLeft: 8, whiteSpace: "nowrap" }, children: item.createdAt?.toDate?.()?.toLocaleDateString("ko-KR") || "" })
-            ]
-          },
-          item.id
-        ))
+            item.id
+          );
+        })
       ] })
     ] })
   ] });
@@ -3442,7 +3610,10 @@ function LoadingOverlay() {
 // ⚠️ SharedArrayBuffer가 필요합니다. COOP/COEP 헤더가 설정된 환경에서만 동작합니다.
 
 
-const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+const FFMPEG_CORE_URLS = [
+  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 우선 (안정적, 실제 검증됨)
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr 폴백
+];
 // 자막용 폰트 (NotoSans KR Bold .ttf — CDN에서 최초 1회 다운로드)
 const FONT_CDN_URL = 'https://fonts.gstatic.com/s/notosanskr/v36/PbykFmXiEBPT4ITbgNA5Cgm20xz64px_1hVWr0wuPNGmlQNMEfD4.0.woff2';
 // woff2는 ffmpeg drawtext 미지원 → TTF 대안 CDN
@@ -3452,21 +3623,51 @@ let ffmpegInstance = null;
 let isLoading = false;
 
 async function getFFmpeg(onLog) {
-  if (ffmpegInstance?.loaded) return ffmpegInstance;
+  // SharedArrayBuffer 없이는 FFmpeg WASM 동작 불가 (COOP/COEP 헤더 필요)
+  if (!globalThis.crossOriginIsolated) {
+    throw new Error('페이지를 새로고침 후 다시 시도해주세요. (보안 헤더 설정 중)');
+  }
+
+  if (ffmpegInstance) return ffmpegInstance;
   if (isLoading) {
+    // 다른 호출이 로딩 중이면 완료될 때까지 대기
     while (isLoading) await new Promise(r => setTimeout(r, 200));
+    if (!ffmpegInstance) throw new Error('FFmpeg 엔진 로딩에 실패했습니다. 다시 시도해주세요.');
     return ffmpegInstance;
   }
   isLoading = true;
-  const ff = new FFmpeg();
-  if (onLog) ff.on('log', ({ message }) => onLog(message));
-  await ff.load({
-    coreURL: await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.js`,   'text/javascript'),
-    wasmURL: await toBlobURL(`${FFMPEG_CORE_URL}/ffmpeg-core.wasm`, 'application/wasm'),
-  });
-  ffmpegInstance = ff;
-  isLoading = false;
-  return ff;
+  try {
+    const ff = new FFmpeg();
+    if (onLog) ff.on('log', ({ message }) => onLog(message));
+    // CDN 순서대로 시도 (unpkg 우선, jsDelivr 폴백)
+    let lastErr;
+    for (const cdn of FFMPEG_CORE_URLS) {
+      try {
+        // HEAD 요청으로 CDN 가용성 먼저 확인 (404 HTML을 blob URL로 만드는 것 방지)
+        const [probeJs, probeWasm] = await Promise.all([
+          fetch(`${cdn}/ffmpeg-core.js`,   { method: 'HEAD' }).catch(() => null),
+          fetch(`${cdn}/ffmpeg-core.wasm`, { method: 'HEAD' }).catch(() => null),
+        ]);
+        if (!probeJs?.ok)   throw new Error(`CDN ${cdn}/ffmpeg-core.js 응답 오류 (${probeJs?.status ?? 'network'})`);
+        if (!probeWasm?.ok) throw new Error(`CDN ${cdn}/ffmpeg-core.wasm 응답 오류 (${probeWasm?.status ?? 'network'})`);
+
+        const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript');
+        const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');
+        await ff.load({ coreURL, wasmURL });
+        ffmpegInstance = ff;
+        return ff;
+      } catch (e) {
+        console.warn(`[FFmpeg] ${cdn} 로드 실패:`, e.message);
+        lastErr = e;
+      }
+    }
+    throw lastErr;
+  } catch (e) {
+    ffmpegInstance = null; // 실패 시 초기화 → 재시도 가능
+    throw e;
+  } finally {
+    isLoading = false; // 성공/실패 모두 플래그 해제
+  }
 }
 
 // ─── 테마별 색감 보정 LUT 필터 ───────────────────────────
@@ -3822,7 +4023,8 @@ function VideoPlayer({ isExporting = false }) {
     setSubAnimProg
   } = useVideoStore();
   const currentScene = script?.scenes[scene];
-  const fileIdx = currentScene?.media_idx ?? scene;
+  const rawFileIdx = currentScene?.media_idx ?? scene;
+  const fileIdx = files?.length ? Math.max(0, Math.min(rawFileIdx, files.length - 1)) : 0;
   const currentFile = files?.[fileIdx];
   const isImage = currentFile?.type === "image";
   const effectClass = currentScene?.effect ? `effect-${currentScene.effect}` : "";
@@ -3844,10 +4046,7 @@ function VideoPlayer({ isExporting = false }) {
           if (startPct > 0 && startPct < 0.95) {
             video.currentTime = startPct * video.duration;
           }
-          if (currentScene?.duration) {
-            const avail = video.duration - video.currentTime;
-            video.playbackRate = Math.max(0.6, Math.min(1, Math.max(0.01, avail) / currentScene.duration));
-          }
+          video.playbackRate = 1;
         }
       };
       video.addEventListener("loadedmetadata", onMetadata);
@@ -4049,9 +4248,9 @@ function VideoPlayer({ isExporting = false }) {
                   "--dur": `${currentScene?.duration ?? 3}s`
                 },
                 autoPlay: true,
+                loop: true,
                 muted: audioBuffers?.[audioSceneIdx] ? true : !!muted,
-                playsInline: true,
-                loop: false
+                playsInline: true
               },
               `vid-${scene}-${fileIdx}`
             )

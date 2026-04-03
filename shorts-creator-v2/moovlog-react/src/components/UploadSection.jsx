@@ -322,10 +322,16 @@ export default function UploadSection() {
                       setRestaurantName(item.restaurant || '');
                       setSelectedKit(item);
                       addToast(`「${item.restaurant}」 불러오기 완료`, 'ok');
-                      // 열린 아이템으로 자동 스크롤
+                      // 열린 아이템으로 자동 스크롤 (컨테이너 내부 scrollTop 직접 조정)
                       setTimeout(() => {
-                        itemRefs.current[item.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }, 60);
+                        const el = itemRefs.current[item.id];
+                        const container = kitListRef.current;
+                        if (el && container) {
+                          const containerRect = container.getBoundingClientRect();
+                          const elRect = el.getBoundingClientRect();
+                          container.scrollTop += elRect.top - containerRect.top - 8;
+                        }
+                      }, 80);
                     }
                   }}
                   style={{

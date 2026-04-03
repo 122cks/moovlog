@@ -19,6 +19,11 @@ let ffmpegInstance = null;
 let isLoading = false;
 
 async function getFFmpeg(onLog) {
+  // SharedArrayBuffer 없이는 FFmpeg WASM 동작 불가 (COOP/COEP 헤더 필요)
+  if (!globalThis.crossOriginIsolated) {
+    throw new Error('페이지를 새로고침 후 다시 시도해주세요. (보안 헤더 설정 중)');
+  }
+
   if (ffmpegInstance) return ffmpegInstance;
   if (isLoading) {
     // 다른 호출이 로딩 중이면 완료될 때까지 대기
@@ -35,8 +40,12 @@ async function getFFmpeg(onLog) {
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
         // HEAD 요청으로 CDN 가용성 먼저 확인 (404 HTML을 blob URL로 만드는 것 방지)
-        const probe = await fetch(`${cdn}/ffmpeg-core.js`, { method: 'HEAD' }).catch(() => null);
-        if (!probe?.ok) throw new Error(`CDN ${cdn} 응답 오류 (${probe?.status ?? 'network'})`);
+        const [probeJs, probeWasm] = await Promise.all([
+          fetch(`${cdn}/ffmpeg-core.js`,   { method: 'HEAD' }).catch(() => null),
+          fetch(`${cdn}/ffmpeg-core.wasm`, { method: 'HEAD' }).catch(() => null),
+        ]);
+        if (!probeJs?.ok)   throw new Error(`CDN ${cdn}/ffmpeg-core.js 응답 오류 (${probeJs?.status ?? 'network'})`);
+        if (!probeWasm?.ok) throw new Error(`CDN ${cdn}/ffmpeg-core.wasm 응답 오류 (${probeWasm?.status ?? 'network'})`);
 
         const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript');
         const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');

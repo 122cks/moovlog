@@ -22,7 +22,7 @@ export default defineConfig({
     outDir: 'dist',
     minify: false,
     reportCompressedSize: false,
-    emptyOutDir: true,
+    emptyOutDir: false,
     rollupOptions: {
       treeshake: false,
       output: {
