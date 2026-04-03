@@ -242,11 +242,22 @@ export async function saveMarketingKit(data) {
 export async function getMarketingKits(limitN = 20) {
   if (!db) return [];
   try {
-    const q    = query(collection(db, 'marketing_kits'), orderBy('createdAt', 'desc'), limit(limitN));
+    // 중복 제거를 위해 더 많이 가져와서 클라이언트에서 dedup
+    const fetchN = Math.max(limitN * 4, 80);
+    const q    = query(collection(db, 'marketing_kits'), orderBy('createdAt', 'desc'), limit(fetchN));
     const snap = await getDocs(q);
+    const seen = new Set();
     const results = [];
-    snap.forEach(d => results.push({ id: d.id, ...d.data() }));
-    return results;
+    snap.forEach(d => {
+      const data = { id: d.id, ...d.data() };
+      // restaurantKey(정규화 키) 우선, 없으면 restaurant 소문자 트림
+      const key = data.restaurantKey || String(data.restaurant || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push(data);
+      }
+    });
+    return results.slice(0, limitN);
   } catch (e) {
     console.warn('[Firebase] 마케팅 키트 목록 실패:', e.message);
     return [];
@@ -262,11 +273,23 @@ export async function searchMarketingKits(keyword) {
       orderBy('restaurant'),
       where('restaurant', '>=', kw),
       where('restaurant', '<=', kw + '\uf8ff'),
-      limit(30),
+      limit(60),
     );
     const snap = await getDocs(q);
+    const seen = new Set();
     const results = [];
-    snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+    // createdAt 내림차순 정렬 후 dedup
+    const docs = [];
+    snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
+    docs.sort((a, b) => {
+      const ta = a.createdAt?.toMillis?.() ?? 0;
+      const tb = b.createdAt?.toMillis?.() ?? 0;
+      return tb - ta;
+    });
+    docs.forEach(data => {
+      const key = data.restaurantKey || String(data.restaurant || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (!seen.has(key)) { seen.add(key); results.push(data); }
+    });
     return results;
   } catch (e) {
     console.warn('[Firebase] 마케팅 키트 검색 실패:', e.message);

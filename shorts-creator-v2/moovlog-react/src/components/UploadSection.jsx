@@ -20,12 +20,14 @@ export default function UploadSection() {
   const dropRef      = useRef();
 
   // 마케팅 키트 이력
-  const [kitHistory, setKitHistory] = useState([]);
-  const [kitSearch,  setKitSearch]  = useState('');
-  const [kitLoading, setKitLoading] = useState(false);
+  const [kitHistory,   setKitHistory]   = useState([]);
+  const [kitSearch,    setKitSearch]    = useState('');
+  const [kitLoading,   setKitLoading]   = useState(false);
+  const [selectedKit,  setSelectedKit]  = useState(null); // 펼쳐볼 키트
 
   const loadKits = useCallback(async (kw = '') => {
     setKitLoading(true);
+    setSelectedKit(null);
     try {
       const r = kw.trim() ? await searchMarketingKits(kw.trim()) : await getMarketingKits(20);
       setKitHistory(r);
@@ -268,31 +270,77 @@ export default function UploadSection() {
             <i className="fas fa-search" />
           </button>
         </div>
-        <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
           {kitHistory.length === 0 && !kitLoading && (
             <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '10px 0', fontSize: '0.78rem' }}>
               저장된 마케팅 키트가 없습니다
             </p>
           )}
-          {kitHistory.map(item => (
-            <button
-              key={item.id}
-              onClick={() => {
-                setRestaurantName(item.restaurant || '');
-                addToast(`「${item.restaurant}」 불러오기 완료`, 'ok');
-              }}
-              style={{
-                background: '#1e1e1e', border: '1px solid #333', borderRadius: 10,
-                padding: '9px 14px', cursor: 'pointer', textAlign: 'left',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              }}
-            >
-              <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#eee' }}>{item.restaurant || '—'}</span>
-              <span style={{ fontSize: '0.68rem', color: 'var(--text-sub)', marginLeft: 8, whiteSpace: 'nowrap' }}>
-                {item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || ''}
-              </span>
-            </button>
-          ))}
+          {kitHistory.map(item => {
+            const isOpen = selectedKit?.id === item.id;
+            const dateStr = item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || '';
+            const SNS_ROWS = [
+              { label: '📎 N클립 태그',    val: item.naverClipTags },
+              { label: '▶ 쇼츠 태그',      val: item.youtubeShortsTags },
+              { label: '◎ 릴스 캡션',      val: item.instagramCaption },
+              { label: '♪ 틱톡 태그',      val: item.tiktokTags },
+              { label: '🎣 훅 제목',        val: item.hookTitle },
+              { label: '🏷️ 해시태그 30개', val: item.hashtags30 },
+              { label: '🧾 영수증 리뷰',    val: item.receiptReview },
+            ].filter(r => r.val);
+            return (
+              <div key={item.id} style={{ border: `1px solid ${isOpen ? '#7c3aed66' : '#333'}`, borderRadius: 10, overflow: 'hidden', background: isOpen ? 'rgba(124,58,237,0.06)' : '#1e1e1e', transition: 'border-color 0.15s' }}>
+                {/* 헤더 행: 클릭하면 토글 */}
+                <button
+                  onClick={() => {
+                    if (isOpen) {
+                      setSelectedKit(null);
+                    } else {
+                      setRestaurantName(item.restaurant || '');
+                      setSelectedKit(item);
+                      addToast(`「${item.restaurant}」 불러오기 완료`, 'ok');
+                    }
+                  }}
+                  style={{
+                    width: '100%', background: 'none', border: 'none', padding: '9px 14px',
+                    cursor: 'pointer', textAlign: 'left',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}
+                >
+                  <span style={{ fontWeight: 700, fontSize: '0.85rem', color: isOpen ? '#c4b5fd' : '#eee' }}>{item.restaurant || '—'}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--text-sub)', whiteSpace: 'nowrap' }}>{dateStr}</span>
+                    <i className={`fas fa-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '0.7rem', color: '#666' }} />
+                  </div>
+                </button>
+                {/* 펼쳐진 내용 */}
+                {isOpen && (
+                  <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {SNS_ROWS.length === 0 && (
+                      <p style={{ color: '#666', fontSize: '0.75rem', fontStyle: 'italic', margin: 0 }}>저장된 태그 데이터가 없습니다</p>
+                    )}
+                    {SNS_ROWS.map(({ label, val }) => (
+                      <div key={label} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#a78bfa' }}>{label}</span>
+                          <button
+                            onClick={async () => {
+                              try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료 ✨`, 'ok'); }
+                              catch { addToast('복사 실패', 'err'); }
+                            }}
+                            style={{ background: 'none', border: '1px solid #444', borderRadius: 5, padding: '2px 7px', cursor: 'pointer', color: '#aaa', fontSize: '0.65rem' }}
+                          >
+                            <i className="fas fa-copy" /> 복사
+                          </button>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '0.73rem', color: label.includes('태그') || label.includes('해시') ? '#a855f7' : '#ddd', whiteSpace: 'pre-line', lineHeight: 1.6 }}>{val}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
     </main>
