@@ -14,7 +14,7 @@ export default function UploadSection() {
     selectedTemplate, setTemplate, aspectRatio, setAspectRatio,
     restaurantType, setRestaurantType,
     requiredKeywords, setRequiredKeywords,
-    addToast,
+    addToast, showResult,
   } = useVideoStore();
 
   const fileInputRef = useRef();
@@ -39,6 +39,15 @@ export default function UploadSection() {
   }, []);
 
   useEffect(() => { loadKits(); }, [loadKits]);
+
+  // ResultScreen에서 돌아올 때(showResult: true→false) 최신 키트 자동 새로고침
+  const prevShowResult = useRef(false);
+  useEffect(() => {
+    if (prevShowResult.current && !showResult) {
+      loadKits(kitSearch);
+    }
+    prevShowResult.current = showResult;
+  }, [showResult]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── 드래그앤드롭 ─────────────────────────────────────────
   const onDragOver  = useCallback(e => { e.preventDefault(); dropRef.current?.classList.add('over'); }, []);
@@ -200,7 +209,7 @@ export default function UploadSection() {
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#a78bfa', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             🏪 업체 유형 선택
           </span>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-sub)' }}>— 유형별 최신 숫싼/릴스 스타일로 자동 설계</span>
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-sub)' }}>— 유형별 최신 쇼츠/릴스 스타일로 자동 설계</span>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
           {Object.entries(RESTAURANT_TYPES).map(([key, info]) => (
@@ -298,14 +307,14 @@ export default function UploadSection() {
             const isOpen = selectedKit?.id === item.id;
             const dateStr = item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || '';
             const SNS_ROWS = [
+              { label: '🎣 훅 제목',        val: item.hookTitle },
               { label: '✍️ 인스타 캡션',   val: item.caption },
+              { label: '🏷️ 해시태그 30개', val: item.hashtags30 },
+              { label: '🧾 영수증 리뷰',    val: item.receiptReview },
               { label: '📎 N클립 태그',    val: item.naverClipTags },
               { label: '▶ 쇼츠 태그',      val: item.youtubeShortsTags },
               { label: '◎ 릴스 캡션',      val: item.instagramCaption },
               { label: '♪ 틱톡 태그',      val: item.tiktokTags },
-              { label: '🎣 훅 제목',        val: item.hookTitle },
-              { label: '🏷️ 해시태그 30개', val: item.hashtags30 },
-              { label: '🧾 영수증 리뷰',    val: item.receiptReview },
             ].filter(r => r.val);
             const hookVars = Array.isArray(item.hookVariations) ? item.hookVariations.filter(h => h?.caption1) : [];
             return (

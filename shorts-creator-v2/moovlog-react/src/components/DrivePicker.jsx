@@ -45,6 +45,7 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
   const [search, setSearch] = useState('');
   const [downloading, setDownloading] = useState(false);
   const lastFilter = useRef('');
+  const lastClickedIdx = useRef(null); // Shift 다중 선택용 마지막 클릭 인덱스
 
   const loadFiles = useCallback(async (reset, nameFilter) => {
     setListLoading(true);
@@ -63,11 +64,28 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
 
   useEffect(() => { loadFiles(true, ''); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleSelect = (id) => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
+  const toggleSelect = (id, idx, e) => {
+    if (e?.shiftKey && lastClickedIdx.current !== null && lastClickedIdx.current !== idx) {
+      // Shift 클릭: lastClickedIdx ~ idx 범위 전체 선택/해제
+      const from = Math.min(lastClickedIdx.current, idx);
+      const to   = Math.max(lastClickedIdx.current, idx);
+      const rangeIds = driveFiles.slice(from, to + 1).map(f => f.id);
+      setSelected(prev => {
+        const next = new Set(prev);
+        // 현재 클릭 항목이 이미 선택돼 있으면 범위 해제, 아니면 범위 선택
+        const shouldSelect = !prev.has(id);
+        rangeIds.forEach(rid => { shouldSelect ? next.add(rid) : next.delete(rid); });
+        return next;
+      });
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+    }
+    lastClickedIdx.current = idx;
+  };
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -133,13 +151,13 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
             <p style={{ color: '#666', textAlign: 'center', padding: '30px 0', fontSize: '0.82rem' }}>파일이 없습니다</p>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(90px, 1fr))', gap: 8 }}>
-            {driveFiles.map(file => {
+            {driveFiles.map((file, idx) => {
               const isSel = selected.has(file.id);
               const isVid = file.mimeType?.startsWith('video/');
               return (
                 <button
                   key={file.id}
-                  onClick={() => toggleSelect(file.id)}
+                  onClick={e => toggleSelect(file.id, idx, e)}
                   style={{ background: isSel ? 'rgba(124,58,237,0.22)' : 'rgba(255,255,255,0.04)', border: `2px solid ${isSel ? '#7c3aed' : 'transparent'}`, borderRadius: 10, padding: 5, cursor: 'pointer', textAlign: 'left', position: 'relative', transition: 'all 0.12s' }}
                 >
                   {isSel && (
@@ -168,7 +186,7 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
         </div>
         {/* 하단 */}
         <div style={{ padding: '12px 18px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ color: '#888', fontSize: '0.76rem' }}>{selected.size > 0 ? `${selected.size}개 선택됨` : '파일을 클릭해서 선택하세요'}</span>
+          <span style={{ color: '#888', fontSize: '0.76rem' }}>{selected.size > 0 ? `${selected.size}개 선택됨` : '파일을 클릭해서 선택하세요 (Shift+클릭: 범위 선택)'}</span>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onClose} style={{ background: 'none', border: '1px solid #444', borderRadius: 8, padding: '7px 14px', color: '#aaa', cursor: 'pointer', fontSize: '0.8rem' }}>취소</button>
             <button

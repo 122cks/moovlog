@@ -491,8 +491,9 @@ export async function startMake() {
     donePipelineStep(7);
 
     // Firebase 저장: 같은 식당명은 기존 데이터 삭제 후 새 결과로 대체
+    // ⚠️ await: ResultScreen 열기 전에 저장 완료 보장 → "이전 마케팅 키트"에 최신 버전 즉시 반영
     const latestScriptForSave = useVideoStore.getState().script || workingScript;
-    firebaseReplaceRestaurantData(latestScriptForSave, restaurantName, {
+    await firebaseReplaceRestaurantData(latestScriptForSave, restaurantName, {
       restaurant: latestScriptForSave.restaurant || restaurantName,
       hook_title: latestScriptForSave.marketing?.hook_title || '',
       caption: latestScriptForSave.marketing?.caption || '',

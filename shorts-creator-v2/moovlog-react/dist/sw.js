@@ -1,8 +1,8 @@
-// MOOVLOG Shorts Creator — Service Worker v2.52
+// MOOVLOG Shorts Creator — Service Worker v2.53
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
 const BASE_PATH = new URL(self.registration.scope).pathname;
-const CACHE_NAME = 'moovlog-v2.52-20260403-1';
+const CACHE_NAME = 'moovlog-v2.53-20260404-1';
 const STATIC_ASSETS = [
   BASE_PATH,
   `${BASE_PATH}index.html`,
@@ -47,7 +47,15 @@ self.addEventListener('fetch', e => {
         headers.set('Cross-Origin-Opener-Policy',   'same-origin');
         headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
         return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
-      }).catch(() => caches.match(e.request))
+      }).catch(async () => {
+        // 네트워크 실패 시 캐시에서 제공 — 헤더 반드시 주입 (crossOriginIsolated 유지)
+        const cached = await caches.match(e.request);
+        if (!cached) return new Response('오프라인 상태입니다. 네트워크를 확인해주세요.', { status: 503 });
+        const headers = new Headers(cached.headers);
+        headers.set('Cross-Origin-Opener-Policy',   'same-origin');
+        headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+        return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
+      })
     );
     return;
   }

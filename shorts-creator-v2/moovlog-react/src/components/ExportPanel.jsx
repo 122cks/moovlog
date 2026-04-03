@@ -72,10 +72,10 @@ export default function ExportPanel() {
     }
   };
 
-  // COOP/COEP 격리 확인 — 비격리 환경에서도 우선 시도하고 실패 시 안내/폴백
+  // COOP/COEP 격리 확인 — 미격리 환경에서는 경고 후 진행, FFmpeg 실패 시 새로고침 안내
   const ensureIsolation = () => {
     if (crossOriginIsolated) return true;
-    addToast('격리 모드가 아니어서 FFmpeg가 느리거나 실패할 수 있습니다. 우선 시도합니다.', 'inf');
+    addToast('보안 헤더 미적용 — FFmpeg가 실패하면 페이지를 새로고침(F5) 후 다시 시도하세요.', 'inf');
     return true;
   };
 

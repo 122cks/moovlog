@@ -1814,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.52" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.53" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2864,8 +2864,9 @@ async function startMake() {
     donePipelineStep(7);
 
     // Firebase 저장: 같은 식당명은 기존 데이터 삭제 후 새 결과로 대체
+    // ⚠️ await: ResultScreen 열기 전에 저장 완료 보장 → "이전 마케팅 키트"에 최신 버전 즉시 반영
     const latestScriptForSave = useVideoStore.getState().script || workingScript;
-    firebaseReplaceRestaurantData(latestScriptForSave, restaurantName, {
+    await firebaseReplaceRestaurantData(latestScriptForSave, restaurantName, {
       restaurant: latestScriptForSave.restaurant || restaurantName,
       hook_title: latestScriptForSave.marketing?.hook_title || '',
       caption: latestScriptForSave.marketing?.caption || '',
@@ -3044,6 +3045,7 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
   const [search, setSearch] = reactExports.useState("");
   const [downloading, setDownloading] = reactExports.useState(false);
   const lastFilter = reactExports.useRef("");
+  const lastClickedIdx = reactExports.useRef(null);
   const loadFiles = reactExports.useCallback(async (reset, nameFilter) => {
     setListLoading(true);
     try {
@@ -3060,11 +3062,28 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
   reactExports.useEffect(() => {
     loadFiles(true, "");
   }, []);
-  const toggleSelect = (id) => setSelected((prev) => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
+  const toggleSelect = (id, idx, e) => {
+    if (e?.shiftKey && lastClickedIdx.current !== null && lastClickedIdx.current !== idx) {
+      const from = Math.min(lastClickedIdx.current, idx);
+      const to = Math.max(lastClickedIdx.current, idx);
+      const rangeIds = driveFiles.slice(from, to + 1).map((f) => f.id);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        const shouldSelect = !prev.has(id);
+        rangeIds.forEach((rid) => {
+          shouldSelect ? next.add(rid) : next.delete(rid);
+        });
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+    }
+    lastClickedIdx.current = idx;
+  };
   const handleSearch = (e) => {
     e.preventDefault();
     lastFilter.current = search;
@@ -3130,13 +3149,13 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
               "불러오는 중..."
             ] }),
             !listLoading && driveFiles.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#666", textAlign: "center", padding: "30px 0", fontSize: "0.82rem" }, children: "파일이 없습니다" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8 }, children: driveFiles.map((file) => {
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))", gap: 8 }, children: driveFiles.map((file, idx) => {
               const isSel = selected.has(file.id);
               const isVid = file.mimeType?.startsWith("video/");
               return /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "button",
                 {
-                  onClick: () => toggleSelect(file.id),
+                  onClick: (e) => toggleSelect(file.id, idx, e),
                   style: { background: isSel ? "rgba(124,58,237,0.22)" : "rgba(255,255,255,0.04)", border: `2px solid ${isSel ? "#7c3aed" : "transparent"}`, borderRadius: 10, padding: 5, cursor: "pointer", textAlign: "left", position: "relative", transition: "all 0.12s" },
                   children: [
                     isSel && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { position: "absolute", top: 3, right: 3, background: "#7c3aed", borderRadius: "50%", width: 17, height: 17, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.58rem", color: "#fff", zIndex: 1 }, children: "✓" }),
@@ -3158,7 +3177,7 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
             listLoading && driveFiles.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#888", textAlign: "center", padding: "10px 0", fontSize: "0.78rem" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-spinner fa-spin" }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "12px 18px", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#888", fontSize: "0.76rem" }, children: selected.size > 0 ? `${selected.size}개 선택됨` : "파일을 클릭해서 선택하세요" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "#888", fontSize: "0.76rem" }, children: selected.size > 0 ? `${selected.size}개 선택됨` : "파일을 클릭해서 선택하세요 (Shift+클릭: 범위 선택)" }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 8 }, children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, style: { background: "none", border: "1px solid #444", borderRadius: 8, padding: "7px 14px", color: "#aaa", cursor: "pointer", fontSize: "0.8rem" }, children: "취소" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -3346,7 +3365,8 @@ function UploadSection() {
     setRestaurantType,
     requiredKeywords,
     setRequiredKeywords,
-    addToast
+    addToast,
+    showResult
   } = useVideoStore();
   const fileInputRef = reactExports.useRef();
   const dropRef = reactExports.useRef();
@@ -3370,6 +3390,13 @@ function UploadSection() {
   reactExports.useEffect(() => {
     loadKits();
   }, [loadKits]);
+  const prevShowResult = reactExports.useRef(false);
+  reactExports.useEffect(() => {
+    if (prevShowResult.current && !showResult) {
+      loadKits(kitSearch);
+    }
+    prevShowResult.current = showResult;
+  }, [showResult]);
   const onDragOver = reactExports.useCallback((e) => {
     e.preventDefault();
     dropRef.current?.classList.add("over");
@@ -3512,7 +3539,7 @@ function UploadSection() {
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "card", style: { padding: "14px 16px" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.78rem", fontWeight: 700, color: "#a78bfa", letterSpacing: "0.08em", textTransform: "uppercase" }, children: "🏪 업체 유형 선택" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.7rem", color: "var(--text-sub)" }, children: "— 유형별 최신 숫싼/릴스 스타일로 자동 설계" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.7rem", color: "var(--text-sub)" }, children: "— 유형별 최신 쇼츠/릴스 스타일로 자동 설계" })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 7 }, children: Object.entries(RESTAURANT_TYPES).map(([key, info]) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -3613,14 +3640,14 @@ function UploadSection() {
           const isOpen = selectedKit?.id === item.id;
           const dateStr = item.createdAt?.toDate?.()?.toLocaleDateString("ko-KR") || "";
           const SNS_ROWS = [
+            { label: "🎣 훅 제목", val: item.hookTitle },
             { label: "✍️ 인스타 캡션", val: item.caption },
+            { label: "🏷️ 해시태그 30개", val: item.hashtags30 },
+            { label: "🧾 영수증 리뷰", val: item.receiptReview },
             { label: "📎 N클립 태그", val: item.naverClipTags },
             { label: "▶ 쇼츠 태그", val: item.youtubeShortsTags },
             { label: "◎ 릴스 캡션", val: item.instagramCaption },
-            { label: "♪ 틱톡 태그", val: item.tiktokTags },
-            { label: "🎣 훅 제목", val: item.hookTitle },
-            { label: "🏷️ 해시태그 30개", val: item.hashtags30 },
-            { label: "🧾 영수증 리뷰", val: item.receiptReview }
+            { label: "♪ 틱톡 태그", val: item.tiktokTags }
           ].filter((r) => r.val);
           const hookVars = Array.isArray(item.hookVariations) ? item.hookVariations.filter((h) => h?.caption1) : [];
           return /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -3777,9 +3804,9 @@ let ffmpegInstance = null;
 let isLoading = false;
 
 async function getFFmpeg(onLog) {
-  // SharedArrayBuffer 없이는 FFmpeg WASM 동작 불가 (COOP/COEP 헤더 필요)
+  // ⚠️ SharedArrayBuffer 미지원 환경 경고 (throw 대신 warn — SW 주입 후 재시도 가능)
   if (!globalThis.crossOriginIsolated) {
-    throw new Error('페이지를 새로고침 후 다시 시도해주세요. (보안 헤더 설정 중)');
+    console.warn('[FFmpeg] crossOriginIsolated=false — COOP/COEP 헤더가 아직 적용 안 됐을 수 있습니다. 계속 시도합니다.');
   }
 
   if (ffmpegInstance) return ffmpegInstance;
@@ -5057,7 +5084,7 @@ function ExportPanel() {
   };
   const ensureIsolation = () => {
     if (crossOriginIsolated) return true;
-    addToast("격리 모드가 아니어서 FFmpeg가 느리거나 실패할 수 있습니다. 우선 시도합니다.", "inf");
+    addToast("보안 헤더 미적용 — FFmpeg가 실패하면 페이지를 새로고침(F5) 후 다시 시도하세요.", "inf");
     return true;
   };
   const doExportThumbnail = async () => {

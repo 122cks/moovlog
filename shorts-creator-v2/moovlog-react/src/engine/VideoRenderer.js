@@ -19,9 +19,9 @@ let ffmpegInstance = null;
 let isLoading = false;
 
 async function getFFmpeg(onLog) {
-  // SharedArrayBuffer 없이는 FFmpeg WASM 동작 불가 (COOP/COEP 헤더 필요)
+  // ⚠️ SharedArrayBuffer 미지원 환경 경고 (throw 대신 warn — SW 주입 후 재시도 가능)
   if (!globalThis.crossOriginIsolated) {
-    throw new Error('페이지를 새로고침 후 다시 시도해주세요. (보안 헤더 설정 중)');
+    console.warn('[FFmpeg] crossOriginIsolated=false — COOP/COEP 헤더가 아직 적용 안 됐을 수 있습니다. 계속 시도합니다.');
   }
 
   if (ffmpegInstance) return ffmpegInstance;
