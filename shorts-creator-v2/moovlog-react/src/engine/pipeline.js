@@ -123,6 +123,8 @@ function refineScenesForStoryboard(scenes, files, analysis) {
   }
 
   // 자막-영상 내용 매칭 검증: 텍스트와 focus 설명이 어긋나면 media_idx/자막 보정
+  // ⚠️ 중복 사용 방지: 이미 다른 씬에 배정된 media_idx는 재사용하지 않음 (볶음밥 반복 방지)
+  const usedMediaIdxs = new Set(refined.map(sc => sc.media_idx).filter(idx => Number.isInteger(idx)));
   for (let i = 0; i < refined.length; i++) {
     const sc = refined[i];
     const curIdx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
@@ -134,6 +136,8 @@ function refineScenesForStoryboard(scenes, files, analysis) {
       let bestScore = tokenOverlapScore(tokens, `${analysisMap[curIdx]?.focus || ''} ${analysisMap[curIdx]?.narration_hint || ''}`);
 
       for (const idx of allMediaIdxs) {
+        // 이미 다른 씬에서 사용 중인 media_idx는 건너뜀 (중복 배정 방지)
+        if (idx !== curIdx && usedMediaIdxs.has(idx)) continue;
         const candText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
         const s = tokenOverlapScore(tokens, candText);
         if (s > bestScore) {
@@ -147,7 +151,9 @@ function refineScenesForStoryboard(scenes, files, analysis) {
         if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
           // 외관 bestIdx는 중간 씬에 배정하지 않음
         } else {
+          usedMediaIdxs.delete(curIdx);  // 기존 idx 해제
           sc.media_idx = bestIdx;
+          usedMediaIdxs.add(bestIdx);   // 새 idx 점유
           mediaSwapCount++;
         }
       }
@@ -553,13 +559,13 @@ export async function startMake() {
     setLoaded(loaded);
     await sleep(200);
 
-    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true, total_score: 50 }));
-    // 서버사이드 강제: Gemini 응답과 무관하게 45점 미만이면 무조건 재생성
-    if (typeof qcResult.total_score === 'number' && qcResult.total_score < 45) qcResult.pass = false;
+    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true, total_score: 100 }));
+    // 서버사이드 강제: Gemini 응답과 무관하게 95점 미만이면 무조건 재생성 (100점 기준)
+    if (typeof qcResult.total_score === 'number' && qcResult.total_score < 95) qcResult.pass = false;
     if (!qcResult.pass) {
-      addToast(`품질 검수 미달 (${qcResult.total_score}/50) — 스크립트 재생성 중...`, 'inf');
+      addToast(`품질 검수 미달 (${qcResult.total_score}/100) — 스크립트 재생성 중...`, 'inf');
       let retryCount = 0;
-      while (!qcResult.pass && retryCount < 2) {
+      while (!qcResult.pass && retryCount < 3) {
         retryCount++;
         try {
           let retryScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
@@ -613,10 +619,11 @@ export async function startMake() {
           setAudioBuffers(retryAudioBuffers);
           workingScript = retryScript;
           qcResult = await geminiQualityCheck(retryScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true }));
+          if (typeof qcResult.total_score === 'number' && qcResult.total_score < 95) qcResult.pass = false;
           if (qcResult.pass) {
-            addToast(`재생성 성공 (${retryCount}차) — 품질 통과 ✅`, 'ok');
+            addToast(`재생성 성공 (${retryCount}차) — 품질 통과 ✅ (${qcResult.total_score}/100)`, 'ok');
           } else {
-            addToast(`재생성 ${retryCount}차 미달 (${qcResult.total_score}/50)`, 'inf');
+            addToast(`재생성 ${retryCount}차 미달 (${qcResult.total_score}/100)`, 'inf');
           }
         } catch (retryErr) {
           console.warn(`[QC retry ${retryCount}] 재생성 실패:`, retryErr.message);
@@ -625,7 +632,7 @@ export async function startMake() {
       }
       if (!qcResult.pass) addToast('최대 재생성 횟수 초과 — 현재 스크립트로 진행합니다', 'inf');
     } else {
-      addToast(`품질 검수 통과 (${qcResult.total_score}/50) ✅`, 'ok');
+      addToast(`품질 검수 통과 (${qcResult.total_score}/100) ✅`, 'ok');
     }
     donePipelineStep(7);
 

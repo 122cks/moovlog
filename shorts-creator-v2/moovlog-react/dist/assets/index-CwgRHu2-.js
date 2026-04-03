@@ -1814,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.56" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.57" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2315,7 +2315,7 @@ JSON만 반환: {"type": "grill", "confidence": 0.9, "reason": "삼겹살 전문
 // ─── STEP 6: AI 품질 검수 ────────────────────────────────
 async function geminiQualityCheck(script, restaurantName, restaurantType = '') {
   const scenes = script.blocks || script.scenes || [];
-  const sceneSummary = scenes.slice(0, 10).map((sc, i) => {
+  const sceneSummary = scenes.slice(0, 12).map((sc, i) => {
     const narration = sc.narration || '';
     const caption = sc.caption || sc.caption1 || '';
     const duration = sc.total_duration || sc.duration || 0;
@@ -2336,20 +2336,26 @@ async function geminiQualityCheck(script, restaurantName, restaurantType = '') {
 업체 유형: ${restaurantType || '미분류'}
 구조: ${structureInfo}
 
-[스크립트 요약 - 최대 10씬]
+[스크립트 요약 - 최대 12씬]
 ${sceneSummary}
 
-[검수 기준 (각 항목 0~10점)]
-1. 훅(Hook): 첫 씬이 2초 안에 시청자를 멈추게 하는가? 결론 선제시, 강렬한 비주얼 묘사?
-2. 금지어 준수: "미쳤다", "대박", "환상적인", "선사", "구워드립니다(표현 오류)" 등 금지어 미사용?
-3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가? 반전→클라이맥스→CTA 아크 구성?
+[검수 기준 — 각 항목 0~10점, 총 100점 만점]
+1. 훅(Hook): 첫 씬 2초 이내 시청자를 멈추게 하는가? 결론 선제시, 강렬한 비주얼 묘사?
+2. 금지어 준수: "미쳤다/대박/환상적인/선사/구워드립니다" 등 금지어·오류 표현 없는가?
+3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가? 반전→클라이맥스→CTA 아크?
 4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가? 오감 묘사 포함?
-5. CTA: 마지막 씬에 구독/좋아요 유도가 포함되었는가?
+5. CTA: 마지막 씬에 구독/좋아요 유도가 효과적으로 포함되었는가?
+6. 오리지널리티: 식상한 표현 없이 신선하고 독창적인 나레이션·캡션인가?
+7. 감성 몰입도: 시청자가 공감·감동·욕구를 느낄 수 있는 감성적 언어 사용?
+8. 리텐션 전략: 중간 이탈 방지를 위한 반전·궁금증 유발 장치가 있는가?
+9. 구체성: 음식 맛·식감·향 등 오감을 구체적으로 묘사했는가? (막연한 표현 감점)
+10. 완성도: 오탈자·어색한 문장·논리 오류 없이 흐름이 완성도 높게 마무리되었는가?
 
-threshold: 총점 45점 이상(90%)이면 통과 — 44점 이하면 무조건 pass:false 반환
+threshold: 총점 95점 이상이면 통과 — 94점 이하면 무조건 pass:false 반환
+(99점을 목표로 작성하되, 95점 미만이면 어떤 항목이 부족한지 상세히 기술)
 
 JSON만 반환:
-{"total_score": 47, "pass": true, "hook": 9, "banned_words": 10, "flow": 9, "info_density": 10, "cta": 9, "issues": [], "suggestion": ""}`;
+{"total_score": 97, "pass": true, "hook": 10, "banned_words": 10, "flow": 10, "info_density": 9, "cta": 10, "originality": 10, "emotional_depth": 9, "retention": 9, "specificity": 10, "completeness": 10, "issues": [], "suggestion": ""}`;
 
   try {
     const data = await geminiWithFallback({
@@ -2359,11 +2365,11 @@ JSON만 반환:
     const raw = safeExtractText(data);
     const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
     const result = JSON.parse(s >= 0 && e > s ? raw.slice(s, e + 1) : raw.replace(/```json|```/g, '').trim());
-    console.log(`[geminiQualityCheck] 점수: ${result.total_score}/50 → ${result.pass ? '통과' : '재생성 필요'}`);
+    console.log(`[geminiQualityCheck] 점수: ${result.total_score}/100 → ${result.pass ? '통과' : '재생성 필요'}`);
     return result;
   } catch (e) {
     console.warn('[geminiQualityCheck] 실패 → 기본 통과 처리:', e.message);
-    return { total_score: 50, pass: true, issues: [], suggestion: '' };
+    return { total_score: 100, pass: true, issues: [], suggestion: '' };
   }
 }
 
@@ -2529,6 +2535,8 @@ function refineScenesForStoryboard(scenes, files, analysis) {
   }
 
   // 자막-영상 내용 매칭 검증: 텍스트와 focus 설명이 어긋나면 media_idx/자막 보정
+  // ⚠️ 중복 사용 방지: 이미 다른 씬에 배정된 media_idx는 재사용하지 않음 (볶음밥 반복 방지)
+  const usedMediaIdxs = new Set(refined.map(sc => sc.media_idx).filter(idx => Number.isInteger(idx)));
   for (let i = 0; i < refined.length; i++) {
     const sc = refined[i];
     const curIdx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
@@ -2540,6 +2548,8 @@ function refineScenesForStoryboard(scenes, files, analysis) {
       let bestScore = tokenOverlapScore(tokens, `${analysisMap[curIdx]?.focus || ''} ${analysisMap[curIdx]?.narration_hint || ''}`);
 
       for (const idx of allMediaIdxs) {
+        // 이미 다른 씬에서 사용 중인 media_idx는 건너뜀 (중복 배정 방지)
+        if (idx !== curIdx && usedMediaIdxs.has(idx)) continue;
         const candText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
         const s = tokenOverlapScore(tokens, candText);
         if (s > bestScore) {
@@ -2553,7 +2563,9 @@ function refineScenesForStoryboard(scenes, files, analysis) {
         if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
           // 외관 bestIdx는 중간 씬에 배정하지 않음
         } else {
+          usedMediaIdxs.delete(curIdx);  // 기존 idx 해제
           sc.media_idx = bestIdx;
+          usedMediaIdxs.add(bestIdx);   // 새 idx 점유
           mediaSwapCount++;
         }
       }
@@ -2959,13 +2971,13 @@ async function startMake() {
     setLoaded(loaded);
     await sleep$1(200);
 
-    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true, total_score: 50 }));
-    // 서버사이드 강제: Gemini 응답과 무관하게 45점 미만이면 무조건 재생성
-    if (typeof qcResult.total_score === 'number' && qcResult.total_score < 45) qcResult.pass = false;
+    let qcResult = await geminiQualityCheck(workingScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true, total_score: 100 }));
+    // 서버사이드 강제: Gemini 응답과 무관하게 95점 미만이면 무조건 재생성 (100점 기준)
+    if (typeof qcResult.total_score === 'number' && qcResult.total_score < 95) qcResult.pass = false;
     if (!qcResult.pass) {
-      addToast(`품질 검수 미달 (${qcResult.total_score}/50) — 스크립트 재생성 중...`, 'inf');
+      addToast(`품질 검수 미달 (${qcResult.total_score}/100) — 스크립트 재생성 중...`, 'inf');
       let retryCount = 0;
-      while (!qcResult.pass && retryCount < 2) {
+      while (!qcResult.pass && retryCount < 3) {
         retryCount++;
         try {
           let retryScript = await generateScript(restaurantName.trim(), analysis, useVideoStore.getState().userPrompt, researchData, effectiveType);
@@ -3019,10 +3031,11 @@ async function startMake() {
           setAudioBuffers(retryAudioBuffers);
           workingScript = retryScript;
           qcResult = await geminiQualityCheck(retryScript, restaurantName.trim(), effectiveType).catch(() => ({ pass: true }));
+          if (typeof qcResult.total_score === 'number' && qcResult.total_score < 95) qcResult.pass = false;
           if (qcResult.pass) {
-            addToast(`재생성 성공 (${retryCount}차) — 품질 통과 ✅`, 'ok');
+            addToast(`재생성 성공 (${retryCount}차) — 품질 통과 ✅ (${qcResult.total_score}/100)`, 'ok');
           } else {
-            addToast(`재생성 ${retryCount}차 미달 (${qcResult.total_score}/50)`, 'inf');
+            addToast(`재생성 ${retryCount}차 미달 (${qcResult.total_score}/100)`, 'inf');
           }
         } catch (retryErr) {
           console.warn(`[QC retry ${retryCount}] 재생성 실패:`, retryErr.message);
@@ -3031,7 +3044,7 @@ async function startMake() {
       }
       if (!qcResult.pass) addToast('최대 재생성 횟수 초과 — 현재 스크립트로 진행합니다', 'inf');
     } else {
-      addToast(`품질 검수 통과 (${qcResult.total_score}/50) ✅`, 'ok');
+      addToast(`품질 검수 통과 (${qcResult.total_score}/100) ✅`, 'ok');
     }
     donePipelineStep(7);
 
@@ -3636,7 +3649,7 @@ function UploadSection() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "num", children: "01" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { children: "이미지 · 영상 업로드" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "사진와 영상 클립을 올려주세요 (업로드 최다 30개를 모두 사용함)" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "사진와 영상 클립을 올려주세요 (업로드 최다 50개를 모두 사용함)" })
         ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -3666,7 +3679,7 @@ function UploadSection() {
                 onChange: onFileChange
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "drop-hint", children: "JPG · PNG · MP4 · MOV · 최다 30개" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "drop-hint", children: "JPG · PNG · MP4 · MOV · 최다 50개" })
           ]
         }
       ),
@@ -6142,7 +6155,7 @@ function ResultScreen() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "re-btn", style: { minWidth: 44 }, onClick: () => loadKitHistory(kitSearch), disabled: kitLoading, children: kitLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-spinner fa-spin" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-search" }) })
         ] }),
         kitHistory.length === 0 && !kitLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "var(--text-sub)", textAlign: "center", padding: "12px 0", fontSize: "0.8rem" }, children: "저장된 이력이 없습니다" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }, children: kitHistory.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { maxHeight: "400px", overflowY: "auto", WebkitOverflowScrolling: "touch", marginTop: 4 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }, children: kitHistory.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
           {
             style: {
@@ -6190,9 +6203,9 @@ function ResultScreen() {
             ]
           },
           item.id
-        )) })
+        )) }) })
       ] }),
-      loadedKit && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 12 }, children: [
+      loadedKit && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 12, maxHeight: "520px", overflowY: "auto", WebkitOverflowScrolling: "touch" }, children: [
         [
           { label: "🎣 훅 제목", val: loadedKit.hookTitle },
           { label: "✍️ 인스타 캡션", val: loadedKit.caption },

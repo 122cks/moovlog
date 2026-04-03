@@ -130,7 +130,7 @@ export default function UploadSection() {
           <span className="num">01</span>
           <div>
             <h2>이미지 · 영상 업로드</h2>
-            <p>사진와 영상 클립을 올려주세요 (업로드 최다 30개를 모두 사용함)</p>
+            <p>사진와 영상 클립을 올려주세요 (업로드 최다 50개를 모두 사용함)</p>
           </div>
         </div>
 
@@ -155,7 +155,7 @@ export default function UploadSection() {
             hidden
             onChange={onFileChange}
           />
-          <p className="drop-hint">JPG · PNG · MP4 · MOV · 최다 30개</p>
+          <p className="drop-hint">JPG · PNG · MP4 · MOV · 최다 50개</p>
         </div>
 
         <div className="drive-row">

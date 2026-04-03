@@ -20,7 +20,7 @@
   <!-- SW 캐시 강제 초기화: 모든 모듈 로드 전에 실행 — vendor undefined 오류 완전 차단 -->
   <script>
     (function() {
-      var CURRENT_CACHE_VER = 'moovlog-v2.56';
+      var CURRENT_CACHE_VER = 'moovlog-v2.57';
       if (!('caches' in window)) return;
       caches.keys().then(function(keys) {
         var hasOld = keys.some(function(k) { return !k.startsWith(CURRENT_CACHE_VER); });
