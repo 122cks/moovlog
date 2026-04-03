@@ -1,4 +1,4 @@
-import { r as registerVersion } from './vendor-DKjQ1qLu.js';
+import { r as registerVersion } from './vendor-rbkzMVFu.js';
 
 var name = "firebase";
 var version = "10.14.1";
