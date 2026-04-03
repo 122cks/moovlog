@@ -84,13 +84,24 @@ function refineScenesForStoryboard(scenes, files, analysis) {
   let mediaSwapCount = 0;
   let subtitleFixCount = 0;
 
-  // 외관 컷은 마지막 CTA에 고정
+  // 외관 컷은 마지막 CTA에 고정 + 비마지막 씬에 외관 배정 강제 제거
   const exteriorIdx = analysis?.per_image?.find(p => p?.is_exterior === true)?.idx;
+  const nonExteriorIdxs = allMediaIdxs.filter(idx => !analysisMap[idx]?.is_exterior);
   if (Number.isInteger(exteriorIdx) && refined.length && files[exteriorIdx]) {
     const lastIdx = refined.length - 1;
     if (refined[lastIdx].media_idx !== exteriorIdx) {
       refined[lastIdx].media_idx = exteriorIdx;
       mediaSwapCount++;
+    }
+    // 비마지막 씬에 외관이 배정된 경우 foodie_score 높은 비외관 미디어로 교체
+    const foodIdxsSorted = nonExteriorIdxs.slice().sort((a, b) =>
+      (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0)
+    );
+    for (let i = 0; i < refined.length - 1; i++) {
+      if (refined[i].media_idx === exteriorIdx) {
+        const alt = foodIdxsSorted.find(idx => !refined.slice(0, i).some(s => s.media_idx === idx && s !== refined[i]));
+        if (alt !== undefined) { refined[i].media_idx = alt; mediaSwapCount++; }
+      }
     }
   }
 
@@ -132,8 +143,13 @@ function refineScenesForStoryboard(scenes, files, analysis) {
       }
 
       if (bestIdx !== curIdx && bestScore >= 2) {
-        sc.media_idx = bestIdx;
-        mediaSwapCount++;
+        // 외관은 마지막 씬에만 배치 — 비마지막 씬에 외관 content-matching 배정 차단
+        if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
+          // 외관 bestIdx는 중간 씬에 배정하지 않음
+        } else {
+          sc.media_idx = bestIdx;
+          mediaSwapCount++;
+        }
       }
     }
 
@@ -392,52 +408,103 @@ export async function startMake() {
       }
     }
 
-    // ── 영상 우선 배치 — 미사용 영상 전체 활용 ─────────────────────────────
+    // ── 미사용 미디어 전체 활용 — content-aware 영상 배치 + 이미지 b-roll 보충 ──────
     {
-      const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
-      if (videoIdxs.length > 0) {
-        // 1단계: 이미지에 배정된 씬을 미사용 영상으로 교체 (CTA 마지막 씬 제외)
-        const getUsed = () => new Set(finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0));
-        let unusedVideos = () => videoIdxs.filter(i => !getUsed().has(i));
+      const exteriorIdxSet = new Set(
+        (analysis.per_image || []).filter(p => p.is_exterior).map(p => p.idx)
+      );
+      const BROLL_EFFECTS = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
 
-        let pool = unusedVideos();
-        for (let i = 0; i < finalScenes.length - 1 && pool.length > 0; i++) {
-          if (files[finalScenes[i].media_idx]?.type === 'image') {
-            const vidIdx = pool.shift();
+      const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
+      const imageIdxs = files.map((f, i) => f.type === 'image' ? i : -1).filter(i => i >= 0);
+
+      // ① 미사용 영상 content-aware 배치 (자막·나레이션 내용과 매칭되는 씬에 우선 배치)
+      if (videoIdxs.length > 0) {
+        const getUsedVids = () => new Set(
+          finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0)
+        );
+        // 외관 제외한 미사용 영상 목록
+        let unusedVids = videoIdxs.filter(i => !getUsedVids().has(i) && !exteriorIdxSet.has(i));
+
+        // 이미지 씬을 내용 일치하는 영상으로 교체 (blind 교체 → content-aware 교체)
+        for (let i = 0; i < finalScenes.length - 1 && unusedVids.length > 0; i++) {
+          if (files[finalScenes[i].media_idx]?.type !== 'image') continue;
+          const sc = finalScenes[i];
+          const sceneTokens = tokenizeText(`${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`);
+
+          let bestPos = -1, bestScore = 0;
+          for (let pi = 0; pi < unusedVids.length; pi++) {
+            const vFocus = `${analysisMap[unusedVids[pi]]?.focus || ''} ${analysisMap[unusedVids[pi]]?.narration_hint || ''}`;
+            const s = sceneTokens.length > 0 ? tokenOverlapScore(sceneTokens, vFocus) : 1;
+            if (s > bestScore) { bestScore = s; bestPos = pi; }
+          }
+          // 내용 매칭 점수 >= 1이거나 씬에 텍스트 없을 때만 교체 (불일치 blind 교체 방지)
+          if (bestPos >= 0 && (bestScore >= 1 || sceneTokens.length === 0)) {
+            const vidIdx = unusedVids[bestPos];
             const meta = analysisMap[vidIdx] || {};
             finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
+            unusedVids.splice(bestPos, 1);
           }
         }
 
-        // 2단계: 여전히 미사용 영상이 있으면 추가 몽타주 씬으로 삽입 (총 58초 이내)
-        const remaining = unusedVideos();
-        if (remaining.length > 0) {
+        // 매칭 안 된 미사용 영상 → 몽타주 씬으로 삽입 (총 45초 이내)
+        unusedVids = videoIdxs.filter(i => !getUsedVids().has(i) && !exteriorIdxSet.has(i));
+        if (unusedVids.length > 0 && finalScenes.length > 0) {
           const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
-          const budget = Math.max(0, 58 - currentTotal);
-          if (budget > 1.0) {
-            const canAdd    = Math.min(remaining.length, Math.floor(budget / 1.5));
-            const perDur    = canAdd > 0 ? Math.max(1.5, Math.min(2.5, budget / canAdd)) : 1.5;
-            const lastScene = finalScenes.pop(); // CTA 마지막 씬 보존
-            const EFFECTS   = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
+          const budget = Math.max(0, 45 - currentTotal);
+          const canAdd = Math.min(unusedVids.length, Math.floor(budget / 2.0));
+          if (canAdd > 0) {
+            const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
+            const lastScene = finalScenes.pop();
             for (let i = 0; i < canAdd; i++) {
-              const vidIdx = remaining[i];
-              const meta   = analysisMap[vidIdx] || {};
+              const vidIdx = unusedVids[i]; const meta = analysisMap[vidIdx] || {};
               finalScenes.push({
-                media_idx:        vidIdx,
-                duration:         Math.round(perDur * 10) / 10,
-                caption1:         '', caption2: '', narration: '',
-                effect:           EFFECTS[i % EFFECTS.length],
-                subtitle_style:   'minimal',
-                energy_level:     3,
-                retention_strategy: 'build',
-                focus_coords:     meta.focus_coords    || null,
-                aesthetic_score:  meta.aesthetic_score || null,
-                foodie_score:     meta.foodie_score    || null,
-                best_start_pct:   meta.best_start_pct  || 0,
+                media_idx: vidIdx, duration: Math.round(perDur * 10) / 10,
+                caption1: '', caption2: '', narration: '', effect: BROLL_EFFECTS[i % BROLL_EFFECTS.length],
+                subtitle_style: 'minimal', energy_level: 3, retention_strategy: 'build',
+                focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
+                foodie_score: meta.foodie_score || null, best_start_pct: meta.best_start_pct || 0,
               });
             }
-            finalScenes.push(lastScene); // CTA 복원
-            if (canAdd > 0) addToast(`미사용 영상 ${canAdd}개 → 몽타주 씬으로 자동 추가`, 'ok');
+            finalScenes.push(lastScene);
+            addToast(`미사용 영상 ${canAdd}개 → b-roll 삽입`, 'ok');
+          }
+        }
+      }
+
+      // ② 미사용 이미지 b-roll 보충 (foodie_score+aesthetic_score 상위 순, 총 45초 이내)
+      if (imageIdxs.length > 0 && finalScenes.length > 0) {
+        const usedSet = new Set(finalScenes.map(s => s.media_idx));
+        const unusedImgs = imageIdxs
+          .filter(i => !usedSet.has(i) && !exteriorIdxSet.has(i))
+          .sort((a, b) =>
+            ((analysisMap[b]?.foodie_score || 0) * 2 + (analysisMap[b]?.aesthetic_score || 0) * 0.05) -
+            ((analysisMap[a]?.foodie_score || 0) * 2 + (analysisMap[a]?.aesthetic_score || 0) * 0.05)
+          );
+        if (unusedImgs.length > 0) {
+          const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
+          const budget = Math.max(0, 45 - currentTotal);
+          // foodie_score >= 4 또는 aesthetic_score >= 60인 고품질 이미지만 추가
+          const qualImgs = unusedImgs.filter(i =>
+            (analysisMap[i]?.foodie_score || 0) >= 4 || (analysisMap[i]?.aesthetic_score || 0) >= 60
+          );
+          const canAdd = Math.min(qualImgs.length, Math.floor(budget / 2.5));
+          if (canAdd > 0) {
+            const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
+            const lastScene = finalScenes.pop();
+            for (let i = 0; i < canAdd; i++) {
+              const imgIdx = qualImgs[i]; const meta = analysisMap[imgIdx] || {};
+              finalScenes.push({
+                media_idx: imgIdx, duration: Math.round(perDur * 10) / 10,
+                caption1: '', caption2: '', narration: '',
+                effect: ['zoom-in', 'zoom-out', 'pan-right', 'pan-left'][i % 4],
+                subtitle_style: 'minimal', energy_level: 2, retention_strategy: 'build',
+                focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
+                foodie_score: meta.foodie_score || null, best_start_pct: 0,
+              });
+            }
+            finalScenes.push(lastScene);
+            addToast(`미사용 이미지 ${canAdd}개 → b-roll 삽입`, 'ok');
           }
         }
       }

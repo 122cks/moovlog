@@ -1,8 +1,8 @@
-// MOOVLOG Shorts Creator — Service Worker v2.54
+// MOOVLOG Shorts Creator — Service Worker v2.55
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
 const BASE_PATH = new URL(self.registration.scope).pathname;
-const CACHE_NAME = 'moovlog-v2.54-20260404-1';
+const CACHE_NAME = 'moovlog-v2.55-20260501-1';
 const STATIC_ASSETS = [
   BASE_PATH,
   `${BASE_PATH}index.html`,

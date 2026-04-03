@@ -53,11 +53,18 @@ async function getFFmpeg(onLog) {
         ffmpegInstance = ff;
         return ff;
       } catch (e) {
-        console.warn(`[FFmpeg] ${cdn} 로드 실패:`, e.message);
+        console.warn(`[FFmpeg] ${cdn} 로드 실패:`, e?.message || String(e));
         lastErr = e;
       }
     }
-    throw lastErr;
+    const finalMsg = lastErr?.message || String(lastErr) || 'CDN 로드 실패';
+    if (!globalThis.crossOriginIsolated) {
+      throw new Error(
+        `FFmpeg WASM 로드 실패: 페이지를 새로고침(F5) 후 다시 시도해주세요.\n` +
+        `(보안 헤더 격리 필요 — COOP/COEP 미적용)\n상세: ${finalMsg}`
+      );
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(finalMsg);
   } catch (e) {
     ffmpegInstance = null; // 실패 시 초기화 → 재시도 가능
     throw e;

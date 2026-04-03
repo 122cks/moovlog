@@ -1814,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.54" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.55" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2089,6 +2089,7 @@ ${imgSummary || "분석 없음"}
 - 🚨 풀샷 배정 컷의 나레이션에서는 "육즙이 흐르네요" 같은 근접 묘사 절대 금지. 대신 "상다리가 부러질 듯한 스케일", "분위기 미치지 않았나요?" 등 공간 전체를 아우르는 대본 작성.
 
 [🚨 절대 금지 — 유치함·클리셰 원천 차단 (위반 시 즉시 재생성 대상)]
+• 가격 정보를 훅/자막/나레이션에 전면 배치 절대 금지: "소주 3천원", "1인 만원", "가격 실화" 등 구체적 금액 언급 금지. 가격은 언제든 변동되므로 영상에 수치를 넣으면 오정보 위험. 맛·경험·분위기·가성비 감성으로 대체.
 • 억지 줄임말·신조어 창조 금지: '두쫀쿠' 등 원본에 없는 줄임말 임의 생성 금지. 상호명·메뉴명은 있는 그대로 사용.
 • 시청자 무시·가르치려는 톤 금지: "처음 보시는 거일 거예요", "이거 모르면 간첩", "저만 믿고 따라오세요" 절대 금지.
 • 오글거리는 삼류 수식어 완전 금지: "이름도 특이한", "마법의 맛", "입안에서 춤을 추는", "환상적인", "신세계" 절대 금지.
@@ -2147,8 +2148,9 @@ ${requiredKeywords.trim()}
 • 각 이미지를 제공할 때 앞에 "--- [원본 미디어 번호 media_idx: N] ---" 이라고 라벨을 뺙여두었습니다.
 • 스크립트 씨(scene)을 구성할 때, 화면에 나가는 컷이 어떤 원본 파일인지 파악하여 라벨에 적힌 정확한 N값을 "media_idx" 필드에 적어주세요.
 • 반드시 권장 컷 순서 [${order.join(",")}] 의 흐름을 따라 장면을 전개하세요.
-${exteriorIdx !== void 0 ? "• 가게 외관 사진(" + exteriorIdx + "번)은 마지막 씨에만 배치하고, 중간 씨에서는 사용하지 마세요." : ""}
+${exteriorIdx !== void 0 ? `• ⚠️ 가게 외관/간판 사진(media_idx: ${exteriorIdx})은 반드시 마지막 CTA 블록에만 배치. 고기 굽는 씬·밥상 차림 씬 중간에 외관이 끼어들면 영상 흐름이 끊기는 심각한 편집 오류입니다. 절대 금지.` : ""}
 • 🎯 씬-미디어 내용 일치 원칙: 씬의 narration/caption에서 특정 음식(예: 볶음밥)을 설명할 때는 반드시 그 음식이 직접 촬영된 media_idx만 사용하세요. 볶음밥 설명 씬에 고기·김치·다른 반찬 사진을 배치하는 것은 절대 금지입니다. 해당 메뉴가 찍힌 미디어가 없으면 그 씬 자체를 삭제하거나 실제 촬영된 다른 메뉴로 내용을 교체하세요.
+• 🥗 밑반찬 씬 ≠ 식전 음료/주스 씬: 밑반찬(반찬, 기본찬, 겉절이 등)을 설명하는 씬에는 반찬 사진만 배치. 식전주스·음료 사진은 밑반찬 씬에 배치하지 마세요. 카테고리가 다른 음식/음료는 별도 씬으로 독립 구성하거나 생략하세요.
 
 [카메라 워크 지시사항]
 각 씨의 'effect' 필드에는 아래 6가지 중 미디어의 특성에 맞는 것을 하나 반드시 선택하세요:
@@ -2488,13 +2490,24 @@ function refineScenesForStoryboard(scenes, files, analysis) {
   let mediaSwapCount = 0;
   let subtitleFixCount = 0;
 
-  // 외관 컷은 마지막 CTA에 고정
+  // 외관 컷은 마지막 CTA에 고정 + 비마지막 씬에 외관 배정 강제 제거
   const exteriorIdx = analysis?.per_image?.find(p => p?.is_exterior === true)?.idx;
+  const nonExteriorIdxs = allMediaIdxs.filter(idx => !analysisMap[idx]?.is_exterior);
   if (Number.isInteger(exteriorIdx) && refined.length && files[exteriorIdx]) {
     const lastIdx = refined.length - 1;
     if (refined[lastIdx].media_idx !== exteriorIdx) {
       refined[lastIdx].media_idx = exteriorIdx;
       mediaSwapCount++;
+    }
+    // 비마지막 씬에 외관이 배정된 경우 foodie_score 높은 비외관 미디어로 교체
+    const foodIdxsSorted = nonExteriorIdxs.slice().sort((a, b) =>
+      (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0)
+    );
+    for (let i = 0; i < refined.length - 1; i++) {
+      if (refined[i].media_idx === exteriorIdx) {
+        const alt = foodIdxsSorted.find(idx => !refined.slice(0, i).some(s => s.media_idx === idx && s !== refined[i]));
+        if (alt !== undefined) { refined[i].media_idx = alt; mediaSwapCount++; }
+      }
     }
   }
 
@@ -2536,8 +2549,13 @@ function refineScenesForStoryboard(scenes, files, analysis) {
       }
 
       if (bestIdx !== curIdx && bestScore >= 2) {
-        sc.media_idx = bestIdx;
-        mediaSwapCount++;
+        // 외관은 마지막 씬에만 배치 — 비마지막 씬에 외관 content-matching 배정 차단
+        if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
+          // 외관 bestIdx는 중간 씬에 배정하지 않음
+        } else {
+          sc.media_idx = bestIdx;
+          mediaSwapCount++;
+        }
       }
     }
 
@@ -2796,52 +2814,103 @@ async function startMake() {
       }
     }
 
-    // ── 영상 우선 배치 — 미사용 영상 전체 활용 ─────────────────────────────
+    // ── 미사용 미디어 전체 활용 — content-aware 영상 배치 + 이미지 b-roll 보충 ──────
     {
-      const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
-      if (videoIdxs.length > 0) {
-        // 1단계: 이미지에 배정된 씬을 미사용 영상으로 교체 (CTA 마지막 씬 제외)
-        const getUsed = () => new Set(finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0));
-        let unusedVideos = () => videoIdxs.filter(i => !getUsed().has(i));
+      const exteriorIdxSet = new Set(
+        (analysis.per_image || []).filter(p => p.is_exterior).map(p => p.idx)
+      );
+      const BROLL_EFFECTS = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
 
-        let pool = unusedVideos();
-        for (let i = 0; i < finalScenes.length - 1 && pool.length > 0; i++) {
-          if (files[finalScenes[i].media_idx]?.type === 'image') {
-            const vidIdx = pool.shift();
+      const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
+      const imageIdxs = files.map((f, i) => f.type === 'image' ? i : -1).filter(i => i >= 0);
+
+      // ① 미사용 영상 content-aware 배치 (자막·나레이션 내용과 매칭되는 씬에 우선 배치)
+      if (videoIdxs.length > 0) {
+        const getUsedVids = () => new Set(
+          finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0)
+        );
+        // 외관 제외한 미사용 영상 목록
+        let unusedVids = videoIdxs.filter(i => !getUsedVids().has(i) && !exteriorIdxSet.has(i));
+
+        // 이미지 씬을 내용 일치하는 영상으로 교체 (blind 교체 → content-aware 교체)
+        for (let i = 0; i < finalScenes.length - 1 && unusedVids.length > 0; i++) {
+          if (files[finalScenes[i].media_idx]?.type !== 'image') continue;
+          const sc = finalScenes[i];
+          const sceneTokens = tokenizeText(`${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`);
+
+          let bestPos = -1, bestScore = 0;
+          for (let pi = 0; pi < unusedVids.length; pi++) {
+            const vFocus = `${analysisMap[unusedVids[pi]]?.focus || ''} ${analysisMap[unusedVids[pi]]?.narration_hint || ''}`;
+            const s = sceneTokens.length > 0 ? tokenOverlapScore(sceneTokens, vFocus) : 1;
+            if (s > bestScore) { bestScore = s; bestPos = pi; }
+          }
+          // 내용 매칭 점수 >= 1이거나 씬에 텍스트 없을 때만 교체 (불일치 blind 교체 방지)
+          if (bestPos >= 0 && (bestScore >= 1 || sceneTokens.length === 0)) {
+            const vidIdx = unusedVids[bestPos];
             const meta = analysisMap[vidIdx] || {};
             finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
+            unusedVids.splice(bestPos, 1);
           }
         }
 
-        // 2단계: 여전히 미사용 영상이 있으면 추가 몽타주 씬으로 삽입 (총 58초 이내)
-        const remaining = unusedVideos();
-        if (remaining.length > 0) {
+        // 매칭 안 된 미사용 영상 → 몽타주 씬으로 삽입 (총 45초 이내)
+        unusedVids = videoIdxs.filter(i => !getUsedVids().has(i) && !exteriorIdxSet.has(i));
+        if (unusedVids.length > 0 && finalScenes.length > 0) {
           const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
-          const budget = Math.max(0, 58 - currentTotal);
-          if (budget > 1.0) {
-            const canAdd    = Math.min(remaining.length, Math.floor(budget / 1.5));
-            const perDur    = canAdd > 0 ? Math.max(1.5, Math.min(2.5, budget / canAdd)) : 1.5;
-            const lastScene = finalScenes.pop(); // CTA 마지막 씬 보존
-            const EFFECTS   = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
+          const budget = Math.max(0, 45 - currentTotal);
+          const canAdd = Math.min(unusedVids.length, Math.floor(budget / 2.0));
+          if (canAdd > 0) {
+            const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
+            const lastScene = finalScenes.pop();
             for (let i = 0; i < canAdd; i++) {
-              const vidIdx = remaining[i];
-              const meta   = analysisMap[vidIdx] || {};
+              const vidIdx = unusedVids[i]; const meta = analysisMap[vidIdx] || {};
               finalScenes.push({
-                media_idx:        vidIdx,
-                duration:         Math.round(perDur * 10) / 10,
-                caption1:         '', caption2: '', narration: '',
-                effect:           EFFECTS[i % EFFECTS.length],
-                subtitle_style:   'minimal',
-                energy_level:     3,
-                retention_strategy: 'build',
-                focus_coords:     meta.focus_coords    || null,
-                aesthetic_score:  meta.aesthetic_score || null,
-                foodie_score:     meta.foodie_score    || null,
-                best_start_pct:   meta.best_start_pct  || 0,
+                media_idx: vidIdx, duration: Math.round(perDur * 10) / 10,
+                caption1: '', caption2: '', narration: '', effect: BROLL_EFFECTS[i % BROLL_EFFECTS.length],
+                subtitle_style: 'minimal', energy_level: 3, retention_strategy: 'build',
+                focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
+                foodie_score: meta.foodie_score || null, best_start_pct: meta.best_start_pct || 0,
               });
             }
-            finalScenes.push(lastScene); // CTA 복원
-            if (canAdd > 0) addToast(`미사용 영상 ${canAdd}개 → 몽타주 씬으로 자동 추가`, 'ok');
+            finalScenes.push(lastScene);
+            addToast(`미사용 영상 ${canAdd}개 → b-roll 삽입`, 'ok');
+          }
+        }
+      }
+
+      // ② 미사용 이미지 b-roll 보충 (foodie_score+aesthetic_score 상위 순, 총 45초 이내)
+      if (imageIdxs.length > 0 && finalScenes.length > 0) {
+        const usedSet = new Set(finalScenes.map(s => s.media_idx));
+        const unusedImgs = imageIdxs
+          .filter(i => !usedSet.has(i) && !exteriorIdxSet.has(i))
+          .sort((a, b) =>
+            ((analysisMap[b]?.foodie_score || 0) * 2 + (analysisMap[b]?.aesthetic_score || 0) * 0.05) -
+            ((analysisMap[a]?.foodie_score || 0) * 2 + (analysisMap[a]?.aesthetic_score || 0) * 0.05)
+          );
+        if (unusedImgs.length > 0) {
+          const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
+          const budget = Math.max(0, 45 - currentTotal);
+          // foodie_score >= 4 또는 aesthetic_score >= 60인 고품질 이미지만 추가
+          const qualImgs = unusedImgs.filter(i =>
+            (analysisMap[i]?.foodie_score || 0) >= 4 || (analysisMap[i]?.aesthetic_score || 0) >= 60
+          );
+          const canAdd = Math.min(qualImgs.length, Math.floor(budget / 2.5));
+          if (canAdd > 0) {
+            const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
+            const lastScene = finalScenes.pop();
+            for (let i = 0; i < canAdd; i++) {
+              const imgIdx = qualImgs[i]; const meta = analysisMap[imgIdx] || {};
+              finalScenes.push({
+                media_idx: imgIdx, duration: Math.round(perDur * 10) / 10,
+                caption1: '', caption2: '', narration: '',
+                effect: ['zoom-in', 'zoom-out', 'pan-right', 'pan-left'][i % 4],
+                subtitle_style: 'minimal', energy_level: 2, retention_strategy: 'build',
+                focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
+                foodie_score: meta.foodie_score || null, best_start_pct: 0,
+              });
+            }
+            finalScenes.push(lastScene);
+            addToast(`미사용 이미지 ${canAdd}개 → b-roll 삽입`, 'ok');
           }
         }
       }
@@ -3910,11 +3979,18 @@ async function getFFmpeg(onLog) {
         ffmpegInstance = ff;
         return ff;
       } catch (e) {
-        console.warn(`[FFmpeg] ${cdn} 로드 실패:`, e.message);
+        console.warn(`[FFmpeg] ${cdn} 로드 실패:`, e?.message || String(e));
         lastErr = e;
       }
     }
-    throw lastErr;
+    const finalMsg = lastErr?.message || String(lastErr) || 'CDN 로드 실패';
+    if (!globalThis.crossOriginIsolated) {
+      throw new Error(
+        `FFmpeg WASM 로드 실패: 페이지를 새로고침(F5) 후 다시 시도해주세요.\n` +
+        `(보안 헤더 격리 필요 — COOP/COEP 미적용)\n상세: ${finalMsg}`
+      );
+    }
+    throw lastErr instanceof Error ? lastErr : new Error(finalMsg);
   } catch (e) {
     ffmpegInstance = null; // 실패 시 초기화 → 재시도 가능
     throw e;
