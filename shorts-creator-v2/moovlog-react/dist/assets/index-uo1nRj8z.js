@@ -1814,7 +1814,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.57" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.58" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -1943,6 +1943,20 @@ async function generateScript(restaurantName, analysis, userPrompt = "", researc
 video_cuts 개별 컷은 0.5~2.5초로 다양하게 조합하여 이 템플릿만의 리듬감을 구현하세요.
 ` : "";
   const restaurantTypeHint = restaurantType ? "[업체 유형: " + restaurantType + "] — 이 업체 유형의 2026 트렌드·분위기·고객층에 최적화된 나레이션과 자막 스타일을 적용하세요.\n" : "";
+  const ctaBlock = `마지막 블록 CTA(total_duration 3.0~4.5s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.${exteriorInfo}`;
+  const blockStructureText = restaurantType === "grill" ? `[★ 🥩 고깃집/BBQ 전용 방문 서사 — 아래 씬 순서를 반드시 준수하세요. 총 ${totalTarget}초 목표 ★]
+블록1 상차림/식전주스 훅(total_duration 3.0~4.5s): 테이블 전체 풀샷 — 식전주스·기본찬이 한눈에 보이는 임팩트 첫 컷. retention_strategy: "opening_question", energy_level 4~5.
+블록2 밑반찬(total_duration 2.5~3.5s): 정갈한 밑반찬 클로즈업 또는 풀샷. energy_level 2~3.
+블록3 찌개·계란찜 등 보조 요리(total_duration 3.0~4.0s): 찌개·계란찜·된장국 등 서브 요리. retention_strategy: "midpoint_reveal", energy_level 3.
+블록4 고기 빛깔(total_duration 3.0~4.5s): 생원육 클로즈업 — 두께·마블링·색감 강조. energy_level 3~4.
+블록5 🔥 고기 굽기 클라이맥스(total_duration 4.0~5.5s): 굽는 장면·지글지글·익어가는 역동 컷. energy_level 5, retention_strategy: "climax".
+블록6 마무리 볶음밥/냉면(total_duration 2.5~3.5s / ⚠️ 해당 미디어 없으면 이 블록 전체 생략): 마무리 메뉴 클로즈업. energy_level 2~3.
+${ctaBlock}` : `[★ 총 ${totalTarget}초, ${sceneCountTarget}개 블록으로 구성 — 파일 ${files.length}개 업로드됐어도 블록은 반드시 ${sceneCountTarget}개 이내, 한 블록에 미디어 여러 개 교차 편집 ★]
+블록1 발견/훅(total_duration 3.0~4.5s): 강렬한 첫 비주얼 + 궁금증 유발 자막
+블록2 설정/기대(total_duration 3.5~4.5s): 이 곳이 특별한 이유, 분위기·비하인드
+블록3 클라이맥스 전(total_duration 3.5~4.5s): 대표 메뉴 등장, 텍스처·디테일
+블록4 감정 피크(total_duration 3.5~5.0s): 맛·경험 최고조 → 가장 인상적인 컷
+${ctaBlock}`;
   const prompt = `당신은 담백하고 신뢰감 있는 2030 맛집 크리에이터 "무브먼트(MOOVLOG)"입니다. 친한 지인에게 좋은 맛집을 추천하듯, 과장 없이 현실감 있는 구어체로 나레이션을 작성하세요.
 2026 릴스/쇼츠: 첫 컷 임팩트, 정보 밀도, 존댓말 나레이션, 자막 임팩트.
 ${trendInstruction}${getPersonaPrompt(analysis.detected_theme, analysis.mood)}
@@ -1991,12 +2005,7 @@ ${researchData}
 ${imgSummary || "분석 없음"}
 권장 컷 순서: [${order.join(",")}]
 
-[★ 총 ${totalTarget}초, ${sceneCountTarget}개 블록으로 구성 — 파일 ${files.length}개 업로드됐어도 블록은 반드시 ${sceneCountTarget}개 이내, 한 블록에 미디어 여러 개 교차 편집 ★]
-블록1 발견/훅(total_duration 3.0~4.5s): 강렬한 첫 비주얼 + 궁금증 유발 자막
-블록2 설정/기대(total_duration 3.5~4.5s): 이 곳이 특별한 이유, 분위기·비하인드
-블록3 클라이맥스 전(total_duration 3.5~4.5s): 대표 메뉴 등장, 텍스처·디테일
-블록4 감정 피크(total_duration 3.5~5.0s): 맛·경험 최고조 → 가장 인상적인 컷
-마지막 블록 CTA(total_duration 3.0~4.5s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.${exteriorInfo}
+${blockStructureText}
 
 [🔁 리텐션 루프 전략 — 시청자를 끝까지 붙잡는 4단계 구조]
 • 씬1 (opening_question): 첫 프레임에 답을 알고 싶은 질문을 던져라. 예: "이 줄이 진짜 맞아?" / "가격이 얼마길래?"
@@ -2675,7 +2684,7 @@ async function startMake() {
     // ── STEP 3: 컨텍스트 기반 Vision Analysis ─────────────────────────────────
     // 💡 식당 정보를 먼저 숙지한 AI가 "어떤 사진이 시그니처 메뉴인지" 판단하며 분석합니다
     setPipeline(3, 'AI 컨텍스트 기반 이미지 분석 중...', '식당 데이터 참고 → 시그니처 메뉴 컷 우선 선별');
-    const analysis = await visionAnalysis(restaurantName.trim(), researchData, effectiveType);
+    let analysis = await visionAnalysis(restaurantName.trim(), researchData, effectiveType);
 
     // AI 자동 스타일 선택 + 업종별 프리셋 보정
     const curState = useVideoStore.getState();
@@ -2705,6 +2714,28 @@ async function startMake() {
       'inf'
     );
     donePipelineStep(3);
+
+    // 🥩 고깃집 전용: cooking_state 기준으로 recommended_order 재정렬
+    // 순서: 비고기(null) → 생고기(raw) → 굽는중(cooking/cooked) → 외관(exterior)
+    if (effectiveType === 'grill' && analysis.per_image?.length) {
+      const cookingOrder = { null: 0, raw: 1, cooking: 2, cooked: 2 };
+      const baseOrder = analysis.recommended_order?.length
+        ? [...analysis.recommended_order]
+        : analysis.per_image.map(p => p.idx);
+      const grillSorted = baseOrder.slice().sort((a, b) => {
+        const pa = analysis.per_image.find(p => p.idx === a) || {};
+        const pb = analysis.per_image.find(p => p.idx === b) || {};
+        if (pa.is_exterior && !pb.is_exterior) return 1;
+        if (!pa.is_exterior && pb.is_exterior) return -1;
+        const oa = cookingOrder[pa.cooking_state] ?? 0;
+        const ob = cookingOrder[pb.cooking_state] ?? 0;
+        if (oa !== ob) return oa - ob;
+        return (pb.foodie_score || 0) - (pa.foodie_score || 0);
+      });
+      analysis = { ...analysis, recommended_order: grillSorted };
+      addToast('고깃집 씬 순서 자동 정렬 (상차림→밑반찬→찌개→고기빛깔→굽기→볶음밥)', 'ok');
+    }
+
     // analysis 저장 (VideoRenderer의 focus_coords · aesthetic_score 활용)
     setAnalysis(analysis);
 
@@ -4154,10 +4185,8 @@ function getSubtitleFilter(scene, fontPath, isLastScene) {
   filters.push(`drawbox=y=${safeY - 40}:color=black@0.65:width=iw:height=200:t=fill`); // 다이내믹 섀도우 반영
   filters.push(`drawtext=fontfile='${fp}':text='${esc(scene.caption1.replace(/\*\*/g, ''))}':fontsize=54:fontcolor=white:x=(w-text_w)/2:y=${safeY}`);
 
-  // 12번: 마지막 씬(구독 유도)일 경우 커다란 CTA 이모지 팝업 애니메이션 
-  if (isLastScene) {
-    filters.push(`drawtext=fontfile='${fp}':text='💖':fontsize=120:x=(w-text_w)/2:y=(h-text_h)/2-100:enable='between(t,0.5,5)'`);
-  }
+  // 12번: 마지막 씬(구독 유도)일 경우 — NotoSansCJK OTF는 이모지 미지원이므로 생략
+  // (렌더링 실패 방지 — 이모지 drawtext는 FFmpeg에서 OTF 폰트 사용 시 오류 발생)
   return filters.join(',');
 }
 
@@ -6155,7 +6184,7 @@ function ResultScreen() {
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "re-btn", style: { minWidth: 44 }, onClick: () => loadKitHistory(kitSearch), disabled: kitLoading, children: kitLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-spinner fa-spin" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-search" }) })
         ] }),
         kitHistory.length === 0 && !kitLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "var(--text-sub)", textAlign: "center", padding: "12px 0", fontSize: "0.8rem" }, children: "저장된 이력이 없습니다" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { maxHeight: "400px", overflowY: "auto", WebkitOverflowScrolling: "touch", marginTop: 4 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }, children: kitHistory.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { maxHeight: "400px", overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y", marginTop: 4 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }, children: kitHistory.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
           {
             style: {
@@ -6205,7 +6234,7 @@ function ResultScreen() {
           item.id
         )) }) })
       ] }),
-      loadedKit && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 12, maxHeight: "520px", overflowY: "auto", WebkitOverflowScrolling: "touch" }, children: [
+      loadedKit && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: 12, maxHeight: "520px", overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehavior: "contain", touchAction: "pan-y" }, children: [
         [
           { label: "🎣 훅 제목", val: loadedKit.hookTitle },
           { label: "✍️ 인스타 캡션", val: loadedKit.caption },

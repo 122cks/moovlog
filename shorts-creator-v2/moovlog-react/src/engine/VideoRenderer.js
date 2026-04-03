@@ -185,10 +185,8 @@ function getSubtitleFilter(scene, fontPath, isLastScene) {
   filters.push(`drawbox=y=${safeY - 40}:color=black@0.65:width=iw:height=200:t=fill`); // 다이내믹 섀도우 반영
   filters.push(`drawtext=fontfile='${fp}':text='${esc(scene.caption1.replace(/\*\*/g, ''))}':fontsize=54:fontcolor=white:x=(w-text_w)/2:y=${safeY}`);
 
-  // 12번: 마지막 씬(구독 유도)일 경우 커다란 CTA 이모지 팝업 애니메이션 
-  if (isLastScene) {
-    filters.push(`drawtext=fontfile='${fp}':text='💖':fontsize=120:x=(w-text_w)/2:y=(h-text_h)/2-100:enable='between(t,0.5,5)'`);
-  }
+  // 12번: 마지막 씬(구독 유도)일 경우 — NotoSansCJK OTF는 이모지 미지원이므로 생략
+  // (렌더링 실패 방지 — 이모지 drawtext는 FFmpeg에서 OTF 폰트 사용 시 오류 발생)
   return filters.join(',');
 }
 

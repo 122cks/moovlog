@@ -263,7 +263,7 @@ export async function startMake() {
     // ── STEP 3: 컨텍스트 기반 Vision Analysis ─────────────────────────────────
     // 💡 식당 정보를 먼저 숙지한 AI가 "어떤 사진이 시그니처 메뉴인지" 판단하며 분석합니다
     setPipeline(3, 'AI 컨텍스트 기반 이미지 분석 중...', '식당 데이터 참고 → 시그니처 메뉴 컷 우선 선별');
-    const analysis = await visionAnalysis(restaurantName.trim(), researchData, effectiveType);
+    let analysis = await visionAnalysis(restaurantName.trim(), researchData, effectiveType);
 
     // AI 자동 스타일 선택 + 업종별 프리셋 보정
     const curState = useVideoStore.getState();
@@ -293,6 +293,28 @@ export async function startMake() {
       'inf'
     );
     donePipelineStep(3);
+
+    // 🥩 고깃집 전용: cooking_state 기준으로 recommended_order 재정렬
+    // 순서: 비고기(null) → 생고기(raw) → 굽는중(cooking/cooked) → 외관(exterior)
+    if (effectiveType === 'grill' && analysis.per_image?.length) {
+      const cookingOrder = { null: 0, raw: 1, cooking: 2, cooked: 2 };
+      const baseOrder = analysis.recommended_order?.length
+        ? [...analysis.recommended_order]
+        : analysis.per_image.map(p => p.idx);
+      const grillSorted = baseOrder.slice().sort((a, b) => {
+        const pa = analysis.per_image.find(p => p.idx === a) || {};
+        const pb = analysis.per_image.find(p => p.idx === b) || {};
+        if (pa.is_exterior && !pb.is_exterior) return 1;
+        if (!pa.is_exterior && pb.is_exterior) return -1;
+        const oa = cookingOrder[pa.cooking_state] ?? 0;
+        const ob = cookingOrder[pb.cooking_state] ?? 0;
+        if (oa !== ob) return oa - ob;
+        return (pb.foodie_score || 0) - (pa.foodie_score || 0);
+      });
+      analysis = { ...analysis, recommended_order: grillSorted };
+      addToast('고깃집 씬 순서 자동 정렬 (상차림→밑반찬→찌개→고기빛깔→굽기→볶음밥)', 'ok');
+    }
+
     // analysis 저장 (VideoRenderer의 focus_coords · aesthetic_score 활용)
     setAnalysis(analysis);
 

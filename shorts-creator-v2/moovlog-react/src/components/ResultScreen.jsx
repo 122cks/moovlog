@@ -456,7 +456,7 @@ export default function ResultScreen() {
                 <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '12px 0', fontSize: '0.8rem' }}>저장된 이력이 없습니다</p>
               )}
               {/* 2열 그리드 — 스크롤 가능 컨테이너 */}
-              <div style={{ maxHeight: '400px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', marginTop: 4 }}>
+              <div style={{ maxHeight: '400px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y', marginTop: 4 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {kitHistory.map(item => (
                   <div
@@ -506,7 +506,7 @@ export default function ResultScreen() {
 
           {/* 로드된 키트 전체 데이터 표시 */}
           {loadedKit && (
-            <div style={{ marginTop: 12, maxHeight: '520px', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <div style={{ marginTop: 12, maxHeight: '520px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y' }}>
               {[
                 { label: '🎣 훅 제목',          val: loadedKit.hookTitle },
                 { label: '✍️ 인스타 캡션',        val: loadedKit.caption },
