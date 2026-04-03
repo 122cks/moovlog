@@ -17,13 +17,37 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;600;700;900&family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
-  <script type="module" crossorigin src="/moovlog/shorts-creator/assets/index-Ckoht6lv.js"></script>
-  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/vendor-DKjQ1qLu.js">
-  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/vendor-react-CvBl8VdO.js">
-  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/engine-script-BjHjxfdR.js">
-  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/vendor-firebase-CmLdJ1V2.js">
-  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/engine-core-CD1WNmk6.js">
-  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/engine-gemini-iNdzkyyX.js">
+  <!-- SW 캐시 강제 초기화: 모든 모듈 로드 전에 실행 — vendor undefined 오류 완전 차단 -->
+  <script>
+    (function() {
+      var CURRENT_CACHE_VER = 'moovlog-v2.49';
+      if (!('caches' in window)) return;
+      caches.keys().then(function(keys) {
+        var hasOld = keys.some(function(k) { return !k.startsWith(CURRENT_CACHE_VER); });
+        if (!hasOld) return;
+        // 구버전 캐시 전체 삭제
+        return Promise.all(keys.map(function(k) { return caches.delete(k); }))
+          .then(function() {
+            // SW 전체 재등록
+            if (!navigator.serviceWorker) return;
+            return navigator.serviceWorker.getRegistrations()
+              .then(function(regs) {
+                return Promise.all(regs.map(function(r) { return r.unregister(); }));
+              })
+              .then(function() {
+                // 한 번만 재로드 (무한루프 방지)
+                if (sessionStorage.getItem('_sw_cleared') !== '1') {
+                  sessionStorage.setItem('_sw_cleared', '1');
+                  location.reload(true);
+                }
+              });
+          });
+      });
+    })();
+  </script>
+  <script type="module" crossorigin src="/moovlog/shorts-creator/assets/index-B0gZ3wHz.js"></script>
+  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/vendor-rbkzMVFu.js">
+  <link rel="modulepreload" crossorigin href="/moovlog/shorts-creator/assets/vendor-firebase-5k9doEZj.js">
   <link rel="stylesheet" crossorigin href="/moovlog/shorts-creator/assets/index-45zPnV1w.css">
 </head>
 <body>
