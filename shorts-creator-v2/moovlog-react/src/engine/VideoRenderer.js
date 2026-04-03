@@ -7,8 +7,8 @@ import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import { useVideoStore } from '../store/videoStore.js';
 
 const FFMPEG_CORE_URLS = [
-  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr 우선 (안정적)
-  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 폴백
+  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 우선 (안정적, 실제 검증됨)
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr 폴백
 ];
 // 자막용 폰트 (NotoSans KR Bold .ttf — CDN에서 최초 1회 다운로드)
 const FONT_CDN_URL = 'https://fonts.gstatic.com/s/notosanskr/v36/PbykFmXiEBPT4ITbgNA5Cgm20xz64px_1hVWr0wuPNGmlQNMEfD4.0.woff2';
@@ -30,10 +30,14 @@ async function getFFmpeg(onLog) {
   try {
     const ff = new FFmpeg();
     if (onLog) ff.on('log', ({ message }) => onLog(message));
-    // CDN 순서대로 시도 (jsDelivr 우선, unpkg 폴백)
+    // CDN 순서대로 시도 (unpkg 우선, jsDelivr 폴백)
     let lastErr;
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
+        // HEAD 요청으로 CDN 가용성 먼저 확인 (404 HTML을 blob URL로 만드는 것 방지)
+        const probe = await fetch(`${cdn}/ffmpeg-core.js`, { method: 'HEAD' }).catch(() => null);
+        if (!probe?.ok) throw new Error(`CDN ${cdn} 응답 오류 (${probe?.status ?? 'network'})`);
+
         const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript');
         const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');
         await ff.load({ coreURL, wasmURL });

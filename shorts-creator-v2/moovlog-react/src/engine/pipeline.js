@@ -392,27 +392,52 @@ export async function startMake() {
       }
     }
 
-    // ── 영상 우선 배치: 사용 없는 영상을 이미지 새으로 교체 (이미지 최대 35%) ──────
+    // ── 영상 우선 배치 — 미사용 영상 전체 활용 ─────────────────────────────
     {
       const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
       if (videoIdxs.length > 0) {
-        const usedVideos = new Set(finalScenes.filter(s => files[s.media_idx]?.type === 'video').map(s => s.media_idx));
-        const unusedVideos = videoIdxs.filter(i => !usedVideos.has(i));
-        if (unusedVideos.length > 0) {
-          const maxImages = Math.ceil(finalScenes.length * 0.35);
-          const imageScenes = finalScenes.reduce((acc, s, i) => { if (files[s.media_idx]?.type === 'image') acc.push(i); return acc; }, []);
-          const excess = imageScenes.length - maxImages;
-          if (excess > 0) {
-            let pool = [...unusedVideos], swapped = 0;
-            for (let i = 0; i < finalScenes.length && swapped < excess && pool.length; i++) {
-              if (files[finalScenes[i].media_idx]?.type === 'image') {
-                const vidIdx = pool.shift();
-                const meta = analysisMap[vidIdx] || {};
-                finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
-                swapped++;
-              }
+        // 1단계: 이미지에 배정된 씬을 미사용 영상으로 교체 (CTA 마지막 씬 제외)
+        const getUsed = () => new Set(finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0));
+        let unusedVideos = () => videoIdxs.filter(i => !getUsed().has(i));
+
+        let pool = unusedVideos();
+        for (let i = 0; i < finalScenes.length - 1 && pool.length > 0; i++) {
+          if (files[finalScenes[i].media_idx]?.type === 'image') {
+            const vidIdx = pool.shift();
+            const meta = analysisMap[vidIdx] || {};
+            finalScenes[i] = { ...finalScenes[i], media_idx: vidIdx, best_start_pct: meta.best_start_pct || 0 };
+          }
+        }
+
+        // 2단계: 여전히 미사용 영상이 있으면 추가 몽타주 씬으로 삽입 (총 58초 이내)
+        const remaining = unusedVideos();
+        if (remaining.length > 0) {
+          const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
+          const budget = Math.max(0, 58 - currentTotal);
+          if (budget > 1.0) {
+            const canAdd    = Math.min(remaining.length, Math.floor(budget / 1.5));
+            const perDur    = canAdd > 0 ? Math.max(1.5, Math.min(2.5, budget / canAdd)) : 1.5;
+            const lastScene = finalScenes.pop(); // CTA 마지막 씬 보존
+            const EFFECTS   = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
+            for (let i = 0; i < canAdd; i++) {
+              const vidIdx = remaining[i];
+              const meta   = analysisMap[vidIdx] || {};
+              finalScenes.push({
+                media_idx:        vidIdx,
+                duration:         Math.round(perDur * 10) / 10,
+                caption1:         '', caption2: '', narration: '',
+                effect:           EFFECTS[i % EFFECTS.length],
+                subtitle_style:   'minimal',
+                energy_level:     3,
+                retention_strategy: 'build',
+                focus_coords:     meta.focus_coords    || null,
+                aesthetic_score:  meta.aesthetic_score || null,
+                foodie_score:     meta.foodie_score    || null,
+                best_start_pct:   meta.best_start_pct  || 0,
+              });
             }
-            if (swapped > 0) console.log(`[Pipeline] 영상 우선: ${swapped}개 이미지 사이년 → 영상으로 교체`);
+            finalScenes.push(lastScene); // CTA 복원
+            if (canAdd > 0) addToast(`미사용 영상 ${canAdd}개 → 몽타주 씬으로 자동 추가`, 'ok');
           }
         }
       }

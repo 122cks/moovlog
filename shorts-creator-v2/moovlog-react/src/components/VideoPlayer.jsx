@@ -30,7 +30,9 @@ export default function VideoPlayer({ isExporting = false }) {
   } = useVideoStore();
 
   const currentScene = script?.scenes[scene];
-  const fileIdx      = currentScene?.media_idx ?? scene;
+  // media_idx 범위 벗어나면 0으로 클램프 → 검은 화면 방지
+  const rawFileIdx  = currentScene?.media_idx ?? scene;
+  const fileIdx     = files?.length ? Math.max(0, Math.min(rawFileIdx, files.length - 1)) : 0;
   const currentFile  = files?.[fileIdx];
   const isImage      = currentFile?.type === 'image';
   const effectClass  = currentScene?.effect ? `effect-${currentScene.effect}` : '';
@@ -56,10 +58,9 @@ export default function VideoPlayer({ isExporting = false }) {
           if (startPct > 0 && startPct < 0.95) {
             video.currentTime = startPct * video.duration;
           }
-          if (currentScene?.duration) {
-            const avail = video.duration - video.currentTime;
-            video.playbackRate = Math.max(0.6, Math.min(1.0, Math.max(0.01, avail) / currentScene.duration));
-          }
+          // 영상이 씨 시간보다 길면 1.0x 정속 재생
+          // 영상이 씨 시간보다 짧으면 loop=true로 자동 반복 → 검은 화면 방지
+          video.playbackRate = 1.0;
         }
       };
       video.addEventListener('loadedmetadata', onMetadata);
@@ -272,8 +273,9 @@ export default function VideoPlayer({ isExporting = false }) {
                       '--dur': `${currentScene?.duration ?? 3}s`,
                     }}
                     autoPlay
+                    loop
                     muted={audioBuffers?.[audioSceneIdx] ? true : !!muted}
-                    playsInline loop={false}
+                    playsInline
                   />
                 )}
               </>

@@ -19,6 +19,8 @@ export default function UploadSection() {
 
   const fileInputRef = useRef();
   const dropRef      = useRef();
+  const kitListRef   = useRef();   // 마케팅 키트 목록 스크롤 컨테이너
+  const itemRefs     = useRef({}); // 각 아코디언 아이템 ref
 
   // 마케팅 키트 이력
   const [kitHistory,   setKitHistory]   = useState([]);
@@ -286,7 +288,7 @@ export default function UploadSection() {
             <i className="fas fa-search" />
           </button>
         </div>
-        <div style={{ maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div ref={kitListRef} style={{ maxHeight: 560, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, WebkitOverflowScrolling: 'touch' }}>
           {kitHistory.length === 0 && !kitLoading && (
             <p style={{ color: 'var(--text-sub)', textAlign: 'center', padding: '10px 0', fontSize: '0.78rem' }}>
               저장된 마케팅 키트가 없습니다
@@ -307,7 +309,10 @@ export default function UploadSection() {
             ].filter(r => r.val);
             const hookVars = Array.isArray(item.hookVariations) ? item.hookVariations.filter(h => h?.caption1) : [];
             return (
-              <div key={item.id} style={{ border: `1px solid ${isOpen ? '#7c3aed66' : '#333'}`, borderRadius: 10, overflow: 'hidden', background: isOpen ? 'rgba(124,58,237,0.06)' : '#1e1e1e', transition: 'border-color 0.15s' }}>
+              <div
+                key={item.id}
+                ref={el => { itemRefs.current[item.id] = el; }}
+                style={{ border: `1px solid ${isOpen ? '#7c3aed66' : '#333'}`, borderRadius: 10, overflow: 'hidden', background: isOpen ? 'rgba(124,58,237,0.06)' : '#1e1e1e', transition: 'border-color 0.15s' }}>
                 {/* 헤더 행: 클릭하면 토글 */}
                 <button
                   onClick={() => {
@@ -317,6 +322,10 @@ export default function UploadSection() {
                       setRestaurantName(item.restaurant || '');
                       setSelectedKit(item);
                       addToast(`「${item.restaurant}」 불러오기 완료`, 'ok');
+                      // 열린 아이템으로 자동 스크롤
+                      setTimeout(() => {
+                        itemRefs.current[item.id]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }, 60);
                     }
                   }}
                   style={{
