@@ -299,6 +299,9 @@ const INITIAL = {
   // Firebase 세션
   sessionDocId: null,
   pipelineSessionId: null,  // startMake 시작 시 생성 — originals·video 동일 경로
+
+  // 품질 검수 결과
+  qcScore: null,  // number | null (0~100)
 };
 
 // ─── Store ────────────────────────────────────────────────────
@@ -442,6 +445,10 @@ const useVideoStore = create(
 
       // ── Analysis 저장 (Vision 결과 — focus_coords·aesthetic_score 포함) ──
       setAnalysis: (analysis) => set({ analysis }, false, 'setAnalysis'),
+
+      // ── QC 품질 점수 ───────────────────────────────────────
+      setQcScore: (qcScore) => set({ qcScore }, false, 'setQcScore'),
+
       // ── 전체 리셋 ──────────────────────────────────────────
       reset: () => set({
         ...INITIAL,
@@ -1813,7 +1820,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.60" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.63" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -1943,14 +1950,30 @@ video_cuts 개별 컷은 0.5~2.5초로 다양하게 조합하여 이 템플릿�
 ` : "";
   const restaurantTypeHint = restaurantType ? "[업체 유형: " + restaurantType + "] — 이 업체 유형의 2026 트렌드·분위기·고객층에 최적화된 나레이션과 자막 스타일을 적용하세요.\n" : "";
   const ctaBlock = `마지막 블록 CTA(total_duration 3.0~4.5s): 식당(${restaurantName})에 대한 임팩트 있는 한 줄 요약 + 시청자에게 "구독, 좋아요, 댓글"을 자연스럽게 유도하는 아웃트로 나레이션 필수 포함. caption에 식당 이름 또는 핵심 카피, caption2에 "구독 & 좋아요 꾹!" 또는 "무브먼트 구독하기" 형태의 CTA 문구를 반드시 넣을 것. subtitle_style은 반드시 "cta"로 지정.${exteriorInfo}`;
+  const grillAvailableCats = new Set(
+    (analysis.per_image || []).map((p) => p.food_category).filter(Boolean)
+  );
+  const grillHasJuice = grillAvailableCats.has("juice");
+  const grillHasTable = grillAvailableCats.has("table");
+  const grillHasSideDish = grillAvailableCats.has("side_dish");
+  const grillHasSoup = grillAvailableCats.has("soup");
+  const grillHasFriedRice = grillAvailableCats.has("fried_rice");
+  const grillBlock1 = grillHasJuice || grillHasTable ? `블록1 상차림/식전주스 훅(total_duration 3.0~4.5s): 테이블 전체 풀샷 — 식전주스·기본찬이 한눈에 보이는 임팩트 첫 컷. retention_strategy: "opening_question", energy_level 4~5.` : `블록1 훅(total_duration 3.0~4.5s): 이 식당만의 가장 강렬한 첫 비주얼로 시청자를 멈추게 하는 오프닝. retention_strategy: "opening_question", energy_level 4~5.`;
+  const grillBlock2 = grillHasSideDish ? `블록2 밑반찬(total_duration 2.5~3.5s): 정갈한 밑반찬 클로즈업 또는 풀샷. energy_level 2~3.` : "";
+  const grillBlock3 = grillHasSoup ? `블록3 찌개·계란찜 등 보조 요리(total_duration 3.0~4.0s): 찌개·계란찜·된장국 등 서브 요리. retention_strategy: "midpoint_reveal", energy_level 3.` : "";
+  const grillBlock6 = grillHasFriedRice ? `블록6 마무리 볶음밥/냉면(total_duration 2.5~3.5s): 마무리 메뉴 클로즈업. energy_level 2~3.` : "";
+  const grillBlocks = [
+    grillBlock1,
+    grillBlock2,
+    grillBlock3,
+    `블록4 고기 빛깔(total_duration 3.0~4.5s): 생원육 클로즈업 — 두께·마블링·색감 강조. energy_level 3~4.`,
+    `블록5 🔥 고기 굽기 클라이맥스(total_duration 4.0~5.5s): 굽는 장면·지글지글·익어가는 역동 컷. energy_level 5, retention_strategy: "climax".`,
+    grillBlock6,
+    ctaBlock
+  ].filter(Boolean).join("\n");
   const blockStructureText = restaurantType === "grill" ? `[★ 🥩 고깃집/BBQ 전용 방문 서사 — 아래 씬 순서를 반드시 준수하세요. 총 ${totalTarget}초 목표 ★]
-블록1 상차림/식전주스 훅(total_duration 3.0~4.5s): 테이블 전체 풀샷 — 식전주스·기본찬이 한눈에 보이는 임팩트 첫 컷. retention_strategy: "opening_question", energy_level 4~5.
-블록2 밑반찬(total_duration 2.5~3.5s): 정갈한 밑반찬 클로즈업 또는 풀샷. energy_level 2~3.
-블록3 찌개·계란찜 등 보조 요리(total_duration 3.0~4.0s): 찌개·계란찜·된장국 등 서브 요리. retention_strategy: "midpoint_reveal", energy_level 3.
-블록4 고기 빛깔(total_duration 3.0~4.5s): 생원육 클로즈업 — 두께·마블링·색감 강조. energy_level 3~4.
-블록5 🔥 고기 굽기 클라이맥스(total_duration 4.0~5.5s): 굽는 장면·지글지글·익어가는 역동 컷. energy_level 5, retention_strategy: "climax".
-블록6 마무리 볶음밥/냉면(total_duration 2.5~3.5s / ⚠️ 해당 미디어 없으면 이 블록 전체 생략): 마무리 메뉴 클로즈업. energy_level 2~3.
-${ctaBlock}` : `[★ 총 ${totalTarget}초, ${sceneCountTarget}개 블록으로 구성 — 파일 ${files.length}개 업로드됐어도 블록은 반드시 ${sceneCountTarget}개 이내, 한 블록에 미디어 여러 개 교차 편집 ★]
+⚠️ 업로드된 미디어에 해당 음식/장면이 없는 블록은 절대 포함하지 마세요. 있는 것만 만들어야 합니다.
+${grillBlocks}` : `[★ 총 ${totalTarget}초, ${sceneCountTarget}개 블록으로 구성 — 파일 ${files.length}개 업로드됐어도 블록은 반드시 ${sceneCountTarget}개 이내, 한 블록에 미디어 여러 개 교차 편집 ★]
 블록1 발견/훅(total_duration 3.0~4.5s): 강렬한 첫 비주얼 + 궁금증 유발 자막
 블록2 설정/기대(total_duration 3.5~4.5s): 이 곳이 특별한 이유, 분위기·비하인드
 블록3 클라이맥스 전(total_duration 3.5~4.5s): 대표 메뉴 등장, 텍스처·디테일
@@ -2187,7 +2210,7 @@ ${exteriorIdx !== void 0 ? `• ⚠️ 가게 외관/간판 사진(media_idx: ${
 • caption: 인스타그램 본문 캡션. "이 집만큼은 혼자 알고 싶었는데 😅" 처럼 무브먼트 1인칭 페르소나(내돈내산 찐 추천)를 첫 문장에 넣고, 감성 2~3문장 + 방문자 액션 유도 (저장, 좋아요, 댓글). 줄바꿈은 
  사용. ⚠️ "진짜", "솔직히" 반복 남발 금지.
 • hashtags_30: 지역 태그 5개 + 음식 카테고리 태그 10개 + 분위기/감성 태그 5개 + 2026 트렌딩 태그 10개. 공백으로 구분, 정확히 30개.
-• receipt_review: 네이버 영수증 리뷰용 10~20자 극잘형 한 줄 평 (예: "사장님 친절하고 고기 질 짱. 재방문 200%"). 실제 식당에 갔다 온 사람이 쏴 마음으로 남기는 리얼 훅구체.
+• receipt_review: 네이버 영수증 리뷰용 공백 포함 400자 이내 리얼 후기. 첫 문장은 10~15자 훅 한 줄 평으로 시작하고, 이후 음식 맛·분위기·서비스·재방문 의향을 구체적으로 서술. 실제 갔다 온 사람이 솔직하게 쓴 것처럼 자연스러운 구어체. 별점은 쓰지 말 것.
 
 [🎯 3종 훅 빅리에이션 — JSON에 hook_variations 배열 반드시 포함]
 다음 3가지 오프닝 스타일로 첫 번째 씬의 다른 다른 버전을 제안하세요:
@@ -2323,19 +2346,35 @@ JSON만 반환: {"type": "grill", "confidence": 0.9, "reason": "삼겹살 전문
 // ─── STEP 6: AI 품질 검수 ────────────────────────────────
 async function geminiQualityCheck(script, restaurantName, restaurantType = '') {
   const scenes = script.blocks || script.scenes || [];
-  const sceneSummary = scenes.slice(0, 12).map((sc, i) => {
+  const sceneSummary = scenes.slice(0, 14).map((sc, i) => {
     const narration = sc.narration || '';
-    const caption = sc.caption || sc.caption1 || '';
-    const duration = sc.total_duration || sc.duration || 0;
-    const cutCount = Array.isArray(sc.video_cuts) ? sc.video_cuts.length : 1;
-    return `씬${i + 1}: narration="${narration}" caption="${caption}" total_duration=${duration}s cuts=${cutCount}`;
+    const caption1  = sc.caption1 || sc.caption || '';
+    const caption2  = sc.caption2 || '';
+    const duration  = sc.total_duration || sc.duration || 0;
+    const cutCount  = Array.isArray(sc.video_cuts) ? sc.video_cuts.length : 1;
+    const mediaIdxs = Array.isArray(sc.video_cuts)
+      ? sc.video_cuts.map(c => c.media_idx ?? '?').join(',')
+      : (sc.media_idx ?? '?');
+    return `씬${i + 1}[${duration}s cuts=${cutCount} media=${mediaIdxs}]: caption1="${caption1}" caption2="${caption2}" narration="${narration.slice(0, 60)}"`;
   }).join('\n');
 
-  const blockCount = script.blocks?.length || 0;
+  const blockCount     = script.blocks?.length || 0;
   const flatSceneCount = script.scenes?.length || 0;
-  const structureInfo = blockCount > 0
+  const structureInfo  = blockCount > 0
     ? `블록 수: ${blockCount}개`
     : `씬 수: ${flatSceneCount}개`;
+
+  // narrations 목록 (반복 표현 감지용)
+  const narrations = scenes.map(sc => sc.narration || '').filter(Boolean);
+  const cap1List   = scenes.map(sc => sc.caption1 || sc.caption || '').filter(Boolean);
+
+  const grillExtra = restaurantType === 'grill'
+    ? `\n[🥩 고깃집 전용 추가 검수 (각 항목 위반 시 해당 점수 0점)]
+• 찌개/볶음밥/밑반찬 씬이 클라이맥스(hero)에 배치되지 않았는가? (메인 씬은 반드시 구이여야 함)
+• cooking_state="cooked" 씬에 "선홍빛", "생고기" 등 생고기 표현이 없는가?
+• cooking_state="raw" 씬에 "구워진", "육즙이 터지는" 등 이미 익은 표현이 없는가?
+• "직접 구워드립니다" 등 직원 구이 표현이 실제 직원 구이 장면 없이 사용되지 않았는가?`
+    : '';
 
   const prompt = `당신은 2026년 한국 숏폼 콘텐츠 전문 QA 디렉터입니다.
 아래 릴스/쇼츠 스크립트를 검수하고 품질 점수를 평가하세요.
@@ -2343,37 +2382,49 @@ async function geminiQualityCheck(script, restaurantName, restaurantType = '') {
 식당명: ${restaurantName}
 업체 유형: ${restaurantType || '미분류'}
 구조: ${structureInfo}
+전체 나레이션 목록: ${narrations.map((n, i) => `씬${i + 1}:"${n.slice(0, 40)}"`).join(' | ')}
+전체 자막(caption1) 목록: ${cap1List.map((c, i) => `씬${i + 1}:"${c}"`).join(' | ')}
 
-[스크립트 요약 - 최대 12씬]
+[스크립트 요약 — 최대 14씬]
 ${sceneSummary}
+${grillExtra}
 
 [검수 기준 — 각 항목 0~10점, 총 100점 만점]
-1. 훅(Hook): 첫 씬 2초 이내 시청자를 멈추게 하는가? 결론 선제시, 강렬한 비주얼 묘사?
-2. 금지어 준수: "미쳤다/대박/환상적인/선사/구워드립니다" 등 금지어·오류 표현 없는가?
-3. 흐름(Flow): 씬 간 이야기가 자연스럽게 연결되는가? 반전→클라이맥스→CTA 아크?
-4. 정보 밀도: 음식점 특징·메뉴 정보가 충분히 담겼는가? 오감 묘사 포함?
-5. CTA: 마지막 씬에 구독/좋아요 유도가 효과적으로 포함되었는가?
-6. 오리지널리티: 식상한 표현 없이 신선하고 독창적인 나레이션·캡션인가?
-7. 감성 몰입도: 시청자가 공감·감동·욕구를 느낄 수 있는 감성적 언어 사용?
-8. 리텐션 전략: 중간 이탈 방지를 위한 반전·궁금증 유발 장치가 있는가?
-9. 구체성: 음식 맛·식감·향 등 오감을 구체적으로 묘사했는가? (막연한 표현 감점)
-10. 완성도: 오탈자·어색한 문장·논리 오류 없이 흐름이 완성도 높게 마무리되었는가?
+1. 훅(Hook·10점): 첫 씬 2초 이내 시청자를 멈추게 하는 강렬한 자막+나레이션? 결론 선제시 또는 강렬한 의문형?
+2. 금지어 준수(10점): "미쳤다/대박/환상적인/선사/구워드립니다(비해당 시)/정말/너무/최고의" 등 과장·금지 표현 없는가? 각 1개 발견 시 -2점.
+3. 흐름·서사 아크(10점): 훅→설정→클라이맥스→CTA 서사가 자연스럽게 연결? 씬 간 이야기가 끊기지 않는가?
+4. 정보 밀도(10점): 음식점 특징·메뉴·맛·분위기 정보가 충분히 담겼는가? 오감 묘사 포함?
+5. CTA 효과(10점): 마지막 씬에 구독/좋아요 유도가 자연스럽고 구체적으로 포함되었는가?
+6. 오리지널리티(10점): 식상한 표현 없이 신선하고 독창적인 나레이션·캡션? 씬마다 다른 각도의 묘사?
+7. 자막 가독성(10점): caption1이 12자 이내, caption2가 8자 이내? 모든 씬에 caption1이 존재하는가?
+8. 리텐션 전략(10점): 중간 이탈 방지를 위한 반전·궁금증 유발 장치(retention_strategy)가 있는가?
+9. 나레이션 구체성(10점): 맛·식감·향·온도 등 오감을 구체적으로 묘사했는가? 막연한 표현("맛있어요", "좋아요") 발견 시 -2점.
+10. 표현 다양성(10점): 여러 씬에 걸쳐 동일 단어·문장 구조 반복이 없는가? 나레이션 3개 이상 동일 표현 반복 시 -3점.
 
-threshold: 총점 95점 이상이면 통과 — 94점 이하면 무조건 pass:false 반환
-(99점을 목표로 작성하되, 95점 미만이면 어떤 항목이 부족한지 상세히 기술)
+threshold: 총점 95점 이상이면 pass:true, 94점 이하면 pass:false (어떤 이유로도 예외 없음)
+(각 항목 점수를 합산한 총점으로 판단. pass/fail 기준을 임의로 완화하지 말 것)
 
 JSON만 반환:
-{"total_score": 97, "pass": true, "hook": 10, "banned_words": 10, "flow": 10, "info_density": 9, "cta": 10, "originality": 10, "emotional_depth": 9, "retention": 9, "specificity": 10, "completeness": 10, "issues": [], "suggestion": ""}`;
+{"total_score": 97, "pass": true, "hook": 10, "banned_words": 10, "flow": 10, "info_density": 9, "cta": 10, "originality": 10, "readability": 9, "retention": 8, "specificity": 10, "diversity": 10, "issues": ["..."], "suggestion": "..."}`;
 
   try {
     const data = await geminiWithFallback({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.3, responseMimeType: 'application/json' },
+      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
     }, 20000);
     const raw = safeExtractText(data);
     const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
     const result = JSON.parse(s >= 0 && e > s ? raw.slice(s, e + 1) : raw.replace(/```json|```/g, '').trim());
-    console.log(`[geminiQualityCheck] 점수: ${result.total_score}/100 → ${result.pass ? '통과' : '재생성 필요'}`);
+    // total_score를 항목 합산으로 재검증 (Gemini가 점수를 부풀리는 것 방지)
+    const itemSum = (result.hook || 0) + (result.banned_words || 0) + (result.flow || 0)
+      + (result.info_density || 0) + (result.cta || 0) + (result.originality || 0)
+      + (result.readability || 0) + (result.retention || 0) + (result.specificity || 0)
+      + (result.diversity || 0);
+    if (typeof result.total_score === 'number' && Math.abs(result.total_score - itemSum) > 5) {
+      result.total_score = itemSum; // 항목 합산으로 강제 교정
+    }
+    if (typeof result.total_score === 'number' && result.total_score < 95) result.pass = false;
+    console.log(`[geminiQualityCheck] 점수: ${result.total_score}/100 (항목합: ${itemSum}) → ${result.pass ? '통과' : '재생성 필요'}`);
     return result;
   } catch (e) {
     console.warn('[geminiQualityCheck] 실패 → 기본 통과 처리:', e.message);
@@ -2711,7 +2762,7 @@ async function startMake() {
     setPipeline, donePipelineStep, setScript,
     setAudioBuffers, setLoaded, setShowResult,
     addToast, setAutoStyleName, setTemplate, setHook,
-    hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis,
+    hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis, setQcScore,
     requiredKeywords,
   } = store;
 
@@ -2915,6 +2966,7 @@ async function startMake() {
           }
           const imgMeta = analysisMap[s.media_idx ?? (blockStart + j)] || {};
           finalScenes.push({ ...s, duration: durations[j], caption1, caption2, subtitle: caption1 || s.subtitle || '',
+            narration_duration: j === 0 && audioDur > 0 ? audioDur : 0,
             focus_coords:    imgMeta.focus_coords    || null,
             aesthetic_score: imgMeta.aesthetic_score || null,
             foodie_score:    imgMeta.foodie_score    || null,
@@ -2944,6 +2996,7 @@ async function startMake() {
         }
         const imgMeta = analysisMap[sc.media_idx ?? sceneIdx] || {};
         finalScenes.push({ ...sc, duration, caption1, caption2, subtitle: caption1 || sc.subtitle || '',
+          narration_duration: buf?.duration > 0 ? buf.duration : 0,
           focus_coords:    imgMeta.focus_coords    || null,
           aesthetic_score: imgMeta.aesthetic_score || null,
           foodie_score:    imgMeta.foodie_score    || null,
@@ -3138,7 +3191,8 @@ async function startMake() {
               blkScenes.forEach((s, j) => {
                 let cap1 = s.caption1, cap2 = s.caption2;
                 if (!cap1?.trim()) { const [c1, c2] = splitCaptions(s.narration || s.subtitle || ''); cap1 = c1; cap2 = c2; }
-                retryFinalScenes.push({ ...s, duration: durs[j], caption1: cap1, caption2: cap2, subtitle: cap1 || s.subtitle || '' });
+                retryFinalScenes.push({ ...s, duration: durs[j], caption1: cap1, caption2: cap2, subtitle: cap1 || s.subtitle || '',
+                  narration_duration: j === 0 && aDur > 0 ? aDur : 0 });
               });
             } else {
               const aDur = (rbuf && rbuf.duration > 0) ? rbuf.duration : 0;
@@ -3148,7 +3202,8 @@ async function startMake() {
               dur = Math.max(2.0, dur);
               let cap1 = rsc.caption1, cap2 = rsc.caption2;
               if (!cap1?.trim()) { const [c1, c2] = splitCaptions(rsc.narration || rsc.subtitle || ''); cap1 = c1; cap2 = c2; }
-              retryFinalScenes.push({ ...rsc, duration: dur, caption1: cap1, caption2: cap2, subtitle: cap1 || rsc.subtitle || '' });
+              retryFinalScenes.push({ ...rsc, duration: dur, caption1: cap1, caption2: cap2, subtitle: cap1 || rsc.subtitle || '',
+                narration_duration: aDur });
               rsi++;
             }
           }
@@ -3173,6 +3228,8 @@ async function startMake() {
     } else {
       addToast(`품질 검수 통과 (${qcResult.total_score}/100) ✅`, 'ok');
     }
+    // QC 점수 store에 저장 → ResultScreen에 상시 표시
+    if (typeof qcResult.total_score === 'number') setQcScore(qcResult.total_score);
     donePipelineStep(7);
 
     // Firebase 저장: 같은 식당명은 기존 데이터 삭제 후 새 결과로 대체
@@ -3548,29 +3605,59 @@ function DrivePicker({ addFiles: addFilesProp }) {
     return id.trim();
   };
   const requestNewToken = (clientId) => {
-    if (!tokenClientRef.current || clientIdRef.current !== clientId) {
-      clientIdRef.current = clientId;
-      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: "https://www.googleapis.com/auth/drive.readonly",
-        callback: (resp) => {
-          if (resp.error) {
-            clearToken();
-            if (resp.error === "redirect_uri_mismatch" || resp.error === "idpiframe_initialization_failed") {
-              addToast('GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.', "err");
-            } else if (resp.error !== "popup_closed_by_user" && resp.error !== "access_denied") {
-              addToast("Google 로그인 실패: " + resp.error, "err");
-            }
-            return;
+    clientIdRef.current = clientId;
+    tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: "https://www.googleapis.com/auth/drive.readonly",
+      callback: (resp) => {
+        if (resp.error) {
+          clearToken();
+          if (resp.error === "redirect_uri_mismatch" || resp.error === "idpiframe_initialization_failed") {
+            addToast('GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.', "err");
+          } else if (resp.error !== "popup_closed_by_user" && resp.error !== "access_denied") {
+            addToast("Google 로그인 실패: " + resp.error, "err");
           }
-          saveToken(resp.access_token);
-          setModalToken(resp.access_token);
+          return;
         }
-      });
-      tokenClientRef.current.requestAccessToken({ prompt: "select_account" });
-    } else {
-      tokenClientRef.current.requestAccessToken({ prompt: "" });
+        saveToken(resp.access_token);
+        setModalToken(resp.access_token);
+      }
+    });
+    tokenClientRef.current.requestAccessToken({ prompt: "select_account" });
+  };
+  const openCOIPOAuth = (clientId) => {
+    const authUrl = `${location.origin}${"/moovlog/shorts-creator/"}drive-auth.html?cid=${encodeURIComponent(clientId)}`;
+    addToast("Google 로그인 창을 열었습니다. 로그인 후 자동으로 연결됩니다.", "inf");
+    const authWin = window.open(authUrl, "moovlog_drive_auth", "width=520,height=640");
+    if (!authWin) {
+      addToast("팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도해주세요.", "err");
+      return;
     }
+    const onStorage = (e) => {
+      if (e.key !== "moovlog_drive_token_pending" || !e.newValue) return;
+      try {
+        const { token, ts } = JSON.parse(e.newValue);
+        if (token && Date.now() - ts < 5 * 60 * 1e3) {
+          saveToken(token);
+          setModalToken(token);
+          localStorage.removeItem("moovlog_drive_token_pending");
+          addToast("Google Drive 연결 완료!", "ok");
+        }
+      } catch (err) {
+        console.warn("[DrivePicker] token parse error:", err);
+      }
+      window.removeEventListener("storage", onStorage);
+      clearTimeout(timeoutId);
+      try {
+        authWin.close();
+      } catch (_) {
+      }
+    };
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener("storage", onStorage);
+      addToast("로그인 시간이 초과되었습니다. 다시 시도해주세요.", "err");
+    }, 5 * 60 * 1e3);
+    window.addEventListener("storage", onStorage);
   };
   const handleClick = () => {
     if (!ready) {
@@ -3585,6 +3672,10 @@ function DrivePicker({ addFiles: addFilesProp }) {
     const validToken = loadToken();
     if (validToken) {
       setModalToken(validToken);
+      return;
+    }
+    if (globalThis.crossOriginIsolated) {
+      openCOIPOAuth(clientId);
       return;
     }
     requestNewToken(clientId);
@@ -3662,6 +3753,75 @@ function PromptInput() {
   ] });
 }
 
+function KitTabsPanel({ kit, addToast }) {
+  const [openTab, setOpenTab] = reactExports.useState(null);
+  const TABS = [
+    { id: "insta", label: "인스타", color: "#e1306c", val: kit.instagramCaption },
+    { id: "nclip", label: "N클립", color: "#03c75a", val: kit.naverClipTags },
+    { id: "shorts", label: "쇼츠", color: "#ff0000", val: kit.youtubeShortsTags },
+    { id: "tiktok", label: "틱톡", color: "#6fc2f5", val: kit.tiktokTags },
+    { id: "receipt", label: "N영수증", color: "#03c75a", val: kit.receiptReview },
+    { id: "tags", label: "#태그", color: "#a855f7", val: kit.hashtags30 }
+  ].filter((t) => t.val?.trim());
+  if (!TABS.length) return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#666", fontSize: "0.75rem", fontStyle: "italic", margin: 0 }, children: "저장된 태그 데이터가 없습니다" });
+  const active = TABS.find((t) => t.id === openTab);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "4px 14px 12px" }, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 }, children: TABS.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        onClick: () => setOpenTab(t.id),
+        style: {
+          background: t.color + "22",
+          border: `1px solid ${t.color}66`,
+          borderRadius: 8,
+          padding: "5px 12px",
+          cursor: "pointer",
+          color: t.color,
+          fontWeight: 700,
+          fontSize: "0.78rem"
+        },
+        children: t.label
+      },
+      t.id
+    )) }),
+    active && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 9e3, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 },
+        onClick: () => setOpenTab(null),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            style: { background: "#1a1a1a", borderRadius: 16, width: "100%", maxWidth: 460, padding: 20, maxHeight: "70vh", display: "flex", flexDirection: "column" },
+            onClick: (e) => e.stopPropagation(),
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontWeight: 800, color: active.color, fontSize: "0.95rem" }, children: active.label }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setOpenTab(null), style: { background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: "1.2rem" }, children: "✕" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { style: { whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: "0.8rem", color: "#eee", flex: 1, overflowY: "auto", lineHeight: 1.7, margin: 0 }, children: active.val }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: async () => {
+                    try {
+                      await navigator.clipboard.writeText(active.val);
+                      addToast(`${active.label} 복사 완료 ✨`, "ok");
+                    } catch {
+                      addToast("복사 실패", "err");
+                    }
+                  },
+                  style: { marginTop: 14, background: active.color, border: "none", borderRadius: 10, padding: 10, cursor: "pointer", color: "#fff", fontWeight: 700, fontSize: "0.85rem", width: "100%" },
+                  children: "복사하기"
+                }
+              )
+            ]
+          }
+        )
+      }
+    )
+  ] });
+}
 function UploadSection() {
   const {
     files,
@@ -3951,17 +4111,6 @@ function UploadSection() {
         kitHistory.map((item) => {
           const isOpen = selectedKit?.id === item.id;
           const dateStr = item.createdAt?.toDate?.()?.toLocaleDateString("ko-KR") || "";
-          const SNS_ROWS = [
-            { label: "🎣 훅 제목", val: item.hookTitle },
-            { label: "✍️ 인스타 캡션", val: item.caption },
-            { label: "🏷️ 해시태그 30개", val: item.hashtags30 },
-            { label: "🧾 영수증 리뷰", val: item.receiptReview },
-            { label: "📎 N클립 태그", val: item.naverClipTags },
-            { label: "▶ 쇼츠 태그", val: item.youtubeShortsTags },
-            { label: "◎ 릴스 캡션", val: item.instagramCaption },
-            { label: "♪ 틱톡 태그", val: item.tiktokTags }
-          ].filter((r) => r.val);
-          const hookVars = Array.isArray(item.hookVariations) ? item.hookVariations.filter((h) => h?.caption1) : [];
           return /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
@@ -4011,46 +4160,7 @@ function UploadSection() {
                     ]
                   }
                 ),
-                isOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 8 }, children: [
-                  SNS_ROWS.length === 0 && hookVars.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { color: "#666", fontSize: "0.75rem", fontStyle: "italic", margin: 0 }, children: "저장된 태그 데이터가 없습니다" }),
-                  hookVars.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "8px 10px" }, children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { margin: "0 0 6px", fontSize: "0.7rem", fontWeight: 700, color: "#a78bfa" }, children: "🎯 AI PD의 3종 훅 전략" }),
-                    hookVars.map((h, hi) => {
-                      const typeLabel = h.type === "shock" ? "🔥 충격형" : h.type === "info" ? "ℹ️ 정보형" : "👤 1인칭";
-                      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginBottom: 4 }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.68rem", color: "#f59e0b", fontWeight: 700 }, children: typeLabel }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.72rem", color: "#ddd", marginLeft: 6 }, children: [
-                          h.caption1,
-                          h.caption2 ? ` / ${h.caption2}` : ""
-                        ] })
-                      ] }, hi);
-                    })
-                  ] }),
-                  SNS_ROWS.map(({ label, val }) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: "8px 10px" }, children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.7rem", fontWeight: 700, color: "#a78bfa" }, children: label }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          onClick: async () => {
-                            try {
-                              await navigator.clipboard.writeText(val);
-                              addToast(`${label} 복사 완료 ✨`, "ok");
-                            } catch {
-                              addToast("복사 실패", "err");
-                            }
-                          },
-                          style: { background: "none", border: "1px solid #444", borderRadius: 5, padding: "2px 7px", cursor: "pointer", color: "#aaa", fontSize: "0.65rem" },
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-copy" }),
-                            " 복사"
-                          ]
-                        }
-                      )
-                    ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: { margin: 0, fontSize: "0.73rem", color: label.includes("태그") || label.includes("해시") ? "#a855f7" : "#ddd", whiteSpace: "pre-line", lineHeight: 1.6 }, children: val })
-                  ] }, label))
-                ] })
+                isOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(KitTabsPanel, { kit: item, addToast })
               ]
             },
             item.id
@@ -4109,7 +4219,7 @@ const FFMPEG_CORE_URLS = [
 ];
 
 // 타임아웃 포함 fetch → Blob URL 생성 (toBlobURL 대체)
-async function fetchToBlobURL(url, mimeType, timeoutMs = 90_000) {
+async function fetchToBlobURL(url, mimeType, timeoutMs = 45_000) {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -4148,7 +4258,7 @@ async function getFFmpeg(onLog) {
     let lastErr;
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
-        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 90초)`);
+        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 45초)`);
         // fetchToBlobURL: 90초 타임아웃 포함 — 무한 대기 방지
         const [coreURL, wasmURL] = await Promise.all([
           fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript'),
@@ -4372,7 +4482,12 @@ async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
 
   report('FFmpeg 엔진 로딩 중... (최초 1회, 약 20~40초 소요)', 0);
   const ff = await getFFmpeg((logMsg) => {
-    if (logMsg.includes('frame=') || logMsg.includes('time=')) report(logMsg);
+    // CDN 다운로드 메시지([FFmpeg] ...)는 report로 전달해 UI에 표시
+    if (logMsg.startsWith('[FFmpeg]')) {
+      report(logMsg.replace('[FFmpeg] ', ''), undefined);
+    } else if (logMsg.includes('frame=') || logMsg.includes('time=')) {
+      report(logMsg);
+    }
   });
 
   // ── 자막 폰트 로딩 시도 ────────────────────────────────
@@ -5995,12 +6110,30 @@ function HookPicker({ variations, script, setScript, addToast }) {
 function LoadedKitTabs({ kit, addToast }) {
   const [openTab, setOpenTab] = reactExports.useState(null);
   if (!kit) return null;
+  const fmtInsta = (cap) => {
+    if (!cap) return "";
+    const sep = cap.indexOf("\n\n");
+    if (sep !== -1) {
+      const desc = cap.slice(0, sep);
+      const tags2 = (cap.slice(sep + 2).match(/#[^\s#]+/g) || []).slice(0, 5);
+      return desc + "\n\n" + tags2.join(" ");
+    }
+    const tags = (cap.match(/#[^\s#]+/g) || []).slice(0, 5);
+    return tags.length ? tags.join(" ") : cap;
+  };
+  const fmtReceipt = (text) => {
+    const raw = String(text || "");
+    if (raw.length <= 400) return raw;
+    const cut = raw.slice(0, 400);
+    const sp = cut.lastIndexOf(" ");
+    return sp > 350 ? cut.slice(0, sp) : cut;
+  };
   const TABS = [
     { id: "nclip", label: "N클립", color: "#03c75a", val: kit.naverClipTags },
     { id: "shorts", label: "쇼츠", color: "#ff0000", val: kit.youtubeShortsTags },
-    { id: "insta", label: "인스타", color: "#e1306c", val: kit.instagramCaption || kit.caption },
+    { id: "insta", label: "인스타", color: "#e1306c", val: fmtInsta(kit.instagramCaption || kit.caption) },
     { id: "tiktok", label: "틱톡", color: "#6fc2f5", val: kit.tiktokTags },
-    { id: "receipt", label: "N영수증", color: "#03c75a", val: kit.receiptReview }
+    { id: "receipt", label: "N영수증", color: "#03c75a", val: fmtReceipt(kit.receiptReview) }
   ].filter((t) => t.val?.trim());
   const copy = async (text) => {
     try {
@@ -6147,6 +6280,13 @@ function MarketingKitTabs({ script, addToast }) {
     const tags = (cap.match(/#[^\s#]+/g) || []).slice(0, 5);
     return tags.length ? tags.join(" ") : cap;
   };
+  const pReceipt = (text) => {
+    const raw = String(text || "");
+    if (raw.length <= 400) return raw;
+    const cut = raw.slice(0, 400);
+    const sp = cut.lastIndexOf(" ");
+    return sp > 350 ? cut.slice(0, sp) : cut;
+  };
   const pTiktok = () => {
     const cap = script?.instagram_caption || script?.marketing?.caption || "";
     const sep = cap.indexOf("\n\n");
@@ -6160,7 +6300,7 @@ function MarketingKitTabs({ script, addToast }) {
     { id: "shorts", label: "쇼츠", badge: "100자", color: "#ff0000", text: pShorts(script.youtube_shorts_tags) },
     { id: "insta", label: "인스타", badge: "본문+태그5", color: "#e1306c", text: pInsta(script.instagram_caption) },
     { id: "tiktok", label: "틱톡", badge: "본문+태그5", color: "#6fc2f5", text: pTiktok() },
-    { id: "receipt", label: "N영수증", badge: "한줄평", color: "#03c75a", text: script?.marketing?.receipt_review || "" }
+    { id: "receipt", label: "N영수증", badge: "400자", color: "#03c75a", text: pReceipt(script?.marketing?.receipt_review) }
   ].filter((t) => t.text.trim());
   if (!TABS.length) return null;
   const active = TABS.find((t) => t.id === activeTab);
@@ -6236,7 +6376,8 @@ function ResultScreen() {
     reset,
     setShowResult,
     addToast,
-    setScript
+    setScript,
+    qcScore
   } = useVideoStore();
   const totalSec = script?.scenes?.reduce((a, s) => a + (s.duration || 0), 0) || 0;
   const hasAudio = audioBuffers?.some((b) => b);
@@ -6313,10 +6454,24 @@ function ResultScreen() {
           "초"
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "badge-group", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `audio-badge ${hasAudio ? "" : "muted"}`, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fas ${hasAudio ? "fa-microphone-alt" : "fa-volume-mute"}` }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: hasAudio ? "AI 보이스" : "무음" })
-      ] }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "badge-group", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `audio-badge ${hasAudio ? "" : "muted"}`, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fas ${hasAudio ? "fa-microphone-alt" : "fa-volume-mute"}` }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: hasAudio ? "AI 보이스" : "무음" })
+        ] }),
+        qcScore !== null && qcScore !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "audio-badge", style: {
+          background: qcScore >= 95 ? "rgba(16,185,129,0.18)" : qcScore >= 80 ? "rgba(245,158,11,0.18)" : "rgba(239,68,68,0.18)",
+          borderColor: qcScore >= 95 ? "#10b981" : qcScore >= 80 ? "#f59e0b" : "#ef4444",
+          color: qcScore >= 95 ? "#10b981" : qcScore >= 80 ? "#f59e0b" : "#ef4444"
+        }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fas fa-star-half-alt" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "QC ",
+            qcScore,
+            "/100"
+          ] })
+        ] })
+      ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(VideoPlayer, {}),
     /* @__PURE__ */ jsxRuntimeExports.jsx(AutoRecovery, { scenes: script?.scenes, audioBuffers, addToast }),

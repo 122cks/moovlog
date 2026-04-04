@@ -262,21 +262,65 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
     tokenClientRef.current.requestAccessToken({ prompt: 'select_account' });
   };
 
+  // COOP(same-origin) 환경에서는 window.opener가 null이 되어 Google OAuth popup callback이 차단됨.
+  // 해결: COOP 없이 서빙되는 drive-auth.html에서 OAuth를 수행하고,
+  //       localStorage → storage 이벤트로 토큰을 메인 탭에 전달.
+  const openCOIPOAuth = (clientId) => {
+    // drive-auth.html은 SW에서 COOP 헤더 없이 서빙 → OAuth 팝업 정상 동작
+    const authUrl = `${location.origin}${import.meta.env.BASE_URL}drive-auth.html?cid=${encodeURIComponent(clientId)}`;
+    addToast('Google 로그인 창을 열었습니다. 로그인 후 자동으로 연결됩니다.', 'inf');
+
+    const authWin = window.open(authUrl, 'moovlog_drive_auth', 'width=520,height=640');
+    if (!authWin) {
+      addToast('팝업이 차단되었습니다. 브라우저에서 팝업 허용 후 다시 시도해주세요.', 'err');
+      return;
+    }
+
+    const onStorage = (e) => {
+      if (e.key !== 'moovlog_drive_token_pending' || !e.newValue) return;
+      try {
+        const { token, ts } = JSON.parse(e.newValue);
+        // 5분 이내의 토큰만 수락
+        if (token && Date.now() - ts < 5 * 60 * 1000) {
+          saveToken(token);
+          setModalToken(token);
+          localStorage.removeItem('moovlog_drive_token_pending');
+          addToast('Google Drive 연결 완료!', 'ok');
+        }
+      } catch (err) {
+        console.warn('[DrivePicker] token parse error:', err);
+      }
+      window.removeEventListener('storage', onStorage);
+      clearTimeout(timeoutId);
+      try { authWin.close(); } catch (_) {}
+    };
+
+    // 5분 타임아웃
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener('storage', onStorage);
+      addToast('로그인 시간이 초과되었습니다. 다시 시도해주세요.', 'err');
+    }, 5 * 60 * 1000);
+
+    window.addEventListener('storage', onStorage);
+  };
+
   const handleClick = () => {
     if (!ready) { addToast('Google API 로딩 중...', 'inf'); return; }
     const clientId = getClientId();
     if (!clientId) { addToast('클라이언트 ID가 필요합니다.', 'err'); return; }
-
-    // FFmpeg 보안 모드(COOP) 활성 시 Google 로그인 팝업이 차단될 수 있음
-    if (globalThis.crossOriginIsolated) {
-      addToast('FFmpeg 보안 모드 활성화 상태입니다. 로그인이 안 되면 새 탭에서 페이지를 다시 열어주세요.', 'inf');
-    }
 
     const validToken = loadToken();
     if (validToken) {
       setModalToken(validToken);
       return;
     }
+
+    // COOP(same-origin) 활성 환경: OAuth 팝업 callback이 차단됨 → 전용 헬퍼 창 사용
+    if (globalThis.crossOriginIsolated) {
+      openCOIPOAuth(clientId);
+      return;
+    }
+
     requestNewToken(clientId);
   };
 

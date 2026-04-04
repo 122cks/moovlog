@@ -1,8 +1,8 @@
-// MOOVLOG Shorts Creator — Service Worker v2.62
+// MOOVLOG Shorts Creator — Service Worker v2.63
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
 const BASE_PATH = new URL(self.registration.scope).pathname;
-const CACHE_NAME = 'moovlog-v2.62-20260530-1';
+const CACHE_NAME = 'moovlog-v2.63-20260404-1';
 const STATIC_ASSETS = [
   BASE_PATH,
   `${BASE_PATH}index.html`,
@@ -38,6 +38,17 @@ self.addEventListener('fetch', e => {
   // ── FFmpeg WASM용 COOP/COEP 헤더 주입 ──────────────────────────────────────
   // mode === 'navigate': 메인 프레임 페이지 내비게이션 요청 (destination=document 보다 더 정확)
   // 같은 오리진 한정 적용 (cross-origin 리소스 불개입)
+
+  // ⚠️ drive-auth.html 예외: COOP 없이 서빙 → Google OAuth 팝업 통신 허용
+  // COOP(same-origin)이 적용된 창에서는 window.opener가 null이 되어 OAuth callback이 차단됨
+  if (e.request.mode === 'navigate' && url.pathname.endsWith('/drive-auth.html')) {
+    e.respondWith(
+      fetch(e.request, { credentials: 'same-origin' })
+        .catch(() => caches.match(e.request).then(c => c || new Response('오프라인', { status: 503 })))
+    );
+    return;
+  }
+
   if (e.request.mode === 'navigate' && url.origin === self.location.origin && url.pathname.startsWith(BASE_PATH)) {
     e.respondWith(
       fetch(e.request, { credentials: 'same-origin' }).then(res => {
