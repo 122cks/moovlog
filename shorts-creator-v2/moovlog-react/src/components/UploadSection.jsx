@@ -8,6 +8,64 @@ import { getMarketingKits, searchMarketingKits } from '../engine/firebase.js';
 import DrivePicker from './DrivePicker.jsx';
 import PromptInput from './PromptInput.jsx';
 
+// ── 이전 마케팅 키트 탭 패널 (버튼 → 모달) ────────────────
+function KitTabsPanel({ kit, addToast }) {
+  const [openTab, setOpenTab] = useState(null);
+  const TABS = [
+    { id: 'insta',   label: '인스타',  color: '#e1306c', val: kit.instagramCaption },
+    { id: 'nclip',   label: 'N클립',   color: '#03c75a', val: kit.naverClipTags },
+    { id: 'shorts',  label: '쇼츠',    color: '#ff0000', val: kit.youtubeShortsTags },
+    { id: 'tiktok',  label: '틱톡',    color: '#6fc2f5', val: kit.tiktokTags },
+    { id: 'receipt', label: 'N영수증', color: '#03c75a', val: kit.receiptReview },
+    { id: 'tags',    label: '#태그',   color: '#a855f7', val: kit.hashtags30 },
+  ].filter(t => t.val?.trim());
+
+  if (!TABS.length) return <p style={{ color: '#666', fontSize: '0.75rem', fontStyle: 'italic', margin: 0 }}>저장된 태그 데이터가 없습니다</p>;
+
+  const active = TABS.find(t => t.id === openTab);
+  return (
+    <div style={{ padding: '4px 14px 12px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setOpenTab(t.id)}
+            style={{
+              background: t.color + '22', border: `1px solid ${t.color}66`,
+              borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
+              color: t.color, fontWeight: 700, fontSize: '0.78rem',
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+      {active && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+          onClick={() => setOpenTab(null)}
+        >
+          <div
+            style={{ background: '#1a1a1a', borderRadius: 16, width: '100%', maxWidth: 460, padding: 20, maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontWeight: 800, color: active.color, fontSize: '0.95rem' }}>{active.label}</span>
+              <button onClick={() => setOpenTab(null)} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}>✕</button>
+            </div>
+            <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: '0.8rem', color: '#eee', flex: 1, overflowY: 'auto', lineHeight: 1.7, margin: 0 }}>{active.val}</pre>
+            <button
+              onClick={async () => {
+                try { await navigator.clipboard.writeText(active.val); addToast(`${active.label} 복사 완료 ✨`, 'ok'); }
+                catch { addToast('복사 실패', 'err'); }
+              }}
+              style={{ marginTop: 14, background: active.color, border: 'none', borderRadius: 10, padding: 10, cursor: 'pointer', color: '#fff', fontWeight: 700, fontSize: '0.85rem', width: '100%' }}
+            >복사하기</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function UploadSection() {
   const {
     files, addFiles, removeFile, restaurantName, setRestaurantName,
@@ -306,17 +364,6 @@ export default function UploadSection() {
           {kitHistory.map(item => {
             const isOpen = selectedKit?.id === item.id;
             const dateStr = item.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || '';
-            const SNS_ROWS = [
-              { label: '🎣 훅 제목',        val: item.hookTitle },
-              { label: '✍️ 인스타 캡션',   val: item.caption },
-              { label: '🏷️ 해시태그 30개', val: item.hashtags30 },
-              { label: '🧾 영수증 리뷰',    val: item.receiptReview },
-              { label: '📎 N클립 태그',    val: item.naverClipTags },
-              { label: '▶ 쇼츠 태그',      val: item.youtubeShortsTags },
-              { label: '◎ 릴스 캡션',      val: item.instagramCaption },
-              { label: '♪ 틱톡 태그',      val: item.tiktokTags },
-            ].filter(r => r.val);
-            const hookVars = Array.isArray(item.hookVariations) ? item.hookVariations.filter(h => h?.caption1) : [];
             return (
               <div
                 key={item.id}
@@ -355,46 +402,8 @@ export default function UploadSection() {
                     <i className={`fas fa-chevron-${isOpen ? 'up' : 'down'}`} style={{ fontSize: '0.7rem', color: '#666' }} />
                   </div>
                 </button>
-                {/* 펼쳐진 내용 */}
-                {isOpen && (
-                  <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {SNS_ROWS.length === 0 && hookVars.length === 0 && (
-                      <p style={{ color: '#666', fontSize: '0.75rem', fontStyle: 'italic', margin: 0 }}>저장된 태그 데이터가 없습니다</p>
-                    )}
-                    {/* AI PD의 3종 훅 전략 */}
-                    {hookVars.length > 0 && (
-                      <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 10px' }}>
-                        <p style={{ margin: '0 0 6px', fontSize: '0.7rem', fontWeight: 700, color: '#a78bfa' }}>🎯 AI PD의 3종 훅 전략</p>
-                        {hookVars.map((h, hi) => {
-                          const typeLabel = h.type === 'shock' ? '🔥 충격형' : h.type === 'info' ? 'ℹ️ 정보형' : '👤 1인칭';
-                          return (
-                            <div key={hi} style={{ marginBottom: 4 }}>
-                              <span style={{ fontSize: '0.68rem', color: '#f59e0b', fontWeight: 700 }}>{typeLabel}</span>
-                              <span style={{ fontSize: '0.72rem', color: '#ddd', marginLeft: 6 }}>{h.caption1}{h.caption2 ? ` / ${h.caption2}` : ''}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {SNS_ROWS.map(({ label, val }) => (
-                      <div key={label} style={{ background: 'rgba(0,0,0,0.3)', borderRadius: 8, padding: '8px 10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#a78bfa' }}>{label}</span>
-                          <button
-                            onClick={async () => {
-                              try { await navigator.clipboard.writeText(val); addToast(`${label} 복사 완료 ✨`, 'ok'); }
-                              catch { addToast('복사 실패', 'err'); }
-                            }}
-                            style={{ background: 'none', border: '1px solid #444', borderRadius: 5, padding: '2px 7px', cursor: 'pointer', color: '#aaa', fontSize: '0.65rem' }}
-                          >
-                            <i className="fas fa-copy" /> 복사
-                          </button>
-                        </div>
-                        <p style={{ margin: 0, fontSize: '0.73rem', color: label.includes('태그') || label.includes('해시') ? '#a855f7' : '#ddd', whiteSpace: 'pre-line', lineHeight: 1.6 }}>{val}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* 펼쳐진 내용 — 버튼형 모달 */}
+                {isOpen && <KitTabsPanel kit={item} addToast={addToast} />}
               </div>
             );
           })}

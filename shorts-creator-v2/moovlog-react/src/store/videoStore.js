@@ -193,6 +193,9 @@ const INITIAL = {
   // Firebase 세션
   sessionDocId: null,
   pipelineSessionId: null,  // startMake 시작 시 생성 — originals·video 동일 경로
+
+  // 품질 검수 결과
+  qcScore: null,  // number | null (0~100)
 };
 
 // ─── Store ────────────────────────────────────────────────────
@@ -336,6 +339,10 @@ export const useVideoStore = create(
 
       // ── Analysis 저장 (Vision 결과 — focus_coords·aesthetic_score 포함) ──
       setAnalysis: (analysis) => set({ analysis }, false, 'setAnalysis'),
+
+      // ── QC 품질 점수 ───────────────────────────────────────
+      setQcScore: (qcScore) => set({ qcScore }, false, 'setQcScore'),
+
       // ── 전체 리셋 ──────────────────────────────────────────
       reset: () => set({
         ...INITIAL,

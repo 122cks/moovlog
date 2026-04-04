@@ -478,7 +478,7 @@ function MarketingKitTabs({ script, addToast }) {
 
 export default function ResultScreen() {
   const { script, audioBuffers, files, targetPlatform, setTargetPlatform,
-          reset, setShowResult, addToast, setScript } = useVideoStore();
+          reset, setShowResult, addToast, setScript, qcScore } = useVideoStore();
 
   const totalSec = script?.scenes?.reduce((a, s) => a + (s.duration || 0), 0) || 0;
   const hasAudio = audioBuffers?.some(b => b);
@@ -563,6 +563,16 @@ export default function ResultScreen() {
             <i className={`fas ${hasAudio ? 'fa-microphone-alt' : 'fa-volume-mute'}`} />
             <span>{hasAudio ? 'AI 보이스' : '무음'}</span>
           </div>
+          {qcScore !== null && qcScore !== undefined && (
+            <div className="audio-badge" style={{
+              background: qcScore >= 95 ? 'rgba(16,185,129,0.18)' : qcScore >= 80 ? 'rgba(245,158,11,0.18)' : 'rgba(239,68,68,0.18)',
+              borderColor: qcScore >= 95 ? '#10b981' : qcScore >= 80 ? '#f59e0b' : '#ef4444',
+              color: qcScore >= 95 ? '#10b981' : qcScore >= 80 ? '#f59e0b' : '#ef4444',
+            }}>
+              <i className="fas fa-star-half-alt" />
+              <span>QC {qcScore}/100</span>
+            </div>
+          )}
         </div>
         </div>
 

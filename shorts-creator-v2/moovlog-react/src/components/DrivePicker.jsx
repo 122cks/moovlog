@@ -240,35 +240,37 @@ export default function DrivePicker({ addFiles: addFilesProp }) {
   };
 
   const requestNewToken = (clientId) => {
-    if (!tokenClientRef.current || clientIdRef.current !== clientId) {
-      clientIdRef.current = clientId;
-      tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: 'https://www.googleapis.com/auth/drive.readonly',
-        callback: (resp) => {
-          if (resp.error) {
-            clearToken();
-            if (resp.error === 'redirect_uri_mismatch' || resp.error === 'idpiframe_initialization_failed') {
-              addToast('GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.', 'err');
-            } else if (resp.error !== 'popup_closed_by_user' && resp.error !== 'access_denied') {
-              addToast('Google 로그인 실패: ' + resp.error, 'err');
-            }
-            return;
+    // 매번 새로운 클라이언트 생성 — 만료/재시도 시 stale 상태 방지
+    clientIdRef.current = clientId;
+    tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: 'https://www.googleapis.com/auth/drive.readonly',
+      callback: (resp) => {
+        if (resp.error) {
+          clearToken();
+          if (resp.error === 'redirect_uri_mismatch' || resp.error === 'idpiframe_initialization_failed') {
+            addToast('GCP 콘솔 "Authorized JavaScript origins"에 https://122cks.github.io 를 추가하세요.', 'err');
+          } else if (resp.error !== 'popup_closed_by_user' && resp.error !== 'access_denied') {
+            addToast('Google 로그인 실패: ' + resp.error, 'err');
           }
-          saveToken(resp.access_token);
-          setModalToken(resp.access_token);
-        },
-      });
-      tokenClientRef.current.requestAccessToken({ prompt: 'select_account' });
-    } else {
-      tokenClientRef.current.requestAccessToken({ prompt: '' });
-    }
+          return;
+        }
+        saveToken(resp.access_token);
+        setModalToken(resp.access_token);
+      },
+    });
+    tokenClientRef.current.requestAccessToken({ prompt: 'select_account' });
   };
 
   const handleClick = () => {
     if (!ready) { addToast('Google API 로딩 중...', 'inf'); return; }
     const clientId = getClientId();
     if (!clientId) { addToast('클라이언트 ID가 필요합니다.', 'err'); return; }
+
+    // FFmpeg 보안 모드(COOP) 활성 시 Google 로그인 팝업이 차단될 수 있음
+    if (globalThis.crossOriginIsolated) {
+      addToast('FFmpeg 보안 모드 활성화 상태입니다. 로그인이 안 되면 새 탭에서 페이지를 다시 열어주세요.', 'inf');
+    }
 
     const validToken = loadToken();
     if (validToken) {

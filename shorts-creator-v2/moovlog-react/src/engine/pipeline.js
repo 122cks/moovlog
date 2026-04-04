@@ -291,7 +291,7 @@ export async function startMake() {
     setPipeline, donePipelineStep, setScript,
     setAudioBuffers, setLoaded, setShowResult,
     addToast, setAutoStyleName, setTemplate, setHook,
-    hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis,
+    hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis, setQcScore,
     requiredKeywords,
   } = store;
 
@@ -757,6 +757,8 @@ export async function startMake() {
     } else {
       addToast(`품질 검수 통과 (${qcResult.total_score}/100) ✅`, 'ok');
     }
+    // QC 점수 store에 저장 → ResultScreen에 상시 표시
+    if (typeof qcResult.total_score === 'number') setQcScore(qcResult.total_score);
     donePipelineStep(7);
 
     // Firebase 저장: 같은 식당명은 기존 데이터 삭제 후 새 결과로 대체

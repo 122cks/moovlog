@@ -12,7 +12,7 @@ const FFMPEG_CORE_URLS = [
 ];
 
 // 타임아웃 포함 fetch → Blob URL 생성 (toBlobURL 대체)
-async function fetchToBlobURL(url, mimeType, timeoutMs = 90_000) {
+async function fetchToBlobURL(url, mimeType, timeoutMs = 45_000) {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -51,7 +51,7 @@ async function getFFmpeg(onLog) {
     let lastErr;
     for (const cdn of FFMPEG_CORE_URLS) {
       try {
-        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 90초)`);
+        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 45초)`);
         // fetchToBlobURL: 90초 타임아웃 포함 — 무한 대기 방지
         const [coreURL, wasmURL] = await Promise.all([
           fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript'),
@@ -276,7 +276,12 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
 
   report('FFmpeg 엔진 로딩 중... (최초 1회, 약 20~40초 소요)', 0);
   const ff = await getFFmpeg((logMsg) => {
-    if (logMsg.includes('frame=') || logMsg.includes('time=')) report(logMsg);
+    // CDN 다운로드 메시지([FFmpeg] ...)는 report로 전달해 UI에 표시
+    if (logMsg.startsWith('[FFmpeg]')) {
+      report(logMsg.replace('[FFmpeg] ', ''), undefined);
+    } else if (logMsg.includes('frame=') || logMsg.includes('time=')) {
+      report(logMsg);
+    }
   });
 
   // ── 자막 폰트 로딩 시도 ────────────────────────────────
