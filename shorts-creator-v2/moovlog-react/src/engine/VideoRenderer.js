@@ -67,8 +67,19 @@ async function getFFmpeg(onLog) {
           fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript',  30_000),
           fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm', 30_000),
         ]);
-        onLog?.(`[FFmpeg] 다운로드 완료, WASM 초기화 중... (약 5~15초)`);
-        await ff.load({ coreURL, wasmURL });
+        onLog?.(`[FFmpeg] 다운로드 완료, WASM 초기화 중... (약 10~30초)`);
+        // ⚠️ ff.load() 자체도 hang 가능 → 60초 타임아웃 보장
+        const initTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('WASM 초기화 타임아웃 (60초) — 새로고침 후 재시도해주세요')), 60_000)
+        );
+        try {
+          await Promise.race([ff.load({ coreURL, wasmURL }), initTimeout]);
+        } finally {
+          // Blob URL 메모리 해제 (성공·실패 모두)
+          URL.revokeObjectURL(coreURL);
+          URL.revokeObjectURL(wasmURL);
+        }
+        onLog?.(`[FFmpeg] 초기화 완료 ✅`);
         ffmpegInstance = ff;
         return ff;
       } catch (e) {

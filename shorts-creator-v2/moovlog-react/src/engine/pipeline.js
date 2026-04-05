@@ -72,29 +72,35 @@ function tokenOverlapScore(tokens, text) {
   return score;
 }
 
-// ─── 음식 카테고리 감지 (나레이션-영상 불일치 2단계 교정용) ──────────
-// Gemini 프롬프트 food_category 필드 + 텍스트 키워드 이중 매칭
+// ─── 음식 카테고리 감지 (나레이션-영상 불일치 협사 교정용) ─────
+// Gemini food_category 필드 + 텍스트 키워드 이중 매칭 (오타 수정 + 확충)
 const FOOD_CATEGORY_MAP = [
-  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음', '볶기우', '글로버프라이'] },
-  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '겹절이', '나물', '조림', '무침', '깨잎', '잡채', '엘로케', '순두부', '감자조림', '안주', '폤위조림'] },
-  { cat: 'soup',       kw: ['짜개', '오’짜개', '계란짜', '된장', '부대짜개', '김치짜개', '탕', '전골', '국물', '딹배기', '라면', '순두부찌개', '진지짜개', '매운탕'] },
-  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료', '리코타', '남음'] },
-  { cat: 'meat',       kw: ['고기', '삼격살', '갈비', '목살', '구이', '육즙', '숲불', '불판', '원육', '마블링', '곡창', '항정살', '역살', '돼지고기', '소고기', '한우', '하합', '네크'] },
+  { cat: 'fried_rice', kw: ['볶음밥', '볶아낸', '볶아', '볶음'] },
+  { cat: 'side_dish',  kw: ['밑반찬', '반찬', '기본찬', '나물', '조림', '무침', '잡채', '감자조림', '안주', '반찬류'] },
+  { cat: 'soup',       kw: ['찌개', '된장찌개', '부대찌개', '김치찌개', '탕', '전골', '국물', '뚝배기', '순두부찌개', '매운탕', '계란찜'] },
+  { cat: 'juice',      kw: ['주스', '식전주스', '음료', '드링크', '식전 음료'] },
+  { cat: 'meat',       kw: ['고기', '삼겹살', '갈비', '목살', '구이', '육즙', '숯불', '불판', '원육', '마블링', '항정살', '돼지고기', '소고기', '한우', '생고기', '육회', '스테이크', '바베큐', '고기판'] },
   { cat: 'table',      kw: ['상차림', '차림', '한 상', '테이블 세팅', '올라왔'] },
-  { cat: 'noodle',     kw: ['냉면', '국수', '라면', '면 요리', '우동', '본', '컨국수', '매바라기'] },
-  { cat: 'rice',       kw: ['공기밥', '쌌맛', '흔밥', '돌솔밥', '돌솔올림', '비빔밥'] },
-  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구', '주차장'] },
-  { cat: 'dessert',    kw: ['디저트', '아이스크림', '케이크', '마카론', '케지', '와플', '아이스플', '수프림'] },
-  { cat: 'salad',      kw: ['샄러드', '솤러드', '캐스니샤러드', '시저트', '신선난'] },
+  { cat: 'noodle',     kw: ['냉면', '국수', '면 요리', '우동', '물냉면', '비빔냉면', '막국수'] },
+  { cat: 'rice',       kw: ['공기밥', '돌솥밥', '돌솥', '비빔밥', '솥밥'] },
+  { cat: 'exterior',   kw: ['외관', '간판', '매장 외부', '건물', '입구', '주차장', '가게 앞'] },
+  { cat: 'dessert',    kw: ['디저트', '아이스크림', '케이크', '마카롱', '와플', '빙수'] },
+  { cat: 'salad',      kw: ['샐러드', '시저', '그린 샐러드'] },
 ];
 
-// Gemini food_category 문자열 → 내부 cat 매핑
+// Gemini food_category 문자열 → 내부 cat 매핑 (포괄 확충)
 const GEMINI_CAT_MAP = {
-  '볶음밥': 'fried_rice', '밑반찬': 'side_dish', '짜개': 'soup',
-  '주스': 'juice', '고기': 'meat', '상차림': 'table',
-  '냉면': 'noodle', '공기밥': 'rice', '외관': 'exterior',
-  '디저트': 'dessert', '글로버프라이': 'fried_rice',
-  '안주': 'side_dish', '찌개': 'soup', '샰러드': 'salad',
+  '볶음밥': 'fried_rice', '글로버프라이': 'fried_rice',
+  '밑반찬': 'side_dish', '반찬': 'side_dish', '안주': 'side_dish',
+  '찌개': 'soup', '짜개': 'soup', '탕': 'soup', '전골': 'soup',
+  '주스': 'juice', '음료': 'juice',
+  '고기': 'meat', '삼겹살': 'meat', '갈비': 'meat', '구이': 'meat', '한우': 'meat', '스테이크': 'meat',
+  '상차림': 'table',
+  '냉면': 'noodle', '국수': 'noodle', '우동': 'noodle',
+  '공기밥': 'rice', '비빔밥': 'rice', '돌솥밥': 'rice',
+  '외관': 'exterior',
+  '디저트': 'dessert', '케이크': 'dessert',
+  '샐러드': 'salad', '샰러드': 'salad',
 };
 
 function detectFoodCategory(text, geminiFoodCategory) {
@@ -121,7 +127,7 @@ function refineScenesForStoryboard(scenes, files, analysis) {
   for (const p of (analysis?.per_image || [])) analysisMap[p.idx] = p;
   const allMediaIdxs = files.map((_, i) => i);
   let mediaSwapCount = 0;
-  let subtitleFixCount = 0;
+  let subtitleFixCount = 0; // 자막 간결화 카운터 (하단 subtitle fix 구간에서 사용)
 
   // 외관 컷은 마지막 CTA에 고정 + 비마지막 씬에 외관 배정 강제 제거
   const exteriorIdx = analysis?.per_image?.find(p => p?.is_exterior === true)?.idx;
@@ -144,148 +150,242 @@ function refineScenesForStoryboard(scenes, files, analysis) {
     }
   }
 
-  // [팟바란 영상 두 자리 코드 제거]
-  // 기존 코드: 0번째 + 짝수 위치에 무조건 영상 순환 배치 → 자막과 다른 영상이 튜어나는 문제 발생
-  // 수정: Gemini가 직접 할당한 media_idx 신뢰. 콘텐츠 매칭 기반으로만 보정.
-  // 단, 영상 파일 중 상당히 더 잘 맞는 것이 있으면 서브스티 스왓
+  // ── CapCut 자동컷 방식: 영상·카테고리 기반 통합 미디어 재배치 ──────────────
+  // 전략: 각 씬의 나레이션/자막 내용을 기반으로 가장 잘 맞는 미디어를 전역 최적 방식으로 배정
+  // ① 영상 파일 배정 씬은 절대 이미지로 교체 불가 (user protective lock)
+  // ② 마지막 씬(CTA/외관)은 고정
+  // ③ 나머지 이미지 씬만 재배치 — 카테고리 일치 +15점, 토큰 매칭 ×2점, 영상 +5점, foodie_score ×0.5점
   const videoIdxs = files.map((f, i) => (f.type === 'video' ? i : -1)).filter(i => i >= 0);
-  if (videoIdxs.length) {
-    // 영상을 주입할 지 마 어느 술지 가장 잘 맞는 요소로 결정
-    // 영상 사용륙이 0개이면 첫 번째 씨 + 홀수 았는 씨에 영상 서브스티만 (콘텐츠 스코어 확인)
-    const usedVideoIdxSet = new Set(refined.filter(s => files[s.media_idx]?.type === 'video').map(s => s.media_idx));
-    const unusedVideoIdxs = videoIdxs.filter(i => !usedVideoIdxSet.has(i));
-    // 영상이 전혀 사용되지 앤으면 첫 씨에라도 넓음
-    if (usedVideoIdxSet.size === 0 && videoIdxs.length > 0 && refined.length > 0) {
-      refined[0].media_idx = videoIdxs[0];
+
+  // 영상이 전혀 사용되지 않으면 첫 씬에 강제 배치 (최소 보장)
+  const currentlyUsedVideos = new Set(refined.filter(s => files[s.media_idx]?.type === 'video').map(s => s.media_idx));
+  if (currentlyUsedVideos.size === 0 && videoIdxs.length > 0 && refined.length > 0) {
+    refined[0].media_idx = videoIdxs[0];
+    mediaSwapCount++;
+  }
+
+  // 고정 씬 집합: 마지막 씬 + 영상 배정 씬 (content swap 보호)
+  const fixedSceneIdxs = new Set([refined.length - 1]);
+  for (let i = 0; i < refined.length; i++) {
+    if (files[refined[i].media_idx]?.type === 'video') fixedSceneIdxs.add(i);
+  }
+
+  // 재매칭 대상 씬 (고정 제외 이미지 씬)
+  const mutableSceneIdxs = Array.from({ length: refined.length }, (_, i) => i).filter(i => !fixedSceneIdxs.has(i));
+
+  // 재배치 가능 미디어 풀 (고정 씬 미디어 제외, 외관 제외)
+  const fixedMediaIdxs = new Set(Array.from(fixedSceneIdxs).map(i => refined[i].media_idx).filter(Number.isInteger));
+  const mutableMediaPool = allMediaIdxs.filter(i => !fixedMediaIdxs.has(i) && !analysisMap[i]?.is_exterior);
+
+  if (mutableSceneIdxs.length > 0 && mutableMediaPool.length > 0) {
+    // 전역 점수 행렬: [씬 si, 미디어 mi] → score
+    const scorePairs = [];
+    for (const si of mutableSceneIdxs) {
+      const sc = refined[si];
+      const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
+      const tokens = tokenizeText(sceneText);
+      const sceneCat = detectFoodCategory(sceneText);
+      for (const mi of mutableMediaPool) {
+        const mData = analysisMap[mi] || {};
+        const mText  = `${mData.focus || ''} ${mData.narration_hint || ''}`;
+        const mCat   = detectFoodCategory(mText, mData.food_category);
+        let score = 0;
+        if (sceneCat && mCat === sceneCat) score += 15;         // 카테고리 일치 (우선순위 최고)
+        if (tokens.length > 0) score += tokenOverlapScore(tokens, mText) * 2;  // 토큰 매칭
+        if (files[mi]?.type === 'video') score += 5;             // 영상 우선
+        score += (mData.foodie_score || 0) * 0.5;               // 품질 보조
+        scorePairs.push({ si, mi, score });
+      }
+    }
+    // 내림차순 정렬 → 그리디 1:1 배정
+    scorePairs.sort((a, b) => b.score - a.score);
+    const assignedScenes = new Set();
+    const assignedMedia  = new Set();
+    for (const { si, mi, score } of scorePairs) {
+      if (assignedScenes.has(si) || assignedMedia.has(mi)) continue;
+      if (refined[si].media_idx !== mi) {
+        refined[si].media_idx = mi;
+        mediaSwapCount++;
+        const mData = analysisMap[mi] || {};
+        const mCat  = detectFoodCategory(`${mData.focus || ''} ${mData.narration_hint || ''}`, mData.food_category);
+        const sc    = refined[si];
+        const sceneText = `${sc.caption1 || ''} ${sc.narration || ''}`;
+        const sceneCat  = detectFoodCategory(sceneText);
+        if (sceneCat && mCat && sceneCat !== mCat) {
+          console.warn(`[CapCutAlign] 씬${si}(${sceneCat}) ↔ 미디어${mi}(${mCat || '?'}) 카테고리 불일치 (score=${score.toFixed(1)})`);
+        } else {
+          console.log(`[CapCutAlign] 씬${si}(${sceneCat || '?'}) → 미디어${mi}(${mCat || '?'}) score=${score.toFixed(1)}`);
+        }
+      }
+      assignedScenes.add(si);
+      assignedMedia.add(mi);
+    }
+    // 미배정 씬 → 남은 미디어 순차 배정
+    const remainingMedia = mutableMediaPool.filter(mi => !assignedMedia.has(mi));
+    let rmi = 0;
+    for (const si of mutableSceneIdxs) {
+      if (assignedScenes.has(si) || rmi >= remainingMedia.length) continue;
+      refined[si].media_idx = remainingMedia[rmi++];
       mediaSwapCount++;
     }
   }
 
-  // 자막-영상 내용 매칭 검증: 텍스트와 focus 설명이 어긋나면 media_idx/자막 보정
-  // ⚠️ 중복 사용 방지: 이미 다른 씬에 배정된 media_idx는 재사용하지 않음 (볶음밥 반복 방지)
-  const usedMediaIdxs = new Set(refined.map(sc => sc.media_idx).filter(idx => Number.isInteger(idx)));
+  // 자막 간결화: caption1 == narration 그대로면 12자 이내로 트리밍
+  subtitleFixCount = 0;
   for (let i = 0; i < refined.length; i++) {
     const sc = refined[i];
-    const curIdx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
-    const textBundle = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
-    const tokens = tokenizeText(textBundle);
-
-    if (tokens.length) {
-      let bestIdx = curIdx;
-      let bestScore = tokenOverlapScore(tokens, `${analysisMap[curIdx]?.focus || ''} ${analysisMap[curIdx]?.narration_hint || ''}`);
-
-      for (const idx of allMediaIdxs) {
-        // 이미 다른 씬에서 사용 중인 media_idx는 건너뜀 (중복 배정 방지)
-        if (idx !== curIdx && usedMediaIdxs.has(idx)) continue;
-        const candText = `${analysisMap[idx]?.focus || ''} ${analysisMap[idx]?.narration_hint || ''}`;
-        const s = tokenOverlapScore(tokens, candText);
-        if (s > bestScore) {
-          bestScore = s;
-          bestIdx = idx;
-        }
-      }
-
-      if (bestIdx !== curIdx && bestScore >= 1) {
-        // ⚠️ 업로드된 영상 파일이 배정된 씬은 절대 교체하지 않음
-        // 이미지 더 잘 맞더라도 영상 씬을 이미지로 바꾸는 건 사용자 의도에 반함
-        if (files[curIdx]?.type === 'video') {
-          // 영상 배정 씬 보호 — content-matching 교체 차단
-        } else if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
-          // 외관 bestIdx는 중간 씬에 배정하지 않음
-        } else {
-          usedMediaIdxs.delete(curIdx);  // 기존 idx 해제
-          sc.media_idx = bestIdx;
-          usedMediaIdxs.add(bestIdx);   // 새 idx 점유
-          mediaSwapCount++;
-        }
-      }
-    }
-
     const capNorm = String(sc.caption1 || '').replace(/\s+/g, '');
     const narNorm = String(sc.narration || '').replace(/\s+/g, '');
     if (capNorm && narNorm && capNorm === narNorm) {
       const shorter = String(sc.caption1 || '').replace(/[.!?]/g, '').trim().slice(0, 12);
-      if (shorter && shorter !== sc.caption1) {
-        sc.caption1 = shorter;
-        subtitleFixCount++;
-      }
+      if (shorter && shorter !== sc.caption1) { sc.caption1 = shorter; subtitleFixCount++; }
     }
-
     const selectedMeta = analysisMap[Number.isInteger(sc.media_idx) ? sc.media_idx : i];
     if (sc.caption1 && !sc.caption2 && selectedMeta?.focus) {
       const capTokens = tokenizeText(sc.caption1);
       if (tokenOverlapScore(capTokens, selectedMeta.focus) === 0) {
         const hint = String(selectedMeta.focus).split(/[,.]/)[0].trim().slice(0, 10);
-        if (hint) {
-          sc.caption2 = hint;
-          subtitleFixCount++;
-        }
+        if (hint) { sc.caption2 = hint; subtitleFixCount++; }
       }
     }
   }
 
-  // ─── 2단계: 음식 카테고리 불일치 강제 교정 (swap 방식) ──────────────────────
-  // 해결한 문제: 이전 구현은 usedMediaIdxs로 인해 모든 미디어가 침 당해있어 후보가 없었음
-  // 수정: 이미 사용된 미디어도 swap 허용 — 카테고리 건미는 죄에 포함
-  const mediaToScene = new Map();
-  refined.forEach((sc, i) => {
-    if (Number.isInteger(sc.media_idx)) mediaToScene.set(sc.media_idx, i);
-  });
+  return { scenes: refined, mediaSwapCount, subtitleFixCount };
+}
 
-  for (let i = 0; i < refined.length - 1; i++) {
-    const sc = refined[i];
-    // ⚠️ 영상 파일이 배정된 씬은 음식 카테고리 swap에서도 보호
-    if (files[sc.media_idx]?.type === 'video') continue;
+// ─── 영상 우선 배치 + b-roll 보충 (main flow & QC retry 공통 사용) ──────────
+// scenes 배열을 in-place 수정. 미사용 영상 → 이미지 씬 교체, 남으면 몽타주 삽입
+function applyVideoPriority(scenes, files, analysisMap, analysis, addToast) {
+  if (!scenes.length) return;
+  const BROLL_EFFECTS = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
+  const exteriorIdxSet = new Set((analysis?.per_image || []).filter(p => p.is_exterior).map(p => p.idx));
+  const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
+  const imageIdxs = files.map((f, i) => f.type === 'image' ? i : -1).filter(i => i >= 0);
 
-    const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
-    const sceneCat = detectFoodCategory(sceneText);
-    if (!sceneCat) continue;
+  const getUsedVidSet = () => new Set(
+    scenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0)
+  );
 
-    const midx = Number.isInteger(sc.media_idx) ? sc.media_idx : i;
-    const mData = analysisMap[midx];
-    // Gemini food_category 직접 활용 + 텍스트 기반 탐지 병합
-    const mediaFocusText = `${mData?.focus || ''} ${mData?.narration_hint || ''}`;
-    const mediaCat = detectFoodCategory(mediaFocusText, mData?.food_category);
-    if (mediaCat === sceneCat) continue; // 이미 일치
-
-    // 씬 카테고리 미디어 탐색: 미사용 우선, 적합 순으로 정렬
-    const candidates = allMediaIdxs
-      .filter(idx => {
-        if (analysisMap[idx]?.is_exterior) return false;
-        const d = analysisMap[idx];
-        const fText = `${d?.focus || ''} ${d?.narration_hint || ''}`;
-        return detectFoodCategory(fText, d?.food_category) === sceneCat;
-      })
-      .sort((a, b) => {
-        // 미사용 먼저, 같으면 foodie_score 높은 순으로
-        const aUsed = mediaToScene.has(a) ? 1 : 0;
-        const bUsed = mediaToScene.has(b) ? 1 : 0;
-        if (aUsed !== bUsed) return aUsed - bUsed;
-        return (analysisMap[b]?.foodie_score || 0) - (analysisMap[a]?.foodie_score || 0);
-      });
-
-    if (!candidates.length) continue;
-    const bestCand = candidates[0];
-    if (bestCand === midx) continue;
-
-    // bestCand가 다른 씬에서 사용중이면 거기에 현재 씬의 미디어를 입자 증 (swap)
-    const otherSceneIdx = mediaToScene.get(bestCand);
-    if (otherSceneIdx !== undefined && otherSceneIdx !== i) {
-      refined[otherSceneIdx].media_idx = midx;
-      mediaToScene.set(midx, otherSceneIdx);
-      mediaSwapCount++;
-      console.log(`[CategoryFix swap] 씬 ${otherSceneIdx}: ${bestCand}→${midx}`);
-    } else {
-      mediaToScene.delete(midx);
+  // ① 미사용 영상 → 이미지 씬 교체 (카테고리+토큰 기반 greedy 1:1 배정)
+  if (videoIdxs.length > 0) {
+    let unusedVids = videoIdxs.filter(i => !getUsedVidSet().has(i) && !exteriorIdxSet.has(i));
+    if (unusedVids.length > 0) {
+      const imgSceneIdxs = [];
+      for (let i = 0; i < scenes.length - 1; i++) {
+        if (files[scenes[i].media_idx]?.type === 'image') imgSceneIdxs.push(i);
+      }
+      if (imgSceneIdxs.length > 0) {
+        const pairs = [];
+        for (const si of imgSceneIdxs) {
+          const sc = scenes[si];
+          const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
+          const tokens = tokenizeText(sceneText);
+          const sceneCat = detectFoodCategory(sceneText);
+          for (const vi of unusedVids) {
+            const mData = analysisMap[vi] || {};
+            const vText = `${mData.focus || ''} ${mData.narration_hint || ''}`;
+            const mCat  = detectFoodCategory(vText, mData.food_category);
+            let score = 0;
+            if (sceneCat && mCat === sceneCat) score += 15;
+            if (tokens.length > 0) score += tokenOverlapScore(tokens, vText) * 2;
+            score += (mData.foodie_score || 0) * 0.5;
+            pairs.push({ si, vi, score });
+          }
+        }
+        pairs.sort((a, b) => b.score - a.score || (analysisMap[b.vi]?.foodie_score || 0) - (analysisMap[a.vi]?.foodie_score || 0));
+        const assignedScenes = new Set(), assignedVids = new Set();
+        for (const { si, vi } of pairs) {
+          if (assignedScenes.has(si) || assignedVids.has(vi)) continue;
+          const meta = analysisMap[vi] || {};
+          scenes[si] = { ...scenes[si], media_idx: vi, best_start_pct: meta.best_start_pct || 0,
+            focus_coords: meta.focus_coords || null, foodie_score: meta.foodie_score || null };
+          assignedScenes.add(si); assignedVids.add(vi);
+        }
+        const remainingVids = unusedVids.filter(vi => !assignedVids.has(vi));
+        let rvi = 0;
+        for (const si of imgSceneIdxs) {
+          if (assignedScenes.has(si) || rvi >= remainingVids.length) continue;
+          const vi = remainingVids[rvi++]; const meta = analysisMap[vi] || {};
+          scenes[si] = { ...scenes[si], media_idx: vi, best_start_pct: meta.best_start_pct || 0,
+            focus_coords: meta.focus_coords || null, foodie_score: meta.foodie_score || null };
+        }
+      }
     }
-
-    sc.media_idx = bestCand;
-    mediaToScene.set(bestCand, i);
-    mediaSwapCount++;
-    console.log(`[CategoryFix] 씬 ${i}: '${sceneCat}' 나레이션 → 미디어 ${midx}(${mediaCat || '?'}) → ${bestCand}(${sceneCat}) 교체`);
+    // 여전히 미사용 영상 → 몽타주 씬으로 삽입 (총 45초 이내)
+    const stillUnused = videoIdxs.filter(i => !getUsedVidSet().has(i) && !exteriorIdxSet.has(i));
+    if (stillUnused.length > 0 && scenes.length > 0) {
+      const total = scenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
+      const budget = Math.max(0, 45 - total);
+      const canAdd = Math.min(stillUnused.length, Math.floor(budget / 2.0));
+      if (canAdd > 0) {
+        const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
+        const last = scenes.pop();
+        for (let i = 0; i < canAdd; i++) {
+          const vi = stillUnused[i]; const meta = analysisMap[vi] || {};
+          scenes.push({ media_idx: vi, duration: Math.round(perDur * 10) / 10,
+            caption1: '', caption2: '', narration: '', effect: BROLL_EFFECTS[i % BROLL_EFFECTS.length],
+            subtitle_style: 'minimal', energy_level: 3, retention_strategy: 'build',
+            focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
+            foodie_score: meta.foodie_score || null, best_start_pct: meta.best_start_pct || 0 });
+        }
+        scenes.push(last);
+        addToast?.(`미사용 영상 ${canAdd}개 → 몽타주 삽입`, 'ok');
+      }
+    }
   }
 
-  return { scenes: refined, mediaSwapCount, subtitleFixCount };
+  // ② 미사용 고품질 이미지 → b-roll 보충 (총 45초 이내)
+  if (imageIdxs.length > 0 && scenes.length > 0) {
+    const usedSet = new Set(scenes.map(s => s.media_idx));
+    const unusedImgs = imageIdxs
+      .filter(i => !usedSet.has(i) && !exteriorIdxSet.has(i))
+      .sort((a, b) => ((analysisMap[b]?.foodie_score || 0) * 2 + (analysisMap[b]?.aesthetic_score || 0) * 0.05)
+                    - ((analysisMap[a]?.foodie_score || 0) * 2 + (analysisMap[a]?.aesthetic_score || 0) * 0.05));
+    if (unusedImgs.length > 0) {
+      const total = scenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
+      const budget = Math.max(0, 45 - total);
+      const qualImgs = unusedImgs.filter(i => (analysisMap[i]?.foodie_score || 0) >= 4 || (analysisMap[i]?.aesthetic_score || 0) >= 60);
+      const canAdd = Math.min(qualImgs.length, Math.floor(budget / 2.5));
+      if (canAdd > 0) {
+        const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
+        const last = scenes.pop();
+        for (let i = 0; i < canAdd; i++) {
+          const imgIdx = qualImgs[i]; const meta = analysisMap[imgIdx] || {};
+          scenes.push({ media_idx: imgIdx, duration: Math.round(perDur * 10) / 10,
+            caption1: '', caption2: '', narration: '', effect: ['zoom-in', 'zoom-out', 'pan-right', 'pan-left'][i % 4],
+            subtitle_style: 'minimal', energy_level: 2, retention_strategy: 'build',
+            focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
+            foodie_score: meta.foodie_score || null, best_start_pct: 0 });
+        }
+        scenes.push(last);
+        addToast?.(`미사용 이미지 ${canAdd}개 → b-roll 삽입`, 'ok');
+      }
+    }
+  }
+}
+
+// ─── 씬-미디어 자체 QA 로그 (콘솔 경고, 재생성 안 함) ──────────────────────
+// 각 씬의 나레이션 카테고리 vs. 배정된 미디어 카테고리 불일치 감지 후 콘솔 출력
+function selfQALog(scenes, files, analysisMap) {
+  let mismatch = 0, total = 0, videoCount = 0;
+  scenes.forEach((sc, i) => {
+    if (i === scenes.length - 1) return; // 마지막 씬(CTA) 제외
+    const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
+    const sceneCat = detectFoodCategory(sceneText);
+    const mi = sc.media_idx;
+    if (files[mi]?.type === 'video') videoCount++;
+    if (!sceneCat) return;
+    total++;
+    const mData = analysisMap[mi] || {};
+    const mText = `${mData.focus || ''} ${mData.narration_hint || ''}`;
+    const mCat  = detectFoodCategory(mText, mData.food_category);
+    if (mCat && mCat !== sceneCat) {
+      mismatch++;
+      console.warn(`[selfQA] 씬${i} 불일치 — 나레이션:${sceneCat} vs 미디어${mi}:${mCat} (${sceneText.slice(0, 30)})`);
+    }
+  });
+  const videoTotal = scenes.filter((s, i) => i < scenes.length - 1).length;
+  console.log(`[selfQA] 영상 씬: ${videoCount}/${videoTotal} | 카테고리 불일치: ${mismatch}/${total}`);
 }
 
 // ─── 파이프라인 메인 ──────────────────────────────────────
@@ -541,139 +641,11 @@ export async function startMake() {
       }
     }
 
-    // ── 영상 무조건 우선 배치 — 그리디 content-aware 매칭 + 미사용 이미지 b-roll ──────
-    // ⚠️ 핵심 규칙: 영상이 있으면 무조건 이미지 씬보다 먼저 배치 (점수 임계값 없음)
-    {
-      const exteriorIdxSet = new Set(
-        (analysis.per_image || []).filter(p => p.is_exterior).map(p => p.idx)
-      );
-      const BROLL_EFFECTS = ['zoom-in', 'pan-right', 'zoom-out', 'pan-left', 'tilt-up'];
+    // ── 영상 우선 배치 + b-roll 보충 (main flow) ──────────────────────────────
+    applyVideoPriority(finalScenes, files, analysisMap, analysis, addToast);
 
-      const videoIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
-      const imageIdxs = files.map((f, i) => f.type === 'image' ? i : -1).filter(i => i >= 0);
-
-      // ① 영상 무조건 우선 배치: 이미지 씬 → 미사용 영상 교체 (content score = 우선순위, 차단 아님)
-      if (videoIdxs.length > 0) {
-        const getUsedVidSet = () => new Set(
-          finalScenes.map(s => files[s.media_idx]?.type === 'video' ? s.media_idx : -1).filter(i => i >= 0)
-        );
-
-        // 비외관 미사용 영상 풀
-        let unusedVids = videoIdxs.filter(i => !getUsedVidSet().has(i) && !exteriorIdxSet.has(i));
-
-        if (unusedVids.length > 0) {
-          // 이미지 씬 인덱스 목록 (CTA 마지막 씬 제외)
-          const imgSceneIdxs = [];
-          for (let i = 0; i < finalScenes.length - 1; i++) {
-            if (files[finalScenes[i].media_idx]?.type === 'image') imgSceneIdxs.push(i);
-          }
-
-          if (imgSceneIdxs.length > 0) {
-            // (씬 i, 영상 j, content score) 행렬 생성 → score DESC 그리디 배치
-            // bestPos=-1 방식 폐기: 점수가 0이어도 반드시 배치 (영상 무조건 우선)
-            const pairs = [];
-            for (const si of imgSceneIdxs) {
-              const sc = finalScenes[si];
-              const sceneTokens = tokenizeText(
-                `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`
-              );
-              for (const vi of unusedVids) {
-                const vText = `${analysisMap[vi]?.focus || ''} ${analysisMap[vi]?.narration_hint || ''}`;
-                const score = sceneTokens.length > 0 ? tokenOverlapScore(sceneTokens, vText) : 0;
-                pairs.push({ si, vi, score });
-              }
-            }
-            // 점수 높은 순 정렬 — 동점일 때 foodie_score 보조 기준
-            pairs.sort((a, b) =>
-              b.score - a.score ||
-              (analysisMap[b.vi]?.foodie_score || 0) - (analysisMap[a.vi]?.foodie_score || 0)
-            );
-
-            // 1패스: greedy 배치 (점수 >= 1인 쌍 우선)
-            const assignedScenes = new Set();
-            const assignedVids = new Set();
-            for (const { si, vi } of pairs) {
-              if (assignedScenes.has(si) || assignedVids.has(vi)) continue;
-              const meta = analysisMap[vi] || {};
-              finalScenes[si] = { ...finalScenes[si], media_idx: vi, best_start_pct: meta.best_start_pct || 0 };
-              assignedScenes.add(si);
-              assignedVids.add(vi);
-            }
-
-            // 2패스: 아직 미배치 이미지 씬 + 미배치 영상이 남아 있으면 순차 배치 (score 0이라도)
-            const remainingVids = unusedVids.filter(vi => !assignedVids.has(vi));
-            let rvi = 0;
-            for (const si of imgSceneIdxs) {
-              if (assignedScenes.has(si) || rvi >= remainingVids.length) continue;
-              const vi = remainingVids[rvi++];
-              const meta = analysisMap[vi] || {};
-              finalScenes[si] = { ...finalScenes[si], media_idx: vi, best_start_pct: meta.best_start_pct || 0 };
-            }
-          }
-        }
-
-        // 여전히 미사용 영상 → 몽타주 씬으로 삽입 (총 45초 이내)
-        const remainingUnused = videoIdxs.filter(i => !getUsedVidSet().has(i) && !exteriorIdxSet.has(i));
-        if (remainingUnused.length > 0 && finalScenes.length > 0) {
-          const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
-          const budget = Math.max(0, 45 - currentTotal);
-          const canAdd = Math.min(remainingUnused.length, Math.floor(budget / 2.0));
-          if (canAdd > 0) {
-            const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
-            const lastScene = finalScenes.pop();
-            for (let i = 0; i < canAdd; i++) {
-              const vi = remainingUnused[i]; const meta = analysisMap[vi] || {};
-              finalScenes.push({
-                media_idx: vi, duration: Math.round(perDur * 10) / 10,
-                caption1: '', caption2: '', narration: '', effect: BROLL_EFFECTS[i % BROLL_EFFECTS.length],
-                subtitle_style: 'minimal', energy_level: 3, retention_strategy: 'build',
-                focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
-                foodie_score: meta.foodie_score || null, best_start_pct: meta.best_start_pct || 0,
-              });
-            }
-            finalScenes.push(lastScene);
-            addToast(`미사용 영상 ${canAdd}개 → 몽타주 삽입`, 'ok');
-          }
-        }
-      }
-
-      // ② 미사용 이미지 b-roll 보충 (foodie_score 상위 고품질만, 총 45초 이내)
-      if (imageIdxs.length > 0 && finalScenes.length > 0) {
-        const usedSet = new Set(finalScenes.map(s => s.media_idx));
-        const unusedImgs = imageIdxs
-          .filter(i => !usedSet.has(i) && !exteriorIdxSet.has(i))
-          .sort((a, b) =>
-            ((analysisMap[b]?.foodie_score || 0) * 2 + (analysisMap[b]?.aesthetic_score || 0) * 0.05) -
-            ((analysisMap[a]?.foodie_score || 0) * 2 + (analysisMap[a]?.aesthetic_score || 0) * 0.05)
-          );
-        if (unusedImgs.length > 0) {
-          const currentTotal = finalScenes.reduce((s, sc) => s + (sc.duration || 2.0), 0);
-          const budget = Math.max(0, 45 - currentTotal);
-          const qualImgs = unusedImgs.filter(i =>
-            (analysisMap[i]?.foodie_score || 0) >= 4 || (analysisMap[i]?.aesthetic_score || 0) >= 60
-          );
-          const canAdd = Math.min(qualImgs.length, Math.floor(budget / 2.5));
-          if (canAdd > 0) {
-            const perDur = Math.max(2.0, Math.min(3.0, budget / canAdd));
-            const lastScene = finalScenes.pop();
-            for (let i = 0; i < canAdd; i++) {
-              const imgIdx = qualImgs[i]; const meta = analysisMap[imgIdx] || {};
-              finalScenes.push({
-                media_idx: imgIdx, duration: Math.round(perDur * 10) / 10,
-                caption1: '', caption2: '', narration: '',
-                effect: ['zoom-in', 'zoom-out', 'pan-right', 'pan-left'][i % 4],
-                subtitle_style: 'minimal', energy_level: 2, retention_strategy: 'build',
-                focus_coords: meta.focus_coords || null, aesthetic_score: meta.aesthetic_score || null,
-                foodie_score: meta.foodie_score || null, best_start_pct: 0,
-              });
-            }
-            finalScenes.push(lastScene);
-            addToast(`미사용 이미지 ${canAdd}개 → b-roll 삽입`, 'ok');
-          }
-        }
-      }
-
-    }
+    // ── 씬-미디어 콘텐츠 자체 QA 로그 ──────────────────────────────────────────
+    selfQALog(finalScenes, files, analysisMap);
 
     // script 업데이트
     workingScript = { ...workingScript, scenes: finalScenes };
@@ -743,6 +715,10 @@ export async function startMake() {
               rsi++;
             }
           }
+          retryScript = { ...retryScript, scenes: retryFinalScenes };
+
+          // ⚠️ QC retry에도 영상 우선 배치 적용 (누락 시 retry 후 이미지만 사용됨)
+          applyVideoPriority(retryFinalScenes, files, analysisMap, analysis, () => {});
           retryScript = { ...retryScript, scenes: retryFinalScenes };
 
           setScript(retryScript);
