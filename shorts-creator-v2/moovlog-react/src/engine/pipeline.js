@@ -186,8 +186,11 @@ function refineScenesForStoryboard(scenes, files, analysis) {
       }
 
       if (bestIdx !== curIdx && bestScore >= 1) {
-        // 외관은 마지막 씬에만 배치 — 비마지막 씬에 외관 content-matching 배정 차단
-        if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
+        // ⚠️ 업로드된 영상 파일이 배정된 씬은 절대 교체하지 않음
+        // 이미지 더 잘 맞더라도 영상 씬을 이미지로 바꾸는 건 사용자 의도에 반함
+        if (files[curIdx]?.type === 'video') {
+          // 영상 배정 씬 보호 — content-matching 교체 차단
+        } else if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
           // 외관 bestIdx는 중간 씬에 배정하지 않음
         } else {
           usedMediaIdxs.delete(curIdx);  // 기존 idx 해제
@@ -231,6 +234,9 @@ function refineScenesForStoryboard(scenes, files, analysis) {
 
   for (let i = 0; i < refined.length - 1; i++) {
     const sc = refined[i];
+    // ⚠️ 영상 파일이 배정된 씬은 음식 카테고리 swap에서도 보호
+    if (files[sc.media_idx]?.type === 'video') continue;
+
     const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
     const sceneCat = detectFoodCategory(sceneText);
     if (!sceneCat) continue;
@@ -667,38 +673,6 @@ export async function startMake() {
         }
       }
 
-      // ③ 영상 재사용: 이미지 씬이 아직 남아 있으면 영상을 다른 시작점으로 순환 재사용
-      // 같은 영상 파일도 best_start_pct 달리하면 다른 컷처럼 보임 → 이미지 출현 최소화
-      if (videoIdxs.length > 0) {
-        const nonExtVids = videoIdxs.filter(i => !analysisMap[i]?.is_exterior);
-        if (nonExtVids.length > 0) {
-          // 마지막 씬(CTA) 제외한 이미지 씬 목록
-          const imgSceneIdxsLeft = [];
-          for (let i = 0; i < finalScenes.length - 1; i++) {
-            if (files[finalScenes[i].media_idx]?.type === 'image') imgSceneIdxsLeft.push(i);
-          }
-          if (imgSceneIdxsLeft.length > 0) {
-            // 각 씬마다 다른 시작 비율 → 동일 영상 재사용 시에도 다른 장면처럼 표시
-            const VID_PCTS = [0.0, 0.3, 0.6, 0.15, 0.45, 0.75, 0.05, 0.5, 0.85, 0.2];
-            let ci = 0;
-            for (const si of imgSceneIdxsLeft) {
-              const vi   = nonExtVids[ci % nonExtVids.length];
-              const pct  = VID_PCTS[ci % VID_PCTS.length];
-              const meta = analysisMap[vi] || {};
-              finalScenes[si] = {
-                ...finalScenes[si],
-                media_idx:       vi,
-                best_start_pct:  pct,
-                focus_coords:    meta.focus_coords    || null,
-                foodie_score:    meta.foodie_score    || null,
-                aesthetic_score: meta.aesthetic_score || null,
-              };
-              ci++;
-            }
-            addToast(`영상 위주 구성: ${imgSceneIdxsLeft.length}개 이미지 씬 → 영상으로 전환`, 'inf');
-          }
-        }
-      }
     }
 
     // script 업데이트

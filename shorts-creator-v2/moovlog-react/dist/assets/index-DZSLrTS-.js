@@ -1820,7 +1820,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.64" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.65" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -2657,8 +2657,11 @@ function refineScenesForStoryboard(scenes, files, analysis) {
       }
 
       if (bestIdx !== curIdx && bestScore >= 1) {
-        // 외관은 마지막 씬에만 배치 — 비마지막 씬에 외관 content-matching 배정 차단
-        if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
+        // ⚠️ 업로드된 영상 파일이 배정된 씬은 절대 교체하지 않음
+        // 이미지 더 잘 맞더라도 영상 씬을 이미지로 바꾸는 건 사용자 의도에 반함
+        if (files[curIdx]?.type === 'video') {
+          // 영상 배정 씬 보호 — content-matching 교체 차단
+        } else if (i < refined.length - 1 && analysisMap[bestIdx]?.is_exterior) {
           // 외관 bestIdx는 중간 씬에 배정하지 않음
         } else {
           usedMediaIdxs.delete(curIdx);  // 기존 idx 해제
@@ -2702,6 +2705,9 @@ function refineScenesForStoryboard(scenes, files, analysis) {
 
   for (let i = 0; i < refined.length - 1; i++) {
     const sc = refined[i];
+    // ⚠️ 영상 파일이 배정된 씬은 음식 카테고리 swap에서도 보호
+    if (files[sc.media_idx]?.type === 'video') continue;
+
     const sceneText = `${sc.caption1 || ''} ${sc.caption2 || ''} ${sc.narration || ''}`;
     const sceneCat = detectFoodCategory(sceneText);
     if (!sceneCat) continue;
@@ -3138,38 +3144,6 @@ async function startMake() {
         }
       }
 
-      // ③ 영상 재사용: 이미지 씬이 아직 남아 있으면 영상을 다른 시작점으로 순환 재사용
-      // 같은 영상 파일도 best_start_pct 달리하면 다른 컷처럼 보임 → 이미지 출현 최소화
-      if (videoIdxs.length > 0) {
-        const nonExtVids = videoIdxs.filter(i => !analysisMap[i]?.is_exterior);
-        if (nonExtVids.length > 0) {
-          // 마지막 씬(CTA) 제외한 이미지 씬 목록
-          const imgSceneIdxsLeft = [];
-          for (let i = 0; i < finalScenes.length - 1; i++) {
-            if (files[finalScenes[i].media_idx]?.type === 'image') imgSceneIdxsLeft.push(i);
-          }
-          if (imgSceneIdxsLeft.length > 0) {
-            // 각 씬마다 다른 시작 비율 → 동일 영상 재사용 시에도 다른 장면처럼 표시
-            const VID_PCTS = [0.0, 0.3, 0.6, 0.15, 0.45, 0.75, 0.05, 0.5, 0.85, 0.2];
-            let ci = 0;
-            for (const si of imgSceneIdxsLeft) {
-              const vi   = nonExtVids[ci % nonExtVids.length];
-              const pct  = VID_PCTS[ci % VID_PCTS.length];
-              const meta = analysisMap[vi] || {};
-              finalScenes[si] = {
-                ...finalScenes[si],
-                media_idx:       vi,
-                best_start_pct:  pct,
-                focus_coords:    meta.focus_coords    || null,
-                foodie_score:    meta.foodie_score    || null,
-                aesthetic_score: meta.aesthetic_score || null,
-              };
-              ci++;
-            }
-            addToast(`영상 위주 구성: ${imgSceneIdxsLeft.length}개 이미지 씬 → 영상으로 전환`, 'inf');
-          }
-        }
-      }
     }
 
     // script 업데이트
@@ -4248,21 +4222,30 @@ function LoadingOverlay() {
 
 const FFMPEG_CORE_URLS = [
   'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr (빠름)
-  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 폴백
+  'https://fastly.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd', // Fastly CDN (대안)
+  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 최종 폴백
 ];
 
-// 타임아웃 포함 fetch → Blob URL 생성 (toBlobURL 대체)
-async function fetchToBlobURL(url, mimeType, timeoutMs = 45_000) {
+// Promise.race 기반 fetch → Blob URL 생성
+// ⚠️ AbortController는 res.arrayBuffer()를 취소 못 하므로 Promise.race로 타임아웃 보장
+async function fetchToBlobURL(url, mimeType, timeoutMs = 30_000) {
   const ctrl = new AbortController();
-  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    return URL.createObjectURL(new Blob([buf], { type: mimeType }));
-  } finally {
-    clearTimeout(tid);
-  }
+
+  const fetchPromise = fetch(url, { signal: ctrl.signal })
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.arrayBuffer();
+    })
+    .then(buf => URL.createObjectURL(new Blob([buf], { type: mimeType })));
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => {
+      ctrl.abort();
+      reject(new Error(`다운로드 타임아웃 (${Math.round(timeoutMs / 1000)}초)`));
+    }, timeoutMs)
+  );
+
+  return Promise.race([fetchPromise, timeoutPromise]);
 }
 // 자막용 폰트 (NotoSans KR Bold .ttf — CDN에서 최초 1회 다운로드)
 const FONT_CDN_URL = 'https://fonts.gstatic.com/s/notosanskr/v36/PbykFmXiEBPT4ITbgNA5Cgm20xz64px_1hVWr0wuPNGmlQNMEfD4.0.woff2';
@@ -4289,23 +4272,26 @@ async function getFFmpeg(onLog) {
     const ff = new FFmpeg();
     if (onLog) ff.on('log', ({ message }) => onLog(message));
     let lastErr;
-    for (const cdn of FFMPEG_CORE_URLS) {
+    for (let cdnIdx = 0; cdnIdx < FFMPEG_CORE_URLS.length; cdnIdx++) {
+      const cdn = FFMPEG_CORE_URLS[cdnIdx];
       try {
-        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 45초)`);
-        // fetchToBlobURL: 90초 타임아웃 포함 — 무한 대기 방지
+        onLog?.(`[FFmpeg] CDN ${cdnIdx + 1}/${FFMPEG_CORE_URLS.length} 연결 중... (최대 30초)`);
+        // Promise.race로 30초 타임아웃 보장 — res.arrayBuffer() hang도 안전하게 취소
         const [coreURL, wasmURL] = await Promise.all([
-          fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript'),
-          fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm'),
+          fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript',  30_000),
+          fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm', 30_000),
         ]);
+        onLog?.(`[FFmpeg] 다운로드 완료, WASM 초기화 중... (약 5~15초)`);
         await ff.load({ coreURL, wasmURL });
         ffmpegInstance = ff;
         return ff;
       } catch (e) {
-        console.warn(`[FFmpeg] ${cdn} 로드 실패:`, e?.message || String(e));
+        console.warn(`[FFmpeg] CDN ${cdnIdx + 1} 실패:`, e?.message || String(e));
+        onLog?.(`[FFmpeg] CDN ${cdnIdx + 1} 실패 (${e?.message || '알 수 없는 오류'}) — ${cdnIdx + 1 < FFMPEG_CORE_URLS.length ? '다음 CDN 시도 중...' : '모든 CDN 실패'}`);
         lastErr = e;
       }
     }
-    throw lastErr instanceof Error ? lastErr : new Error('CDN 로드 실패');
+    throw lastErr instanceof Error ? lastErr : new Error('모든 CDN 로드 실패');
   } catch (e) {
     ffmpegInstance = null;
     throw e;

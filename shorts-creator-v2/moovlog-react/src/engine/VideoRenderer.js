@@ -8,21 +8,30 @@ import { useVideoStore } from '../store/videoStore.js';
 
 const FFMPEG_CORE_URLS = [
   'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr (빠름)
-  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 폴백
+  'https://fastly.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd', // Fastly CDN (대안)
+  'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 최종 폴백
 ];
 
-// 타임아웃 포함 fetch → Blob URL 생성 (toBlobURL 대체)
-async function fetchToBlobURL(url, mimeType, timeoutMs = 45_000) {
+// Promise.race 기반 fetch → Blob URL 생성
+// ⚠️ AbortController는 res.arrayBuffer()를 취소 못 하므로 Promise.race로 타임아웃 보장
+async function fetchToBlobURL(url, mimeType, timeoutMs = 30_000) {
   const ctrl = new AbortController();
-  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buf = await res.arrayBuffer();
-    return URL.createObjectURL(new Blob([buf], { type: mimeType }));
-  } finally {
-    clearTimeout(tid);
-  }
+
+  const fetchPromise = fetch(url, { signal: ctrl.signal })
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.arrayBuffer();
+    })
+    .then(buf => URL.createObjectURL(new Blob([buf], { type: mimeType })));
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => {
+      ctrl.abort();
+      reject(new Error(`다운로드 타임아웃 (${Math.round(timeoutMs / 1000)}초)`));
+    }, timeoutMs)
+  );
+
+  return Promise.race([fetchPromise, timeoutPromise]);
 }
 // 자막용 폰트 (NotoSans KR Bold .ttf — CDN에서 최초 1회 다운로드)
 const FONT_CDN_URL = 'https://fonts.gstatic.com/s/notosanskr/v36/PbykFmXiEBPT4ITbgNA5Cgm20xz64px_1hVWr0wuPNGmlQNMEfD4.0.woff2';
@@ -49,23 +58,26 @@ async function getFFmpeg(onLog) {
     const ff = new FFmpeg();
     if (onLog) ff.on('log', ({ message }) => onLog(message));
     let lastErr;
-    for (const cdn of FFMPEG_CORE_URLS) {
+    for (let cdnIdx = 0; cdnIdx < FFMPEG_CORE_URLS.length; cdnIdx++) {
+      const cdn = FFMPEG_CORE_URLS[cdnIdx];
       try {
-        onLog?.(`[FFmpeg] ${cdn} 다운로드 중... (최대 45초)`);
-        // fetchToBlobURL: 90초 타임아웃 포함 — 무한 대기 방지
+        onLog?.(`[FFmpeg] CDN ${cdnIdx + 1}/${FFMPEG_CORE_URLS.length} 연결 중... (최대 30초)`);
+        // Promise.race로 30초 타임아웃 보장 — res.arrayBuffer() hang도 안전하게 취소
         const [coreURL, wasmURL] = await Promise.all([
-          fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript'),
-          fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm'),
+          fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript',  30_000),
+          fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm', 30_000),
         ]);
+        onLog?.(`[FFmpeg] 다운로드 완료, WASM 초기화 중... (약 5~15초)`);
         await ff.load({ coreURL, wasmURL });
         ffmpegInstance = ff;
         return ff;
       } catch (e) {
-        console.warn(`[FFmpeg] ${cdn} 로드 실패:`, e?.message || String(e));
+        console.warn(`[FFmpeg] CDN ${cdnIdx + 1} 실패:`, e?.message || String(e));
+        onLog?.(`[FFmpeg] CDN ${cdnIdx + 1} 실패 (${e?.message || '알 수 없는 오류'}) — ${cdnIdx + 1 < FFMPEG_CORE_URLS.length ? '다음 CDN 시도 중...' : '모든 CDN 실패'}`);
         lastErr = e;
       }
     }
-    throw lastErr instanceof Error ? lastErr : new Error('CDN 로드 실패');
+    throw lastErr instanceof Error ? lastErr : new Error('모든 CDN 로드 실패');
   } catch (e) {
     ffmpegInstance = null;
     throw e;
