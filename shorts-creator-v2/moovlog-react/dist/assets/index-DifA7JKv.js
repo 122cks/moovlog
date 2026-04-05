@@ -1820,7 +1820,7 @@ function Header({ activeTab, onTabChange, tabs }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "logo-sub", children: activeTab === "blog" ? "Blog Writer" : "Shorts Creator" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.63" })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "header-version", children: "v2.64" })
       ] }),
       tabs && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "app-tab-nav", children: tabs.map((t) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -3134,6 +3134,39 @@ async function startMake() {
             }
             finalScenes.push(lastScene);
             addToast(`미사용 이미지 ${canAdd}개 → b-roll 삽입`, 'ok');
+          }
+        }
+      }
+
+      // ③ 영상 재사용: 이미지 씬이 아직 남아 있으면 영상을 다른 시작점으로 순환 재사용
+      // 같은 영상 파일도 best_start_pct 달리하면 다른 컷처럼 보임 → 이미지 출현 최소화
+      if (videoIdxs.length > 0) {
+        const nonExtVids = videoIdxs.filter(i => !analysisMap[i]?.is_exterior);
+        if (nonExtVids.length > 0) {
+          // 마지막 씬(CTA) 제외한 이미지 씬 목록
+          const imgSceneIdxsLeft = [];
+          for (let i = 0; i < finalScenes.length - 1; i++) {
+            if (files[finalScenes[i].media_idx]?.type === 'image') imgSceneIdxsLeft.push(i);
+          }
+          if (imgSceneIdxsLeft.length > 0) {
+            // 각 씬마다 다른 시작 비율 → 동일 영상 재사용 시에도 다른 장면처럼 표시
+            const VID_PCTS = [0.0, 0.3, 0.6, 0.15, 0.45, 0.75, 0.05, 0.5, 0.85, 0.2];
+            let ci = 0;
+            for (const si of imgSceneIdxsLeft) {
+              const vi   = nonExtVids[ci % nonExtVids.length];
+              const pct  = VID_PCTS[ci % VID_PCTS.length];
+              const meta = analysisMap[vi] || {};
+              finalScenes[si] = {
+                ...finalScenes[si],
+                media_idx:       vi,
+                best_start_pct:  pct,
+                focus_coords:    meta.focus_coords    || null,
+                foodie_score:    meta.foodie_score    || null,
+                aesthetic_score: meta.aesthetic_score || null,
+              };
+              ci++;
+            }
+            addToast(`영상 위주 구성: ${imgSceneIdxsLeft.length}개 이미지 씬 → 영상으로 전환`, 'inf');
           }
         }
       }
@@ -5586,7 +5619,10 @@ function ExportPanel() {
       addToast("미디어 파일이 없습니다", "err");
       return;
     }
-    ensureIsolation();
+    if (!globalThis.crossOriginIsolated) {
+      addToast("FFmpeg는 COOP/COEP 보안 헤더가 필요합니다. 페이지를 새로고침(F5) 후 다시 시도하세요.", "err");
+      return;
+    }
     setFfmpegBusy(true);
     setFfmpegPct(0);
     try {
@@ -5605,15 +5641,9 @@ function ExportPanel() {
       setFfmpegPct(0);
     } catch (err) {
       const msg = err?.message || String(err);
-      if (msg === "__FFmpeg_COI_REQUIRED__") {
-        addToast("보안 헤더 적용을 위해 페이지를 새로고침합니다... (2초 후)", "inf");
-        setFfmpegText("🔄 새로고침 중...");
-        setTimeout(() => location.reload(), 2e3);
-      } else {
-        addToast("FFmpeg 오류: " + msg, "err");
-        setFfmpegText("📦 FFmpeg 내보내기 (시네마틱)");
-        setFfmpegPct(0);
-      }
+      addToast("FFmpeg 오류: " + msg, "err");
+      setFfmpegText("📦 FFmpeg 내보내기 (시네마틱)");
+      setFfmpegPct(0);
     } finally {
       setFfmpegBusy(false);
     }

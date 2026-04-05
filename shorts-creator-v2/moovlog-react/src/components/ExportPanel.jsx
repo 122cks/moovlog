@@ -137,7 +137,12 @@ export default function ExportPanel() {
     if (ffmpegBusy) return;
     if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
     if (!files?.length) { addToast('미디어 파일이 없습니다', 'err'); return; }
-    ensureIsolation();
+    // COOP/COEP 격리 사전 확인 — 미격리 시 자동 새로고침 대신 안내만 표시
+    // (자동 새로고침은 작업 중인 스크립트·오디오 데이터를 모두 잃어버리기 때문)
+    if (!globalThis.crossOriginIsolated) {
+      addToast('FFmpeg는 COOP/COEP 보안 헤더가 필요합니다. 페이지를 새로고침(F5) 후 다시 시도하세요.', 'err');
+      return;
+    }
     setFfmpegBusy(true);
     setFfmpegPct(0);
     try {
@@ -156,16 +161,9 @@ export default function ExportPanel() {
       setFfmpegPct(0);
     } catch (err) {
       const msg = err?.message || String(err);
-      if (msg === '__FFmpeg_COI_REQUIRED__') {
-        // SW가 COOP/COEP 헤더를 주입하도록 페이지 새로고침
-        addToast('보안 헤더 적용을 위해 페이지를 새로고침합니다... (2초 후)', 'inf');
-        setFfmpegText('🔄 새로고침 중...');
-        setTimeout(() => location.reload(), 2000);
-      } else {
-        addToast('FFmpeg 오류: ' + msg, 'err');
-        setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
-        setFfmpegPct(0);
-      }
+      addToast('FFmpeg 오류: ' + msg, 'err');
+      setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
+      setFfmpegPct(0);
     } finally {
       setFfmpegBusy(false);
     }
