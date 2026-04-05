@@ -54,12 +54,13 @@ async function getFFmpeg(onLog) {
     return ffmpegInstance;
   }
   isLoading = true;
+  let lastErr;
   try {
-    const ff = new FFmpeg();
-    if (onLog) ff.on('log', ({ message }) => onLog(message));
-    let lastErr;
     for (let cdnIdx = 0; cdnIdx < FFMPEG_CORE_URLS.length; cdnIdx++) {
       const cdn = FFMPEG_CORE_URLS[cdnIdx];
+      // ⚠️ CDN마다 새 FFmpeg 인스턴스 생성 — 이전 CDN 실패로 오염된 인스턴스 재사용 금지
+      const ff = new FFmpeg();
+      if (onLog) ff.on('log', ({ message }) => onLog(message));
       try {
         onLog?.(`[FFmpeg] CDN ${cdnIdx + 1}/${FFMPEG_CORE_URLS.length} 연결 중... (최대 30초)`);
         // Promise.race로 30초 타임아웃 보장 — res.arrayBuffer() hang도 안전하게 취소
@@ -68,9 +69,9 @@ async function getFFmpeg(onLog) {
           fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm', 30_000),
         ]);
         onLog?.(`[FFmpeg] 다운로드 완료, WASM 초기화 중... (약 10~30초)`);
-        // ⚠️ ff.load() 자체도 hang 가능 → 60초 타임아웃 보장
+        // ⚠️ ff.load() 자체도 hang 가능 → 35초 타임아웃 (CDN당 총 ~65초, 전체 3CDN = ~3분)
         const initTimeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('WASM 초기화 타임아웃 (60초) — 새로고침 후 재시도해주세요')), 60_000)
+          setTimeout(() => reject(new Error('WASM 초기화 타임아웃 — 다음 CDN 시도')), 35_000)
         );
         try {
           await Promise.race([ff.load({ coreURL, wasmURL }), initTimeout]);
@@ -83,6 +84,8 @@ async function getFFmpeg(onLog) {
         ffmpegInstance = ff;
         return ff;
       } catch (e) {
+        // 실패한 FFmpeg 인스턴스 강제 종료 → 메모리/워커 정리
+        try { ff.terminate(); } catch (_) {}
         console.warn(`[FFmpeg] CDN ${cdnIdx + 1} 실패:`, e?.message || String(e));
         onLog?.(`[FFmpeg] CDN ${cdnIdx + 1} 실패 (${e?.message || '알 수 없는 오류'}) — ${cdnIdx + 1 < FFMPEG_CORE_URLS.length ? '다음 CDN 시도 중...' : '모든 CDN 실패'}`);
         lastErr = e;
