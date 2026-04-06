@@ -134,13 +134,14 @@ jobs:
                   if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
                     echo "서명 APK 빌드"
                     ./gradlew assembleRelease \
-                      -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/moovlog.keystore \
-                      -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_STORE_PASSWORD }} \
-                      -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
-                      -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
+                      -PversionCode=${{ github.run_number }} \
+                      -PstoreFile=$GITHUB_WORKSPACE/moovlog.keystore \
+                      -PstorePassword=${{ secrets.ANDROID_STORE_PASSWORD }} \
+                      -PkeyAlias=${{ secrets.ANDROID_KEY_ALIAS }} \
+                      -PkeyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
                   else
                     echo "DEBUG APK 빌드 (키스토어 없음)"
-                    ./gradlew assembleDebug
+                    ./gradlew assembleDebug -PversionCode=${{ github.run_number }}
                   fi
 
             - name: Find APK
@@ -273,6 +274,14 @@ jobs:
                     SIZES='N/A'
                   fi
                   echo "file_sizes=${SIZES}" >> $GITHUB_OUTPUT
+                  # SHA-256 해시 값 계산
+                  if ls release-files/ 2>/dev/null | grep -qE '\.(exe|apk)$'; then
+                    HASHES=$(find release-files/ -name '*.exe' -o -name '*.apk' | sort | \
+                      xargs -I{} sh -c 'printf "`%s`\n  `sha256: %s`\n" "$(basename {})" "$(sha256sum {} | cut -d" " -f1)"' 2>/dev/null || echo 'N/A')
+                  else
+                    HASHES='N/A'
+                  fi
+                  echo "file_hashes=${HASHES}" >> $GITHUB_OUTPUT
 
             # ── Discord 알림 ──────────────────────────────────────────────
             - name: Discord 빌드 완료 알림
@@ -291,7 +300,8 @@ jobs:
                           {"name": "커밋",  "value": "`${{ steps.status.outputs.sha_short }}`", "inline": true},
                           {"name": "커밋 메시지", "value": "${{ steps.status.outputs.commit_msg }}", "inline": false},
                           {"name": "📦 파일 크기", "value": "${{ steps.status.outputs.file_sizes }}", "inline": false},
-                          {"name": "📥 최신 빌드 다운로드", "value": "[⬇ exe / apk 파일 받기](${{ steps.status.outputs.release_url }})", "inline": false}
+                          {"name": "� SHA-256", "value": "${{ steps.status.outputs.file_hashes }}", "inline": false},
+                          {"name": "�📥 최신 빌드 다운로드", "value": "[⬇ exe / apk 파일 받기](${{ steps.status.outputs.release_url }})", "inline": false}
                         ],
                         "footer": {"text": "GitHub Actions • ${{ github.workflow }}"},
                         "timestamp": "${{ github.event.head_commit.timestamp }}"

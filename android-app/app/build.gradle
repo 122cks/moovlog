@@ -10,16 +10,17 @@ android {
         applicationId "com.moovlog.shorts"
         minSdk 24
         targetSdk 34
-        versionCode 4
-        versionName "2.76"
+        // GITHUB_RUN_NUMBER 환경변수로 자동 증가. 로컈 빌드시 기본값 5 사용
+        versionCode (project.findProperty('versionCode') as Integer) ?: 5
+        versionName "2.79"
     }
 
     signingConfigs {
         release {
-            storeFile     file("../moovlog.keystore")
-            storePassword "moovlog2024"
-            keyAlias      "moovlog"
-            keyPassword   "moovlog2024"
+            storeFile     file(project.findProperty('storeFile') ?: "../moovlog.keystore")
+            storePassword project.findProperty('storePassword') ?: ""
+            keyAlias      project.findProperty('keyAlias')      ?: "moovlog"
+            keyPassword   project.findProperty('keyPassword')   ?: ""
         }
     }
 
