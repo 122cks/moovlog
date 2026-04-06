@@ -202,6 +202,10 @@ const INITIAL = {
   ffmpegRendering: false, // 렌더링 진행 중 여부
   ffmpegProgress: 0,      // 0~100
   ffmpegMsg: '',          // 진행 메시지
+
+  // FFmpeg 엔진 예열 상태 (앱 시작 시 백그라운드 로딩)
+  ffmpegReady: false,     // 싱글톤 인스턴스 준비 완료
+  ffmpegWarmMsg: '',      // 예열 중 메시지 (빈 문자열이면 숨김)
 };
 
 // ─── Store ────────────────────────────────────────────────────
@@ -321,6 +325,9 @@ export const useVideoStore = create(
       setFfmpegRendering: (ffmpegRendering) => set({ ffmpegRendering }, false, 'setFfmpegRendering'),
       setFfmpegProgress: (ffmpegProgress) => set({ ffmpegProgress }, false, 'setFfmpegProgress'),
       setFfmpegMsg: (ffmpegMsg) => set({ ffmpegMsg }, false, 'setFfmpegMsg'),
+      // ── FFmpeg 엔진 예열 ────────────────────────────────────
+      setFfmpegReady: (ffmpegReady) => set({ ffmpegReady }, false, 'setFfmpegReady'),
+      setFfmpegWarmMsg: (ffmpegWarmMsg) => set({ ffmpegWarmMsg }, false, 'setFfmpegWarmMsg'),
       // ── 토스트 ─────────────────────────────────────────────
       addToast: (msg, type = 'inf') => set(s => ({
         toasts: [...s.toasts, { id: Date.now() + Math.random(), msg, type }],

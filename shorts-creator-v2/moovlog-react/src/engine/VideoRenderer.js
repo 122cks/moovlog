@@ -40,12 +40,17 @@ const FONT_TTF_URL = 'https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@main/Sans
 
 let ffmpegInstance = null;
 let isLoading = false;
+// 가변 로그 콜백 — 싱글톤 캐시 반환 시에도 현재 caller의 콜백으로 교체
+let _activeLogCallback = null;
 
 async function getFFmpeg(onLog) {
   // SharedArrayBuffer 미지원 환경에서는 즉시 실패 → 로딩 스피너 무한 방지
   if (!globalThis.crossOriginIsolated) {
     throw new Error('__FFmpeg_COI_REQUIRED__');
   }
+
+  // 캐시된 인스턴스가 있어도 로그 콜백은 항상 최신 caller로 교체
+  if (onLog) _activeLogCallback = onLog;
 
   if (ffmpegInstance) return ffmpegInstance;
   if (isLoading) {
@@ -60,7 +65,8 @@ async function getFFmpeg(onLog) {
       const cdn = FFMPEG_CORE_URLS[cdnIdx];
       // ⚠️ CDN마다 새 FFmpeg 인스턴스 생성 — 이전 CDN 실패로 오염된 인스턴스 재사용 금지
       const ff = new FFmpeg();
-      if (onLog) ff.on('log', ({ message }) => onLog(message));
+      // 가변 콜백 참조 — 나중에 _activeLogCallback이 바뀌어도 최신 값이 호출됨
+      ff.on('log', ({ message }) => _activeLogCallback?.(message));
       try {
         onLog?.(`[FFmpeg] CDN ${cdnIdx + 1}/${FFMPEG_CORE_URLS.length} 연결 중... (최대 30초)`);
         // Promise.race로 30초 타임아웃 보장 — res.arrayBuffer() hang도 안전하게 취소
@@ -98,6 +104,40 @@ async function getFFmpeg(onLog) {
   } finally {
     isLoading = false;
   }
+}
+
+/**
+ * FFmpeg 엔진 사전 예열 — 앱 시작 시 백그라운드에서 호출해 체감 대기 시간 제거
+ * @param {(msg: string, pct: number|null) => void} onProgress
+ */
+export async function warmupFFmpeg(onProgress) {
+  if (ffmpegInstance) {
+    onProgress?.('✅ FFmpeg 엔진 준비 완료!', 100);
+    return;
+  }
+  if (!globalThis.crossOriginIsolated) {
+    onProgress?.('⚠️ COOP/COEP 미활성 — 페이지 재로드 후 자동 활성화됩니다', null);
+    return;
+  }
+  try {
+    await getFFmpeg((msg) => {
+      // CDN 다운로드 / 초기화 로그를 onProgress로 전달
+      if (msg.startsWith('[FFmpeg]')) {
+        onProgress?.(msg.replace('[FFmpeg] ', ''), null);
+      }
+    });
+    onProgress?.('✅ FFmpeg 엔진 준비 완료!', 100);
+  } catch (e) {
+    if (e?.message !== '__FFmpeg_COI_REQUIRED__') {
+      console.warn('[FFmpeg warmup]', e.message);
+      onProgress?.('⚠️ ' + e.message, null);
+    }
+  }
+}
+
+/** FFmpeg 싱글톤이 이미 로드되어 있는지 확인 */
+export function isFFmpegReady() {
+  return !!ffmpegInstance;
 }
 
 // ─── 테마별 색감 보정 LUT 필터 ───────────────────────────

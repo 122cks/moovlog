@@ -4,6 +4,7 @@ import { useVideoStore } from './store/videoStore.js';
 import { initFirebase }  from './engine/firebase.js';
 import { setGeminiKey }  from './engine/gemini.js';
 import { setTypeCastKeys } from './engine/tts.js';
+import { warmupFFmpeg }  from './engine/VideoRenderer.js';
 
 import Header          from './components/Header.jsx';
 import UploadSection   from './components/UploadSection.jsx';
@@ -21,7 +22,7 @@ const APP_TABS = [
 ];
 
 export default function App() {
-  const { pipeline, showResult } = useVideoStore();
+  const { pipeline, showResult, ffmpegReady, ffmpegWarmMsg } = useVideoStore();
   const [activeTab, setActiveTab] = useState('shorts');
 
   useEffect(() => {
@@ -57,11 +58,53 @@ export default function App() {
         }
       }
     }
+
+    // ── FFmpeg 엔진 백그라운드 예열 ─────────────────────────────────────────────
+    // crossOriginIsolated가 true일 때 (COOP/COEP 헤더 적용) 즉시 예열 시작
+    // → 사용자가 "만들기" 버튼 클릭 시 FFmpeg가 이미 초기화돼 있어 즉시 렌더링 가능
+    if (window.crossOriginIsolated) {
+      const { setFfmpegReady, setFfmpegWarmMsg } = useVideoStore.getState();
+      setFfmpegWarmMsg('엔진 예열 중... (최초 1회)');
+      warmupFFmpeg((msg) => {
+        if (msg?.startsWith('✅')) {
+          setFfmpegReady(true);
+          setFfmpegWarmMsg('');
+        } else {
+          setFfmpegWarmMsg(msg || '');
+        }
+      });
+    }
   }, []);
 
   return (
     <div className="app-root">
       <Header activeTab={activeTab} onTabChange={setActiveTab} tabs={APP_TABS} />
+
+      {/* FFmpeg 엔진 예열 상태 배너 */}
+      {ffmpegWarmMsg && !ffmpegReady && (
+        <div style={{
+          background: 'rgba(124,58,237,0.12)', border: '1px solid rgba(168,85,247,0.3)',
+          borderRadius: '8px', margin: '8px 12px 0', padding: '7px 12px',
+          display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: '#c084fc',
+        }}>
+          <i className="fas fa-spinner fa-spin" style={{ flexShrink: 0 }} />
+          <span>{ffmpegWarmMsg}</span>
+          <span style={{ marginLeft: 'auto', opacity: 0.6, fontSize: '0.68rem' }}>
+            (두 번째 접속부터 즉시 시작)
+          </span>
+        </div>
+      )}
+      {ffmpegReady && (
+        <div style={{
+          background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(52,211,153,0.3)',
+          borderRadius: '8px', margin: '8px 12px 0', padding: '6px 12px',
+          display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', color: '#34d399',
+          animation: 'fadeIn 0.4s ease',
+        }}>
+          <i className="fas fa-check-circle" />
+          <span>🎬 시네마틱 렌더링 엔진 준비 완료</span>
+        </div>
+      )}
 
       {/* 숏폼 탭 */}
       {activeTab === 'shorts' && (
