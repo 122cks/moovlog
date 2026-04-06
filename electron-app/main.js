@@ -255,6 +255,15 @@ function getDynamicPreset(userPreset) {
   return userPreset || 'medium';
 }
 
+// RAM 기반 동적 CRF 결정 — 가용 RAM이 많을수록 고화질(낮은 CRF)
+// RAM ≥ 8GB → 18 (최상), ≥ 4GB → 20 (고품질), 그 이하 → 사용자 지정값 유지
+function getDynamicCrf(userCrf) {
+  const freeMB = os.freemem() / 1048576;
+  if (freeMB >= 8192) return 18;
+  if (freeMB >= 4096) return 20;
+  return userCrf; // 저사양: 사용자가 지정한 값 그대로
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // §5  렌더링 큐 (#74) + 프로세스 추적 (#5) + powerSaveBlocker (#81)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -844,7 +853,9 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
 
   // ── 입력 검증 (No input specified 방어) ──────────────────────────────
   if (!Array.isArray(editList) || editList.length === 0) {
-    throw new Error('영상을 추가해주세요. 타임라인에 클립이 없으면 렌더링을 시작할 수 없습니다.');
+    throw new Error(
+      '영상을 먼저 추가해주세요. 타임라인에 클립이 없으면 렌더링을 시작할 수 없습니다.',
+    );
   }
 
   const ALLOWED_EXT = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv)$/i;
@@ -860,7 +871,6 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
         `지원하지 않는 파일 형식입니다: "${path.basename(rawPath)}"\n지원 형식: mp4, mov, avi, mkv, webm 등`,
       );
     }
-    // 한글·특수문자 경로 포함 실제 존재 여부 확인
     if (!fs.existsSync(rawPath)) {
       throw new Error(
         `소스 파일을 찾을 수 없습니다: "${path.basename(rawPath)}"\n경로를 확인하거나 파일을 다시 추가해주세요.`,
@@ -984,7 +994,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     speedRamp = 1.0, // #60
     normalizeAudio = false, // #85 볼륨 노멀라이즈
     autoOpenFolder = true, // #82 렌더 후 폴더 자동 열기
-    autoPlayAfter = false, // #86 렌더 후 영상 자동 재생
+    autoPlayAfter = false, // #86 완료 후 영상 자동 재생
     isPremium = false, // #92 무료/유료 구분
     endingCredit = true, // #92 무료 사용자 엔딩 크레딧 여부
   } = options;
@@ -1018,6 +1028,8 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       // HEVC(H.265) / VP9 / AV1 등 비표준 코덱을 안전하게 소프트웨어 디코딩
       // -vf format=yuv420p 는 complexFilter에서 설정하므로 여기선 hwaccel만 세팅
       cmd = cmd.addInputOption('-hwaccel', 'auto');
+      // 손상 프레임 건너뜀 + PTS 재계산 (검은 화면 주요 원인 케이스 대응)
+      cmd = cmd.addInputOption('-fflags', '+genpts+igndts');
       if ((clip.start || 0) > 0) cmd = cmd.addInputOption('-ss', String(clip.start));
       cmd = cmd.addInputOption('-t', String(Math.max(0.1, clip.duration || 3)));
       cmd = cmd.input(cleanPath);
@@ -1110,8 +1122,8 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     }
 
     // #92 무료 사용자 엔딩 크레딧 — 마지막 3초에 "Made with Moovlog" 표시
-    if (!isPremium && endingCredit && totalDur > 3) {
-      const creditStart = Math.max(0, totalDur - 3);
+    if (!isPremium && endingCredit && snappedTotalDur > 3) {
+      const creditStart = Math.max(0, snappedTotalDur - 3);
       const creditLabel = `vc_credit_${jobId}`.replace(/-/g, '_');
       filters.push(
         `[${lastVid}]drawtext=` +
@@ -1127,18 +1139,23 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     cmd.complexFilter(filters.join(';'), [lastVid]);
 
     // 오디오 출력 (#32 BGM 믹싱, #85 노멀라이즈)
+    const _afadeFilter = `afade=t=out:st=${Math.max(0, snappedTotalDur - 1).toFixed(3)}:d=1`;
     if (hasBgm) {
       const normFilter = normalizeAudio ? `,loudnorm=I=-16:LRA=11:TP=-1.5` : '';
       cmd.audioFilter(
-        `[${n}:a]aloop=loop=-1:size=2000000000,atrim=duration=${totalDur},volume=${bgmVolume}${normFilter}[bgm_a]`,
+        `[${n}:a]aloop=loop=-1:size=2000000000,atrim=duration=${snappedTotalDur},volume=${bgmVolume}${normFilter},${_afadeFilter}[bgm_a]`,
       );
       cmd.addOption('-map', '[bgm_a]');
     } else if (normalizeAudio) {
-      // BGM 없이 원본 오디오만 노멀라이즈
-      cmd.audioFilter('loudnorm=I=-16:LRA=11:TP=-1.5');
+      // BGM 없이 원본 오디오만 노멀라이즈 + 마지막 1초 페이드아웃
+      cmd.audioFilter(`loudnorm=I=-16:LRA=11:TP=-1.5,${_afadeFilter}`);
+    } else {
+      // 원본 오디오 그대로지만 마지막 1초 페이드아웃 적용
+      cmd.audioFilter(_afadeFilter);
     }
 
     // 출력 옵션 (#7 하드웨어코덱, #78 2패스, #80 스레드)
+    const dynamicCrf = getDynamicCrf(crf); // RAM 기반 CRF 자동 조정
     const outOpts = [
       `-c:v ${videoCodec}`,
       videoCodec === 'libx264'
@@ -1146,18 +1163,27 @@ async function _doRender(event, editList, outputPath, options, jobId) {
         : videoCodec === 'h264_nvenc'
           ? `-preset p4 -rc constqp`
           : videoCodec === 'h264_qsv'
-            ? `-global_quality ${crf}`
+            ? `-global_quality ${dynamicCrf}`
             : '',
-      videoCodec === 'libx264' ? `-crf ${crf}` : videoCodec === 'h264_nvenc' ? `-cq ${crf}` : '',
-      videoCodec === 'h264_videotoolbox' ? `-q:v ${Math.round(crf / 2)}` : '',
+      videoCodec === 'libx264'
+        ? `-crf ${dynamicCrf}`
+        : videoCodec === 'h264_nvenc'
+          ? `-cq ${dynamicCrf}`
+          : '',
+      videoCodec === 'h264_videotoolbox' ? `-q:v ${Math.round(dynamicCrf / 2)}` : '',
       twoPass && videoCodec === 'libx264'
         ? `-pass 2 -passlogfile "${path.join(os.tmpdir(), 'moovlog_pass')}"`
         : '',
+      // 최소 비트레이트 5,000 kbps 강제 (깊두기 현상 방지)
+      videoCodec === 'libx264' ? `-minrate 2000k -maxrate 8000k -bufsize 10000k` : '',
       `-threads ${getDynamicThreads()}`, // #97 동적 스레드
       '-c:a aac',
-      '-b:a 128k',
+      '-b:a 192k', // 128k에서 192k로 상향
       '-movflags +faststart',
       '-pix_fmt yuv420p',
+      // 만들어진 영상의 회전 메타데이터 시에를 강제 제거 (9:16 옵려지는 문제 방지)
+      '-map_metadata 0',
+      '-metadata:s:v:0 rotate=0',
     ].filter(Boolean);
 
     cmd.outputOptions(outOpts).output(outputPath);
