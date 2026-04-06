@@ -230,10 +230,22 @@ const CPU_THREADS = Math.max(1, Math.floor(_CPU_TOTAL * 0.75)); // 정적 기본
 // 가용 RAM < 2 GB → 25%  |  < 4 GB → 50%  |  그 이상 → 75%
 function getDynamicThreads() {
   const freeMB = os.freemem() / 1048576;
-  const ratio  = freeMB < 2048 ? 0.25 : freeMB < 4096 ? 0.5 : 0.75;
-  const t      = Math.max(1, Math.floor(_CPU_TOTAL * ratio));
+  const ratio = freeMB < 2048 ? 0.25 : freeMB < 4096 ? 0.5 : 0.75;
+  const t = Math.max(1, Math.floor(_CPU_TOTAL * ratio));
   console.log(`[DynThread] 가용 RAM ${Math.round(freeMB)} MB → 스레드 ${t}/${_CPU_TOTAL}`);
   return t;
+}
+
+// #98 RAM 기반 동적 preset 결정
+// 가용 RAM < 2 GB → ultrafast  |  < 4 GB → fast  |  그 이상 → medium
+// caller가 'libx264' 이외 코덱을 쓸 땐 무시됨
+function getDynamicPreset(userPreset) {
+  // 사용자가 명시적으로 'ultrafast'/'veryfast' 지정한 경우 우선 사용
+  if (['ultrafast', 'superfast', 'veryfast'].includes(userPreset)) return userPreset;
+  const freeMB = os.freemem() / 1048576;
+  if (freeMB < 2048) return 'ultrafast';
+  if (freeMB < 4096) return 'fast';
+  return userPreset || 'medium';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -269,6 +281,13 @@ function getFfmpegLogPath() {
 function appendFfmpegLog(jobId, line) {
   try {
     const logPath = getFfmpegLogPath();
+    // #98 10 MB 초과 시 아카이브 폴더로 이동
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > 10 * 1024 * 1024) {
+      const archiveDir = path.join(path.dirname(logPath), 'ffmpeg_log_archive');
+      if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      fs.renameSync(logPath, path.join(archiveDir, `ffmpeg_error_${stamp}.log`));
+    }
     const entry = `[${new Date().toISOString()}][${jobId}] ${line}\n`;
     fs.appendFileSync(logPath, entry, 'utf8');
   } catch (_) {}
@@ -987,7 +1006,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     const outOpts = [
       `-c:v ${videoCodec}`,
       videoCodec === 'libx264'
-        ? `-preset ${preset}`
+        ? `-preset ${getDynamicPreset(preset)}` // #98 RAM 기반 동적 preset
         : videoCodec === 'h264_nvenc'
           ? `-preset p4 -rc constqp`
           : videoCodec === 'h264_qsv'
@@ -1621,4 +1640,57 @@ ipcMain.handle('get-error-webhook-status', () => {
     webhookUrl = process.env.MOOVLOG_ERROR_WEBHOOK;
   }
   return { configured: !!webhookUrl };
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §13  v2.77 추가 IPC
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─ #97 마지막 렌더 옵션 저장 / 불러오기 ─────────────────────────────────
+// 저장 항목: resolution, codec, crf, fps, preset, twoPass, normalizeAudio
+// JS 호출: await window.electronAPI.saveRenderOptions({ resolution:'1080', ... })
+//          const { opts } = await window.electronAPI.loadRenderOptions();
+const _renderOptsPath = () => getUserDataPath('last_render_opts.json');
+
+// #97 기본 렌더 옵션 (파일 손상 시 fallback)
+const _DEFAULT_RENDER_OPTS = {
+  resolution: '1080',
+  codec: 'libx264',
+  crf: 23,
+  fps: 30,
+  preset: 'medium',
+  twoPass: false,
+  normalizeAudio: false,
+};
+
+ipcMain.handle('save-render-options', (_, opts = {}) => {
+  try {
+    fs.writeFileSync(_renderOptsPath(), JSON.stringify({ ...opts, savedAt: Date.now() }), 'utf8');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('load-render-options', () => {
+  const filePath = _renderOptsPath();
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    // 최소 유효성 검사 — 필수 키 없으면 손상으로 간주
+    if (typeof parsed !== 'object' || parsed === null || typeof parsed.crf === 'undefined') {
+      throw new Error('schema_invalid');
+    }
+    return { ok: true, opts: parsed };
+  } catch (e) {
+    // 파일 없음이거나 JSON 파싱 실패(손상) → 기본값 반환 + 파일 재기록
+    const isCorrupt = e.message !== 'schema_invalid' && !e.message.includes('ENOENT');
+    if (isCorrupt) {
+      console.warn('[RenderOpts] 설정 파일 손상 감지, 기본값으로 복구합니다.');
+      try {
+        fs.unlinkSync(filePath);
+      } catch (_) {}
+    }
+    return { ok: false, opts: _DEFAULT_RENDER_OPTS, isDefault: true };
+  }
 });

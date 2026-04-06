@@ -262,6 +262,9 @@ jobs:
                   fi
                   echo "release_url=https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" >> $GITHUB_OUTPUT
                   echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+                  # 커밋 메시지 첫 줄 (100자 제한)
+                  COMMIT_MSG=$(git log -1 --pretty=format:"%s" | cut -c1-100)
+                  echo "commit_msg=${COMMIT_MSG}" >> $GITHUB_OUTPUT
 
             # ── Discord 알림 ──────────────────────────────────────────────
             - name: Discord 빌드 완료 알림
@@ -278,6 +281,7 @@ jobs:
                         "fields": [
                           {"name": "버전",  "value": "v${{ steps.ver.outputs.version }}", "inline": true},
                           {"name": "커밋",  "value": "`${{ steps.status.outputs.sha_short }}`", "inline": true},
+                          {"name": "커밋 메시지", "value": "${{ steps.status.outputs.commit_msg }}", "inline": false},
                           {"name": "배포",  "value": "[Release 페이지](${{ steps.status.outputs.release_url }})", "inline": false}
                         ],
                         "footer": {"text": "GitHub Actions • ${{ github.workflow }}"},
@@ -292,7 +296,8 @@ jobs:
                   VERSION="v${{ steps.ver.outputs.version }}"
                   EMOJI="${{ steps.status.outputs.emoji }}"
                   URL="${{ steps.status.outputs.release_url }}"
-                  MSG="${EMOJI} *무브먼트 Shorts Creator ${VERSION}*"$'\n'"${{ steps.status.outputs.msg }}"$'\n\n'"📦 [릴리스 다운로드](${URL})"
+                  COMMIT="${{ steps.status.outputs.commit_msg }}"
+                  MSG="${EMOJI} *무브먼트 Shorts Creator ${VERSION}*"$'\n'"${{ steps.status.outputs.msg }}"$'\n\n'"📝 ${COMMIT}"$'\n\n'"📦 [릴리스 다운로드](${URL})"
                   curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                     -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
                     -d "parse_mode=Markdown" \

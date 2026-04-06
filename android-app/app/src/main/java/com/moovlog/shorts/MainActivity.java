@@ -56,6 +56,8 @@ public class MainActivity extends Activity {
     private View splashView;
     private boolean splashHidden = false;
     private ValueCallback<Uri[]> fileUploadCallback;
+    private long backPressedTime = 0; // #98 연속 2번 뮤로가기 종료
+    private static final long BACK_PRESS_INTERVAL = 2000; // ms
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -551,18 +553,22 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ── 뒤로가기: WebView 히스토리 → 종료 다이얼로그 (#5) ───────────────
+    // ── 뒤로가기: WebView 히스토리 → 2번 연속 클릭 시 종료 (#98) ───────────────
     @Override
     public void onBackPressed() {
         if (webView != null && webView.canGoBack()) {
             webView.goBack();
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - backPressedTime < BACK_PRESS_INTERVAL) {
+            // 2초 이내 두 번째 누름 → 종료
+            super.onBackPressed();
         } else {
-            new AlertDialog.Builder(this)
-                    .setTitle("앱 종료")
-                    .setMessage("무브먼트 Shorts Creator를 종료하시겠습니까?")
-                    .setPositiveButton("종료", (d, w) -> finish())
-                    .setNegativeButton("취소", null)
-                    .show();
+            backPressedTime = now;
+            Toast.makeText(this,
+                    "한 번 더 누르면 종료됩니다",
+                    Toast.LENGTH_SHORT).show();
         }
     }
 
