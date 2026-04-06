@@ -37,7 +37,29 @@ const fs = require('fs');
 const os = require('os');
 const cp = require('child_process');
 const crypto = require('crypto');
-const fluent = require('fluent-ffmpeg');
+
+// ── [Safe-1] fluent-ffmpeg 안전 로드 — 모듈 없어도 앱이 죽지 않음
+let fluent = null;
+try {
+  fluent = require('fluent-ffmpeg');
+} catch (e) {
+  // startup_error.txt에 기록하고 계속 실행 (FFmpeg 기능만 비활성)
+  _writeStartupError('fluent-ffmpeg load failed', e);
+}
+
+// ── [Safe-3] startup_error.txt — 앱 못 뜰 때 가장 먼저 기록됨
+// (app.getPath 사용 불가 시점 → os.homedir 기반 경로 사용)
+function _writeStartupError(label, err) {
+  try {
+    const dir =
+      process.platform === 'win32'
+        ? path.join(process.env.APPDATA || os.homedir(), 'moovlog')
+        : path.join(os.homedir(), '.moovlog');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const entry = `[${new Date().toISOString()}] ${label}\n${err?.stack || err}\n\n`;
+    fs.appendFileSync(path.join(dir, 'startup_error.txt'), entry, 'utf8');
+  } catch (_) {}
+}
 
 // ── [Patch 4] .env 폴백: 파일 없어도 앱이 죽지 않음, 기본값 자동 설정
 (function loadDotEnv() {
@@ -106,8 +128,9 @@ function resolveBin(name) {
 const FFMPEG_PATH = resolveBin('ffmpeg');
 const FFPROBE_PATH = resolveBin('ffprobe');
 
-if (FFMPEG_PATH) fluent.setFfmpegPath(FFMPEG_PATH);
-if (FFPROBE_PATH) fluent.setFfprobePath(FFPROBE_PATH);
+// fluent이 로드됐을 때만 경로 설정 (Safe-1 안전 처리)
+if (fluent && FFMPEG_PATH) fluent.setFfmpegPath(FFMPEG_PATH);
+if (fluent && FFPROBE_PATH) fluent.setFfprobePath(FFPROBE_PATH);
 
 // #3 – 바이너리 실행 권한 부여 (macOS / Linux)
 function ensureExec(p) {
@@ -367,10 +390,12 @@ function writeErrorLog(type, err) {
 }
 process.on('uncaughtException', (err) => {
   writeErrorLog('uncaughtException', err);
+  _writeStartupError('uncaughtException', err); // startup_error.txt에도 기록
   console.error('[FATAL uncaughtException]', err);
 });
 process.on('unhandledRejection', (reason) => {
   writeErrorLog('unhandledRejection', reason);
+  _writeStartupError('unhandledRejection', reason);
   console.error('[FATAL unhandledRejection]', reason);
 });
 
@@ -462,8 +487,14 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, 'icon.png');
-  const icon = fs.existsSync(iconPath)
+  // [Safe-2] 절대 경로 + 다중 폴백으로 아이콘 못 찾아도 앱이 정상 실행
+  const iconCandidates = [
+    path.resolve(__dirname, 'icon.png'),
+    path.resolve(__dirname, 'build', 'icon.png'),
+    path.resolve(__dirname, 'assets', 'icon.png'),
+  ];
+  const iconPath = iconCandidates.find((p) => fs.existsSync(p));
+  const icon = iconPath
     ? nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 })
     : nativeImage.createEmpty();
   tray = new Tray(icon);
@@ -600,31 +631,39 @@ function buildAppMenu() {
 }
 
 // ── [Patch 2] 필수 모듈 존재 확인 — 없으면 알림창 표시 후 종료
+// fluent-ffmpeg는 Safe-1에서 이미 지연 로드 시도했으므로 결과만 확인
 async function checkRequiredModules() {
   const missing = [];
-  for (const modId of ['fluent-ffmpeg', 'electron-updater']) {
-    try {
-      require.resolve(modId);
-    } catch (_) {
-      missing.push(modId);
-    }
+  // fluent-ffmpeg: 이미 로드 시도함, null이면 미설치
+  if (!fluent) missing.push('fluent-ffmpeg');
+  // electron-updater: 선택적 모듈이므로 경고만
+  try {
+    require.resolve('electron-updater');
+  } catch (_) {
+    console.warn('[warn] electron-updater 없음 — 자동 업데이트 비활성');
   }
   if (missing.length > 0) {
-    await dialog.showMessageBox({
-      type: 'error',
-      title: '필수 라이브러리 미설치',
-      message: '다음 라이브러리가 설치되어 있지 않습니다:',
-      detail: missing.join('\n') + '\n\n터미널에서 아래 명령을 실행하세요:\nnpm install',
-      buttons: ['종료'],
-    });
-    app.quit();
-    return false;
+    _writeStartupError('checkRequiredModules', new Error('missing: ' + missing.join(', ')));
+    // 앱은 종료하지 않고 경고만 표시 (FFmpeg 없이도 UI는 사용 가능)
+    dialog
+      .showMessageBox({
+        type: 'warning',
+        title: '라이브러리 부분 미설치',
+        message: '다음 라이브러리를 찾을 수 없습니다:',
+        detail:
+          missing.join('\n') +
+          '\n\n렌더링 기능이 제한됩니다.\n터미널에서 아래 명령을 실행 후 재시작하세요:\nnpm install',
+        buttons: ['계속 실행', '종료'],
+      })
+      .then(({ response }) => {
+        if (response === 1) app.quit();
+      });
   }
-  return true;
+  return true; // 항상 true — 앱 강제 종료 방지
 }
 
 app.whenReady().then(async () => {
-  if (!(await checkRequiredModules())) return;
+  checkRequiredModules(); // 로드 실패 시 경고 팝업, 앱은 계속 실행
   loadHashCache();
   buildAppMenu();
   createWindow();

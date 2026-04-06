@@ -12,7 +12,8 @@
     "build:win-installer": "cross-env WIN_CSC_LINK= CSC_LINK= CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder@26.8.1 --win nsis",
     "build:mac": "npx electron-builder@26.8.1 --mac dmg",
     "clean": "node -e \"require('fs').rmSync('./dist-electron',{recursive:true,force:true})\"",
-    "build:clean": "npm run clean && npm run build:win-installer"
+    "build:clean": "npm run clean && npm run build:win-installer",
+    "reinstall": "node -e \"require('fs').rmSync('./node_modules',{recursive:true,force:true});require('fs').rmSync('./package-lock.json',{force:true});\" && npm install"
   },
   "dependencies": {
     "electron-updater": "^6.3.4",
