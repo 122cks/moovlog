@@ -246,6 +246,15 @@ jobs:
               id: ver
               run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
+            # APK artifact 다운로드 (텔레그램 직접 전송용)
+            - name: Download APK artifact
+              if: needs.build-android.result == 'success'
+              uses: actions/download-artifact@v4
+              with:
+                  name: android-apk
+                  path: tg-apk/
+              continue-on-error: true
+
             - name: Set build status info
               id: status
               run: |
@@ -322,6 +331,22 @@ jobs:
                     -d "parse_mode=Markdown" \
                     -d "disable_web_page_preview=false" \
                     --data-urlencode "text=${MSG}"
+
+            # ── Telegram APK 파일 직접 전송 ───────────────────────────────
+            - name: Telegram APK 파일 전송
+              if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' && needs.build-android.result == 'success' }}
+              run: |
+                  APK=$(find tg-apk/ -name "*.apk" 2>/dev/null | head -1)
+                  if [ -z "$APK" ]; then
+                    echo "APK 파일 없음 — 전송 건너뜀"
+                    exit 0
+                  fi
+                  VERSION="v${{ steps.ver.outputs.version }}"
+                  CAPTION="📦 무브먼트 Shorts Creator ${VERSION}"$'\n'"설치: 설정 → 알 수 없는 앱 → 허용 후 실행"
+                  curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+                    -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+                    -F "document=@${APK}" \
+                    --data-urlencode "caption=${CAPTION}"
 
     # ══════════════════════════════════════════════════════════════════════════
     #  JOB 5 : 빌드 실패 전용 알림  (tag push 시 앞 job이 하나라도 실패하면 실행)
