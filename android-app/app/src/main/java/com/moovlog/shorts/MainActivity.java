@@ -22,7 +22,12 @@ import android.media.MediaScannerConnection;
 import android.os.Vibrator;
 import android.os.VibrationEffect;
 import android.webkit.JavascriptInterface;
+import android.webkit.MimeTypeMap;
+import android.database.Cursor;
+import android.provider.OpenableColumns;
 import java.io.File;
+import java.io.InputStream;
+import java.io.OutputStream;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -126,19 +131,24 @@ public class MainActivity extends Activity {
                 }
                 fileUploadCallback = callback;
 
-                // 갤러리: 영상 다중 선택
+                // ── [통합 선택기 #1] 사진(.jpg/.png) + 영상(.mp4/.mov) 동시 다중 선택
                 Intent gallery = new Intent(Intent.ACTION_GET_CONTENT);
-                gallery.setType("video/*");
+                gallery.setType("*/*");
+                gallery.putExtra(Intent.EXTRA_MIME_TYPES,
+                        new String[]{"image/*", "video/*"});
                 gallery.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
                 gallery.addCategory(Intent.CATEGORY_OPENABLE);
 
                 // 카메라: 동영상 촬영
                 Intent camera = new Intent(
                         android.provider.MediaStore.ACTION_VIDEO_CAPTURE);
+                // 카메라: 사진 촬영
+                Intent photo = new Intent(
+                        android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
 
-                Intent chooser = Intent.createChooser(gallery, "영상 선택");
+                Intent chooser = Intent.createChooser(gallery, "사진 / 영상 선택");
                 chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS,
-                        new Intent[]{camera});
+                        new Intent[]{camera, photo});
 
                 try {
                     startActivityForResult(chooser, FILE_CHOOSER_REQUEST);
@@ -436,6 +446,102 @@ public class MainActivity extends Activity {
                     new String[]{"video/mp4"},
                     null
             );
+        }
+
+        // ── [브릿지 #2] 미디어 타입 자동 분류
+        // JS: MoovlogNative.getMediaType("content://...") → "image" | "video" | "unknown"
+        @JavascriptInterface
+        public String getMediaType(String uriString) {
+            try {
+                Uri uri = Uri.parse(uriString);
+                String mime = getContentResolver().getType(uri);
+                if (mime == null) {
+                    String ext = MimeTypeMap.getFileExtensionFromUrl(uriString);
+                    mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext);
+                }
+                if (mime == null) return "unknown";
+                if (mime.startsWith("image/")) return "image";
+                if (mime.startsWith("video/")) return "video";
+                return "unknown";
+            } catch (Exception e) {
+                return "unknown";
+            }
+        }
+
+        // ── [브릿지 #8] content:// → 절대 경로 변환 (FFmpeg 호환)
+        // 캐시 디렉토리에 복사 후 절대 경로 반환
+        // JS: MoovlogNative.resolveFilePath("content://...") → "/data/.../cache/xxx.mp4"
+        @JavascriptInterface
+        public String resolveFilePath(String uriString) {
+            try {
+                Uri uri = Uri.parse(uriString);
+                if ("file".equals(uri.getScheme())) {
+                    return uri.getPath();
+                }
+                // 파일명 추출
+                String fileName = null;
+                try (Cursor c = getContentResolver().query(
+                        uri, new String[]{OpenableColumns.DISPLAY_NAME},
+                        null, null, null)) {
+                    if (c != null && c.moveToFirst()) {
+                        fileName = c.getString(0);
+                    }
+                }
+                if (fileName == null || fileName.isEmpty()) {
+                    String mime = getContentResolver().getType(uri);
+                    String ext = mime != null
+                            ? MimeTypeMap.getSingleton().getExtensionFromMimeType(mime) : "tmp";
+                    fileName = "media_" + System.currentTimeMillis() + "." + ext;
+                }
+                File outFile = new File(getCacheDir(), fileName);
+                try (InputStream in = getContentResolver().openInputStream(uri);
+                     OutputStream out = new java.io.FileOutputStream(outFile)) {
+                    if (in == null) return "";
+                    byte[] buf = new byte[65536];
+                    int len;
+                    while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
+                }
+                return outFile.getAbsolutePath();
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        // ── [브릿지 #9] 파일 용량 반환 (MB 단위)
+        // JS: MoovlogNative.getFileSizeMB("content://...") → 123.4
+        @JavascriptInterface
+        public double getFileSizeMB(String uriString) {
+            try {
+                Uri uri = Uri.parse(uriString);
+                try (Cursor c = getContentResolver().query(
+                        uri, new String[]{OpenableColumns.SIZE},
+                        null, null, null)) {
+                    if (c != null && c.moveToFirst()) {
+                        long bytes = c.getLong(0);
+                        return bytes / (1024.0 * 1024.0);
+                    }
+                }
+            } catch (Exception e) { /* ignore */ }
+            return -1.0;
+        }
+
+        // ── [브릿지 #7] Android 13+ 사진/동영상 권한 거부 시 설정창 안내
+        // JS: MoovlogNative.openPermissionSettings()
+        @JavascriptInterface
+        public void openPermissionSettings() {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("사진 및 동영상 접근 권한 필요")
+                        .setMessage("앱 설정에서\n저장소 → '사진 및 동영상'을 허용해주세요.")
+                        .setPositiveButton("설정 열기", (d, w) -> {
+                            Intent intent = new Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                            intent.setData(Uri.parse("package:" + getPackageName()));
+                            startActivityForResult(intent, SETTINGS_REQUEST);
+                        })
+                        .setNegativeButton("나중에", null)
+                        .show();
+            });
         }
     }
 
