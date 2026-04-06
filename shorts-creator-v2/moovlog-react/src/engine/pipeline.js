@@ -10,6 +10,7 @@ import { splitCaptions } from './utils.js';
 import { firebaseUploadOriginals, firebaseReplaceRestaurantData } from './firebase.js';
 import { saveLastResult } from './sessionPersistence.js';
 import { enrichAnalysisWithSceneData } from './sceneSaliency.js';
+import { renderVideoWithFFmpeg } from './VideoRenderer.js';
 // firebaseUploadVideo는 VideoPlayer에서 직접 사용 — pipeline에서 pipelineSessionId 노출
 
 // ─── 자막 분할 ────────────────────────────────────────────
@@ -401,13 +402,8 @@ export async function startMake() {
     addToast, setAutoStyleName, setTemplate, setHook,
     hidePipeline, resetPipelineProgress, setPipelineSessionId, setAnalysis, setQcScore,
     requiredKeywords,
+    setFfmpegBlob, setFfmpegRendering, setFfmpegProgress, setFfmpegMsg,
   } = store;
-
-  if (!files.length) { addToast('이미지 또는 영상을 올려주세요', 'err'); return; }
-  if (!restaurantName.trim()) { addToast('음식점 이름을 입력해주세요', 'err'); return; }
-
-  const { hasGeminiKey } = await import('./gemini.js');
-  if (!hasGeminiKey()) { addToast('Gemini API 키가 필요합니다', 'err'); return; }
 
   resetPipelineProgress();
 
@@ -796,6 +792,28 @@ export async function startMake() {
     const finalQcScore = useVideoStore.getState().qcScore;
     saveLastResult(finalScript, restaurantName.trim(), finalQcScore);
     setShowResult(true);
+
+    // ── FFmpeg 시네마틱 자동 렌더링 (비차단 백그라운드) ─────────────────
+    {
+      const renderScript = useVideoStore.getState().script || workingScript;
+      const renderFiles  = useVideoStore.getState().files;
+      setFfmpegRendering(true);
+      setFfmpegProgress(0);
+      setFfmpegMsg('시네마틱 렌더링 시작...');
+      renderVideoWithFFmpeg(renderScript.scenes, renderFiles, renderScript, (msg, pct) => {
+        setFfmpegMsg(msg);
+        if (typeof pct === 'number') setFfmpegProgress(pct);
+      }).then(blob => {
+        setFfmpegBlob(blob);
+        setFfmpegRendering(false);
+        setFfmpegMsg('');
+        addToast('🎬 시네마틱 MP4 준비 완료! 저장 버튼을 눌러주세요', 'ok');
+      }).catch(e => {
+        setFfmpegRendering(false);
+        setFfmpegMsg('');
+        console.warn('[FFmpeg auto-render] 실패:', e.message);
+      });
+    }
 
   } catch (err) {
     hidePipeline();

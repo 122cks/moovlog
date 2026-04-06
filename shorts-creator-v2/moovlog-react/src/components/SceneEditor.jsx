@@ -5,7 +5,7 @@ import { fetchTypeCastTTS, fetchTTSWithRetry, hasTypeCastKeys,
          preprocessNarration, rotateTypeCastKey, getAudioCtx } from '../engine/tts.js';
 
 export default function SceneEditor({ sceneIdx, onClose }) {
-  const { script, updateScene, audioBuffers, updateAudioBuffer, addToast } = useVideoStore();
+  const { script, updateScene, audioBuffers, updateAudioBuffer, addToast, files } = useVideoStore();
   const sc = script?.scenes?.[sceneIdx];
   if (!sc) return null;
 
@@ -95,6 +95,49 @@ export default function SceneEditor({ sceneIdx, onClose }) {
           onChange={e => setNarration(e.target.value)}
           placeholder="나레이션 텍스트"
         />
+
+        {/* ── A-B Roll 미디어 교체 ─────────────────────────────── */}
+        {files?.length > 1 && (
+          <>
+            <label className="modal-label">미디어 교체 (A-B Roll)</label>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(70px, 1fr))',
+              gap: '6px', maxHeight: '160px', overflowY: 'auto',
+              background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '8px',
+            }}>
+              {files.map((f, i) => {
+                const isSelected = (sc.media_idx ?? sceneIdx % files.length) === i;
+                return (
+                  <div
+                    key={i}
+                    onClick={() => updateScene(sceneIdx, { media_idx: i })}
+                    style={{
+                      cursor: 'pointer', borderRadius: '6px', overflow: 'hidden',
+                      border: isSelected ? '2px solid #a855f7' : '2px solid transparent',
+                      opacity: isSelected ? 1 : 0.6,
+                      transition: 'all 0.15s',
+                      aspectRatio: '9/16', background: '#111',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                    title={`미디어 ${i + 1}${isSelected ? ' (현재)' : ''}`}
+                  >
+                    {f.type === 'video'
+                      ? <video src={f.url} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                      : <img src={f.url} alt={`미디어 ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    }
+                    {isSelected && (
+                      <div style={{
+                        position: 'absolute', bottom: '2px', right: '2px',
+                        background: '#a855f7', borderRadius: '3px',
+                        fontSize: '0.6rem', color: '#fff', padding: '0 3px',
+                      }}>✓</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <div className="modal-btns">
           <button className="modal-btn-cancel" onClick={onClose}>취소</button>

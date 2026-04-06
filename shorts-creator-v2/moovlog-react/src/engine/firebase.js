@@ -1,5 +1,5 @@
 // src/engine/firebase.js
-// Firebase Storage / Firestore ?˜í¼
+// Firebase Storage / Firestore ?ï¿½í¼
 
 import { initializeApp } from 'firebase/app';
 import {
@@ -30,17 +30,17 @@ function normalizeRestaurantName(name) {
 
 export function initFirebase() {
   if (!firebaseConfig.apiKey || !firebaseConfig.appId) {
-    console.log('[Firebase] API ???†ìŒ ??ë¡œì»¬ ëª¨ë“œ');
+    console.log('[Firebase] API ???ï¿½ìŒ ??ë¡œì»¬ ëª¨ë“œ');
     return false;
   }
   try {
     const app = initializeApp(firebaseConfig);
     storage = getStorage(app);
     db      = getFirestore(app);
-    console.log('[Firebase] ì´ˆê¸°???„ë£Œ ??moovlog-be7a6');
+    console.log('[Firebase] ì´ˆê¸°???ï¿½ë£Œ ??moovlog-be7a6');
     return true;
   } catch (e) {
-    console.warn('[Firebase] ì´ˆê¸°???¤íŒ¨:', e.message);
+    console.warn('[Firebase] ì´ˆê¸°???ï¿½íŒ¨:', e.message);
     return false;
   }
 }
@@ -54,7 +54,7 @@ async function fbUpload(blob, storagePath) {
     console.log('[Firebase ??', storagePath);
     return url;
   } catch (e) {
-    console.warn('[Firebase] ?…ë¡œ???¤íŒ¨:', e.message);
+    console.warn('[Firebase] ?ï¿½ë¡œ???ï¿½íŒ¨:', e.message);
     return null;
   }
 }
@@ -65,7 +65,7 @@ export async function firebaseUploadOriginals(files, restaurantName, pipelineSes
   await Promise.all(
     files.map((m, i) =>
       fbUpload(m.file, `originals/${session}/${i}_${m.file.name}`)
-        .catch(e => console.warn(`[Firebase] ?Œì¼ ${i} ?…ë¡œ???¤íŒ¨:`, e.message))
+        .catch(e => console.warn(`[Firebase] ?ï¿½ì¼ ${i} ?ï¿½ë¡œ???ï¿½íŒ¨:`, e.message))
     )
   );
 }
@@ -81,15 +81,15 @@ export async function firebaseSaveSession(script, restaurantName) {
       template:   'auto',
       sceneCount: script.scenes.length,
       title:      script.title || '',
-      version:    'v2.69-react',
+      version:    'v2.70-react',
       videoUrl:   null,
       ext:        null,
       createdAt:  serverTimestamp(),
     });
     sessionDocId = docRef.id;
-    console.log('[Firebase] ?¸ì…˜ ?€??', sessionDocId);
+    console.log('[Firebase] ?ï¿½ì…˜ ?ï¿½??', sessionDocId);
   } catch (e) {
-    console.warn('[Firebase] ?¸ì…˜ ?€???¤íŒ¨:', e.message);
+    console.warn('[Firebase] ?ï¿½ì…˜ ?ï¿½???ï¿½íŒ¨:', e.message);
   }
 }
 
@@ -102,14 +102,14 @@ export async function firebaseUploadVideo(blob, ext, restaurantName, pipelineSes
     await addDoc(collection(db, 'generations'), {
       restaurant: restaurantName || '',
       videoUrl: url, ext,
-      version: 'v2.69-react',
+      version: 'v2.70-react',
       createdAt: serverTimestamp(),
     });
     if (sessionDocId) {
       await updateDoc(doc(db, 'sessions', sessionDocId), { videoUrl: url, ext });
     }
   } catch (e) {
-    console.warn('[Firebase] Firestore ê¸°ë¡ ?¤íŒ¨:', e.message);
+    console.warn('[Firebase] Firestore ê¸°ë¡ ?ï¿½íŒ¨:', e.message);
   }
 }
 
@@ -123,12 +123,12 @@ export async function firebaseLoadRecentSession() {
     snap.forEach(d => { if (!latest && d.data().videoUrl) latest = { id: d.id, ...d.data() }; });
     return latest;
   } catch (e) {
-    console.warn('[Firebase] ìµœê·¼ ?¸ì…˜ ë¡œë“œ ?¤íŒ¨:', e.message);
+    console.warn('[Firebase] ìµœê·¼ ?ï¿½ì…˜ ë¡œë“œ ?ï¿½íŒ¨:', e.message);
     return null;
   }
 }
 
-// ?€?€?€ ë¸”ë¡œê·??¬ìŠ¤???€???€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€
+// ?ï¿½?ï¿½?ï¿½ ë¸”ë¡œï¿½??ï¿½ìŠ¤???ï¿½???ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½
 export async function saveBlogPost(blogData) {
   if (!db) return null;
   try {
@@ -144,10 +144,10 @@ export async function saveBlogPost(blogData) {
       keywords:   blogData.keywords || [],
       createdAt:  serverTimestamp(),
     });
-    console.log('[Firebase] ë¸”ë¡œê·??€??', docRef.id);
+    console.log('[Firebase] ë¸”ë¡œï¿½??ï¿½??', docRef.id);
     return docRef.id;
   } catch (e) {
-    console.warn('[Firebase] ë¸”ë¡œê·??€???¤íŒ¨:', e.message);
+    console.warn('[Firebase] ë¸”ë¡œï¿½??ï¿½???ï¿½íŒ¨:', e.message);
     return null;
   }
 }
@@ -161,7 +161,7 @@ export async function getRecentBlogPosts(limitN = 20) {
     snap.forEach(d => results.push({ id: d.id, ...d.data() }));
     return results;
   } catch (e) {
-    console.warn('[Firebase] ë¸”ë¡œê·?ëª©ë¡ ë¡œë“œ ?¤íŒ¨:', e.message);
+    console.warn('[Firebase] ë¸”ë¡œï¿½?ëª©ë¡ ë¡œë“œ ?ï¿½íŒ¨:', e.message);
     return [];
   }
 }
@@ -170,7 +170,7 @@ export async function searchBlogPosts(keyword) {
   if (!db || !keyword?.trim()) return [];
   const kw = keyword.trim();
   try {
-    // restaurant ?„ë“œ ?„ë°© ?¼ì¹˜ ê²€??(Firestore??full-text ë¯¸ì?????startAt/endAt ë°©ì‹)
+    // restaurant ?ï¿½ë“œ ?ï¿½ë°© ?ï¿½ì¹˜ ê²€??(Firestore??full-text ë¯¸ï¿½?????startAt/endAt ë°©ì‹)
     const q = query(
       collection(db, 'blog_posts'),
       orderBy('restaurant'),
@@ -183,12 +183,12 @@ export async function searchBlogPosts(keyword) {
     snap.forEach(d => results.push({ id: d.id, ...d.data() }));
     return results;
   } catch (e) {
-    console.warn('[Firebase] ë¸”ë¡œê·?ê²€???¤íŒ¨:', e.message);
+    console.warn('[Firebase] ë¸”ë¡œï¿½?ê²€???ï¿½íŒ¨:', e.message);
     return [];
   }
 }
 
-// ?€?€?€ SNS ?œê·¸ ?€???€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€?€
+// ?ï¿½?ï¿½?ï¿½ SNS ?ï¿½ê·¸ ?ï¿½???ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½
 export async function saveSNSTags(tagsData) {
   if (!db) return null;
   try {
@@ -201,15 +201,15 @@ export async function saveSNSTags(tagsData) {
       hashtags:         tagsData.hashtags || '',
       createdAt:        serverTimestamp(),
     });
-    console.log('[Firebase] SNS ?œê·¸ ?€??', docRef.id);
+    console.log('[Firebase] SNS ?ï¿½ê·¸ ?ï¿½??', docRef.id);
     return docRef.id;
   } catch (e) {
-    console.warn('[Firebase] SNS ?œê·¸ ?€???¤íŒ¨:', e.message);
+    console.warn('[Firebase] SNS ?ï¿½ê·¸ ?ï¿½???ï¿½íŒ¨:', e.message);
     return null;
   }
 }
 
-// ?€?€?€ ë§ˆì????¤íŠ¸ ?€??(?í¼ ?ì„± ???ë™ ?€?? ?€?€?€?€?€?€?€?€?€?€?€?€
+// ?ï¿½?ï¿½?ï¿½ ë§ˆï¿½????ï¿½íŠ¸ ?ï¿½??(?ï¿½í¼ ?ï¿½ì„± ???ï¿½ë™ ?ï¿½?? ?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½?ï¿½
 export async function saveMarketingKit(data) {
   if (!db) return null;
   try {
@@ -231,10 +231,10 @@ export async function saveMarketingKit(data) {
       vibeColor:         data.vibe_color || '',
       createdAt:         serverTimestamp(),
     });
-    console.log('[Firebase] ë§ˆì????¤íŠ¸ ?€??', docRef.id);
+    console.log('[Firebase] ë§ˆï¿½????ï¿½íŠ¸ ?ï¿½??', docRef.id);
     return docRef.id;
   } catch (e) {
-    console.warn('[Firebase] ë§ˆì????¤íŠ¸ ?€???¤íŒ¨:', e.message);
+    console.warn('[Firebase] ë§ˆï¿½????ï¿½íŠ¸ ?ï¿½???ï¿½íŒ¨:', e.message);
     return null;
   }
 }
@@ -242,7 +242,7 @@ export async function saveMarketingKit(data) {
 export async function getMarketingKits(limitN = 20) {
   if (!db) return [];
   try {
-    // ì¤‘ë³µ ?œê±°ë¥??„í•´ ??ë§Žì´ ê°€?¸ì????´ë¼?´ì–¸?¸ì—??dedup
+    // ì¤‘ë³µ ?ï¿½ê±°ï¿½??ï¿½í•´ ??ë§Žì´ ê°€?ï¿½ï¿½????ï¿½ë¼?ï¿½ì–¸?ï¿½ì—??dedup
     const fetchN = Math.max(limitN * 4, 80);
     const q    = query(collection(db, 'marketing_kits'), orderBy('createdAt', 'desc'), limit(fetchN));
     const snap = await getDocs(q);
@@ -250,7 +250,7 @@ export async function getMarketingKits(limitN = 20) {
     const results = [];
     snap.forEach(d => {
       const data = { id: d.id, ...d.data() };
-      // restaurantKey(?•ê·œ???? ?°ì„ , ?†ìœ¼ë©?restaurant ?Œë¬¸???¸ë¦¼
+      // restaurantKey(?ï¿½ê·œ???? ?ï¿½ì„ , ?ï¿½ìœ¼ï¿½?restaurant ?ï¿½ë¬¸???ï¿½ë¦¼
       const key = data.restaurantKey || String(data.restaurant || '').trim().toLowerCase().replace(/\s+/g, ' ');
       if (!seen.has(key)) {
         seen.add(key);
@@ -259,7 +259,7 @@ export async function getMarketingKits(limitN = 20) {
     });
     return results.slice(0, limitN);
   } catch (e) {
-    console.warn('[Firebase] ë§ˆì????¤íŠ¸ ëª©ë¡ ?¤íŒ¨:', e.message);
+    console.warn('[Firebase] ë§ˆï¿½????ï¿½íŠ¸ ëª©ë¡ ?ï¿½íŒ¨:', e.message);
     return [];
   }
 }
@@ -278,7 +278,7 @@ export async function searchMarketingKits(keyword) {
     const snap = await getDocs(q);
     const seen = new Set();
     const results = [];
-    // createdAt ?´ë¦¼ì°¨ìˆœ ?•ë ¬ ??dedup
+    // createdAt ?ï¿½ë¦¼ì°¨ìˆœ ?ï¿½ë ¬ ??dedup
     const docs = [];
     snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
     docs.sort((a, b) => {
@@ -292,7 +292,7 @@ export async function searchMarketingKits(keyword) {
     });
     return results;
   } catch (e) {
-    console.warn('[Firebase] ë§ˆì????¤íŠ¸ ê²€???¤íŒ¨:', e.message);
+    console.warn('[Firebase] ë§ˆï¿½????ï¿½íŠ¸ ê²€???ï¿½íŒ¨:', e.message);
     return [];
   }
 }
@@ -301,14 +301,14 @@ export async function deleteMarketingKit(id) {
   if (!db || !id) return;
   try {
     await deleteDoc(doc(db, 'marketing_kits', id));
-    console.log('[Firebase] ë§ˆì????¤íŠ¸ ?? œ:', id);
+    console.log('[Firebase] ë§ˆï¿½????ï¿½íŠ¸ ??ï¿½ï¿½:', id);
   } catch (e) {
-    console.warn('[Firebase] ë§ˆì????¤íŠ¸ ?? œ ?¤íŒ¨:', e.message);
+    console.warn('[Firebase] ë§ˆï¿½????ï¿½íŠ¸ ??ï¿½ï¿½ ?ï¿½íŒ¨:', e.message);
     throw e;
   }
 }
 
-// ?€?€?€ ?ë‹¹ëª?ê¸°ì? ê¸°ì¡´ ?°ì´???? œ (ê°™ì? ?ë‹¹ ?¬ìƒ?????€ì²? ?€?€?€?€
+// ?ï¿½?ï¿½?ï¿½ ?ï¿½ë‹¹ï¿½?ê¸°ï¿½? ê¸°ì¡´ ?ï¿½ì´????ï¿½ï¿½ (ê°™ï¿½? ?ï¿½ë‹¹ ?ï¿½ìƒ?????ï¿½ï¿½? ?ï¿½?ï¿½?ï¿½?ï¿½
 async function deleteDocsByRestaurant(collectionName, restaurantName) {
   if (!db || !restaurantName) return 0;
   try {
@@ -321,11 +321,11 @@ async function deleteDocsByRestaurant(collectionName, restaurantName) {
     const snap = await getDocs(q);
     if (!snap.empty) {
       await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-      console.log(`[Firebase] ${collectionName} ê¸°ì¡´ ${snap.size}ê°??? œ (${restaurantName})`);
+      console.log(`[Firebase] ${collectionName} ê¸°ì¡´ ${snap.size}ï¿½???ï¿½ï¿½ (${restaurantName})`);
       return snap.size;
     }
 
-    // êµ¬ë²„???°ì´???¸í™˜: restaurantKey ?†ëŠ” ë¬¸ì„œ??restaurant ?ë¬¸?¼ë¡œ 1???´ë°± ?? œ
+    // êµ¬ë²„???ï¿½ì´???ï¿½í™˜: restaurantKey ?ï¿½ëŠ” ë¬¸ì„œ??restaurant ?ï¿½ë¬¸?ï¿½ë¡œ 1???ï¿½ë°± ??ï¿½ï¿½
     const legacyQ = query(
       collection(db, collectionName),
       where('restaurant', '==', restaurantName.trim()),
@@ -334,23 +334,23 @@ async function deleteDocsByRestaurant(collectionName, restaurantName) {
     const legacySnap = await getDocs(legacyQ);
     if (legacySnap.empty) return 0;
     await Promise.all(legacySnap.docs.map(d => deleteDoc(d.ref)));
-    console.log(`[Firebase] ${collectionName} ?ˆê±°??${legacySnap.size}ê°??? œ (${restaurantName})`);
+    console.log(`[Firebase] ${collectionName} ?ï¿½ê±°??${legacySnap.size}ï¿½???ï¿½ï¿½ (${restaurantName})`);
     return legacySnap.size;
   } catch (e) {
-    console.warn(`[Firebase] ${collectionName} ?? œ ?¤íŒ¨:`, e.message);
+    console.warn(`[Firebase] ${collectionName} ??ï¿½ï¿½ ?ï¿½íŒ¨:`, e.message);
     return 0;
   }
 }
 
 /**
- * ê¸°ì¡´ ?¸ì…˜Â·ë§ˆì????¤íŠ¸ë¥??? œ?˜ê³  ???°ì´?°ë¡œ ?€ì²? * ê°™ì? ?ë‹¹ëª…ìœ¼ë¡??¬ìƒ????Firebase??ì¤‘ë³µ ?„ì ?˜ì? ?Šë„ë¡??? */
+ * ê¸°ì¡´ ?ï¿½ì…˜Â·ë§ˆï¿½????ï¿½íŠ¸ï¿½???ï¿½ï¿½?ï¿½ê³  ???ï¿½ì´?ï¿½ë¡œ ?ï¿½ï¿½? * ê°™ï¿½? ?ï¿½ë‹¹ëª…ìœ¼ï¿½??ï¿½ìƒ????Firebase??ì¤‘ë³µ ?ï¿½ì ?ï¿½ï¿½? ?ï¿½ë„ï¿½??? */
 export async function firebaseReplaceRestaurantData(script, restaurantName, marketingData) {
   if (!db) return;
-  // ê¸°ì¡´ ?ˆì½”???? œ (ë³‘ë ¬)
+  // ê¸°ì¡´ ?ï¿½ì½”????ï¿½ï¿½ (ë³‘ë ¬)
   await Promise.all([
     deleteDocsByRestaurant('sessions', restaurantName),
     deleteDocsByRestaurant('marketing_kits', restaurantName),
   ]);
-  // ???°ì´???€??  await firebaseSaveSession(script, restaurantName).catch(() => {});
+  // ???ï¿½ì´???ï¿½??  await firebaseSaveSession(script, restaurantName).catch(() => {});
   if (marketingData) await saveMarketingKit(marketingData).catch(() => {});
 }

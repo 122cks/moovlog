@@ -10,11 +10,9 @@ import * as Mp4Muxer  from 'mp4-muxer';
 import * as WebmMuxer from 'webm-muxer';
 
 export default function ExportPanel() {
-  const { script, audioBuffers, restaurantName, addToast, setExporting, exporting, pipelineSessionId, files } = useVideoStore();
+  const { script, audioBuffers, restaurantName, addToast, setExporting, exporting, pipelineSessionId, files,
+    ffmpegBlob, ffmpegRendering, ffmpegProgress, ffmpegMsg } = useVideoStore();
   const [btnText, setBtnText] = useState('영상 저장하기');
-  const [ffmpegText, setFfmpegText] = useState('📦 FFmpeg 내보내기 (시네마틱)');
-  const [ffmpegBusy, setFfmpegBusy] = useState(false);
-  const [ffmpegPct, setFfmpegPct] = useState(0);
   const [thumbBusy, setThumbBusy] = useState(false);
   const [hybridBusy, setHybridBusy] = useState(false);
 
@@ -133,40 +131,10 @@ export default function ExportPanel() {
     }
   };
 
-  const doExportFFmpeg = async () => {
-    if (ffmpegBusy) return;
-    if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
-    if (!files?.length) { addToast('미디어 파일이 없습니다', 'err'); return; }
-    // COOP/COEP 격리 사전 확인 — 미격리 시 자동 새로고침 대신 안내만 표시
-    // (자동 새로고침은 작업 중인 스크립트·오디오 데이터를 모두 잃어버리기 때문)
-    if (!globalThis.crossOriginIsolated) {
-      addToast('FFmpeg는 COOP/COEP 보안 헤더가 필요합니다. 페이지를 새로고침(F5) 후 다시 시도하세요.', 'err');
-      return;
-    }
-    setFfmpegBusy(true);
-    setFfmpegPct(0);
-    try {
-      const blob = await renderVideoWithFFmpeg(
-        script.scenes,
-        files,
-        script,
-        (msg, pct) => {
-          setFfmpegText(`🎬 ${msg}`);
-          if (typeof pct === 'number') setFfmpegPct(pct);
-        }
-      );
-      downloadBlob(blob, `moovlog_ffmpeg_${sanitizeName(restaurantName)}.mp4`);
-      addToast('FFmpeg 렌더링 완료!', 'ok');
-      setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
-      setFfmpegPct(0);
-    } catch (err) {
-      const msg = err?.message || String(err);
-      addToast('FFmpeg 오류: ' + msg, 'err');
-      setFfmpegText('📦 FFmpeg 내보내기 (시네마틱)');
-      setFfmpegPct(0);
-    } finally {
-      setFfmpegBusy(false);
-    }
+  const doCinematicDownload = () => {
+    if (!ffmpegBlob) return;
+    downloadBlob(ffmpegBlob, `moovlog_cinematic_${sanitizeName(restaurantName)}.mp4`);
+    addToast('시네마틱 MP4 저장 완료!', 'ok');
   };
 
   return (
@@ -182,28 +150,36 @@ export default function ExportPanel() {
       <button className="dl-audio-btn" onClick={doExportAudio}>
         <i className="fas fa-music" /> 음성만 저장 (WAV)
       </button>
-      <button className="dl-audio-btn" onClick={doExportFFmpeg} disabled={ffmpegBusy}
-        style={{ marginTop: '8px' }}
-        title="FFmpeg WASM 시네마틱 렌더링 (LUT·Ken Burns·자막)"
-      >
-        <i className={`fas ${ffmpegBusy ? 'fa-spinner fa-spin' : 'fa-film'}`} /> {ffmpegText}
-      </button>      <button className="dl-audio-btn" onClick={doExportThumbnail} disabled={thumbBusy}
+      {/* ── 시네마틱 MP4 자동 렌더링 상태 표시 ─────────────────────── */}
+      {ffmpegRendering && (
+        <div style={{ marginTop: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#a855f7' }}>
+            <i className="fas fa-spinner fa-spin" />
+            <span>{ffmpegMsg || '시네마틱 렌더링 중...'}</span>
+            {ffmpegProgress > 0 && <span style={{ marginLeft: 'auto' }}>{ffmpegProgress}%</span>}
+          </div>
+          <div style={{ marginTop: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '6px', overflow: 'hidden', height: '6px' }}>
+            <div style={{
+              height: '100%', background: 'linear-gradient(90deg,#7c3aed,#a855f7)',
+              width: `${ffmpegProgress}%`, transition: 'width 0.4s ease', borderRadius: '6px',
+            }} />
+          </div>
+        </div>
+      )}
+      {ffmpegBlob && !ffmpegRendering && (
+        <button className="dl-audio-btn" onClick={doCinematicDownload}
+          style={{ marginTop: '8px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', color: '#fff', fontWeight: 700 }}
+          title="시네마틱 MP4 다운로드 (LUT·Ken Burns·자막 적용)"
+        >
+          <i className="fas fa-film" /> 🎬 시네마틱 MP4 저장
+        </button>
+      )}
+      <button className="dl-audio-btn" onClick={doExportThumbnail} disabled={thumbBusy}
         style={{ marginTop: '6px' }}
         title="최고화질 썸네일 추출"
       >
         <i className={`fas ${thumbBusy ? 'fa-spinner fa-spin' : 'fa-image'}`} /> {thumbBusy ? '썸네일 추출 중...' : '베스트 썸네일 저장'}
-      </button>      {ffmpegBusy && (
-        <div style={{ margin: '6px 0 2px', background: 'rgba(255,255,255,0.08)', borderRadius: '6px', overflow: 'hidden', height: '6px' }}>
-          <div style={{
-            height: '100%', background: 'linear-gradient(90deg,#7c3aed,#a855f7)',
-            width: `${ffmpegPct}%`, transition: 'width 0.4s ease',
-            borderRadius: '6px',
-          }} />
-        </div>
-      )}
-      {ffmpegBusy && ffmpegPct > 0 && (
-        <p style={{ fontSize: '0.68rem', color: '#a855f7', textAlign: 'right', margin: '2px 0 0' }}>{ffmpegPct}%</p>
-      )}
+      </button>
     </div>
   );
 }

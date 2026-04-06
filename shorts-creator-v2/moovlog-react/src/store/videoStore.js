@@ -196,6 +196,12 @@ const INITIAL = {
 
   // 품질 검수 결과
   qcScore: null,  // number | null (0~100)
+
+  // FFmpeg 자동 시네마틱 렌더링 결과
+  ffmpegBlob: null,       // Blob | null — 완성된 시네마틱 MP4
+  ffmpegRendering: false, // 렌더링 진행 중 여부
+  ffmpegProgress: 0,      // 0~100
+  ffmpegMsg: '',          // 진행 메시지
 };
 
 // ─── Store ────────────────────────────────────────────────────
@@ -310,7 +316,11 @@ export const useVideoStore = create(
       // ── 결과 화면 ──────────────────────────────────────────
       setShowResult: (showResult) => set({ showResult }, false, 'setShowResult'),
       setRestaurantName: (restaurantName) => set({ restaurantName }, false, 'setRestaurantName'),
-
+      // ── FFmpeg 자동 렌더링 ─────────────────────────────────
+      setFfmpegBlob: (ffmpegBlob) => set({ ffmpegBlob }, false, 'setFfmpegBlob'),
+      setFfmpegRendering: (ffmpegRendering) => set({ ffmpegRendering }, false, 'setFfmpegRendering'),
+      setFfmpegProgress: (ffmpegProgress) => set({ ffmpegProgress }, false, 'setFfmpegProgress'),
+      setFfmpegMsg: (ffmpegMsg) => set({ ffmpegMsg }, false, 'setFfmpegMsg'),
       // ── 토스트 ─────────────────────────────────────────────
       addToast: (msg, type = 'inf') => set(s => ({
         toasts: [...s.toasts, { id: Date.now() + Math.random(), msg, type }],

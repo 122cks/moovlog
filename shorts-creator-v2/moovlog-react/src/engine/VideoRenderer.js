@@ -322,90 +322,109 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
     console.warn('[FFmpeg] 폰트 로딩 실패 — 자막 없이 진행:', e.message);
   }
 
-  const partFiles = [];
+  // ── 청크 단위 처리 (14+ 고해상도 영상 메모리 안전) ──────
+  const CHUNK_SIZE = 6;
+  const chunkFiles = [];
 
-  for (let i = 0; i < scenes.length; i++) {
-    const scene      = scenes[i];
-    const fileItem   = files[scene.media_idx ?? i] ?? files[i];
-    if (!fileItem) continue;
+  for (let chunkStart = 0; chunkStart < scenes.length; chunkStart += CHUNK_SIZE) {
+    const chunkEnd   = Math.min(chunkStart + CHUNK_SIZE, scenes.length);
+    const chunkIdx   = Math.floor(chunkStart / CHUNK_SIZE);
+    const chunkParts = [];
 
-    const pct = Math.round(5 + (i / scenes.length) * 80);
-    report(`씬 ${i + 1}/${scenes.length} 인코딩 중...`, pct);
+    for (let i = chunkStart; i < chunkEnd; i++) {
+      const scene    = scenes[i];
+      const fileItem = files[scene.media_idx ?? i] ?? files[i];
+      if (!fileItem) continue;
 
-    const isVideo    = fileItem.type === 'video';
-    const ext        = isVideo ? 'mp4' : 'jpg';
-    const inputName  = `in_${i}.${ext}`;
-    const outputName = `part_${i}.mp4`;
-    // 블록 분리형 짧은 컷(0.5초 등)는 AI 설계 duration 보존
-    const dur        = (scene.blockIdx !== undefined)
-      ? Math.max(0.4, scene.duration || 0.5)
-      : Math.max(2.0, scene.duration || 3.0);
-    const isLast     = (i === scenes.length - 1);
+      const pct = Math.round(5 + (i / scenes.length) * 80);
+      report(`씬 ${i + 1}/${scenes.length} 인코딩 중...`, pct);
 
-    // 파일 가상 FS 기록
-    const fileData = fileItem.file
-      ? await fetchFile(fileItem.file)
-      : await fetchFile(fileItem.url);
-    await ff.writeFile(inputName, fileData);
+      const isVideo    = fileItem.type === 'video';
+      const ext        = isVideo ? 'mp4' : 'jpg';
+      const inputName  = `in_${i}.${ext}`;
+      const outputName = `part_${i}.mp4`;
+      const dur        = (scene.blockIdx !== undefined)
+        ? Math.max(0.4, scene.duration || 0.5)
+        : Math.max(2.0, scene.duration || 3.0);
+      const isLast     = (i === scenes.length - 1);
 
-    // 필터 체인 구성 (씬 인덱스 i 전달 → 트랜지션 효과)
-    const focusCoords = scene.focus_coords || null;
-    let vf = isVideo
-      ? getVideoFilter(scene, theme, dur, isLast, i)
-      : getImageFilter(scene, theme, dur, FPS, focusCoords, isLast, i);
+      const fileData = fileItem.file
+        ? await fetchFile(fileItem.file)
+        : await fetchFile(fileItem.url);
+      await ff.writeFile(inputName, fileData);
 
-    // 자막 오버레이 (폰트 로드 성공 시)
-    const subtitleF = getSubtitleFilter(scene, fontPath, isLast);
-    if (subtitleF) vf = vf + ',' + subtitleF;
+      const focusCoords = scene.focus_coords || null;
+      let vf = isVideo
+        ? getVideoFilter(scene, theme, dur, isLast, i)
+        : getImageFilter(scene, theme, dur, FPS, focusCoords, isLast, i);
 
-    const inputLoopArgs = isVideo ? [] : ['-loop', '1'];
-    const ssArgs = (isVideo && scene.best_start_pct > 0)
-      ? ['-ss', (scene.best_start_pct * Math.max(dur * 2, 5)).toFixed(2)]
-      : [];
-    try {
-      await ff.exec([
-        ...inputLoopArgs,
-        ...ssArgs,
-        '-i', inputName,
-        '-t', String(dur),
-        '-vf', vf,
-        '-r', String(FPS),
-        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
-        '-pix_fmt', 'yuv420p', '-an',
-        outputName,
-      ]);
-      partFiles.push(outputName);
-    } catch (sceneErr) {
-      console.warn(`[FFmpeg] 씬 ${i + 1} 인코딩 실패 — 건너뜁니다:`, sceneErr.message);
+      const subtitleF = getSubtitleFilter(scene, fontPath, isLast);
+      if (subtitleF) vf = vf + ',' + subtitleF;
+
+      const inputLoopArgs = isVideo ? [] : ['-loop', '1'];
+      const ssArgs = (isVideo && scene.best_start_pct > 0)
+        ? ['-ss', (scene.best_start_pct * Math.max(dur * 2, 5)).toFixed(2)]
+        : [];
+      try {
+        await ff.exec([
+          ...inputLoopArgs,
+          ...ssArgs,
+          '-i', inputName,
+          '-t', String(dur),
+          '-vf', vf,
+          '-r', String(FPS),
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+          '-pix_fmt', 'yuv420p', '-an',
+          outputName,
+        ]);
+        chunkParts.push(outputName);
+      } catch (sceneErr) {
+        console.warn(`[FFmpeg] 씬 ${i + 1} 인코딩 실패 — 건너뜁니다:`, sceneErr.message);
+      }
+      // 입력 파일 즉시 삭제 (메모리 확보)
+      await ff.deleteFile(inputName).catch(() => {});
     }
-    await ff.deleteFile(inputName).catch(() => {});
+
+    if (!chunkParts.length) continue;
+
+    // 청크 내 씬들을 하나로 합치기
+    const chunkOut = `chunk_${chunkIdx}.mp4`;
+    if (chunkParts.length === 1) {
+      // 단일 씬이면 이름만 변경
+      try { await ff.rename(chunkParts[0], chunkOut); } catch { chunkOut === chunkParts[0] || await ff.exec(['-i', chunkParts[0], '-c', 'copy', chunkOut]); }
+    } else {
+      const chunkConcatTxt = `chunk_concat_${chunkIdx}.txt`;
+      await ff.writeFile(chunkConcatTxt, new TextEncoder().encode(chunkParts.map(f => `file '${f}'`).join('\n')));
+      await ff.exec(['-f', 'concat', '-safe', '0', '-i', chunkConcatTxt, '-c', 'copy', chunkOut]);
+      await ff.deleteFile(chunkConcatTxt).catch(() => {});
+      for (const f of chunkParts) await ff.deleteFile(f).catch(() => {});
+    }
+    chunkFiles.push(chunkOut);
+    report(`청크 ${chunkIdx + 1} 완료 (씬 ${chunkStart + 1}~${chunkEnd})`, Math.round(5 + (chunkEnd / scenes.length) * 80));
   }
 
-  if (!partFiles.length) throw new Error('렌더링할 씬이 없습니다');
+  if (!chunkFiles.length) throw new Error('렌더링할 씬이 없습니다');
 
-  // ── 씬 이어붙이기 ─────────────────────────────────────
+  // ── 청크 이어붙이기 ────────────────────────────────────
   report('씬 합치는 중...', 88);
-  const concatContent = partFiles.map(f => `file '${f}'`).join('\n');
-  await ff.writeFile('concat.txt', new TextEncoder().encode(concatContent));
-
-  await ff.exec([
-    '-f', 'concat', '-safe', '0',
-    '-i', 'concat.txt',
-    '-c', 'copy',
-    'output.mp4',
-  ]);
-
-  report('최종 파일 읽는 중...', 96);
-  const data = await ff.readFile('output.mp4');
+  let finalData;
+  if (chunkFiles.length === 1) {
+    finalData = await ff.readFile(chunkFiles[0]);
+    await ff.deleteFile(chunkFiles[0]).catch(() => {});
+  } else {
+    const concatContent = chunkFiles.map(f => `file '${f}'`).join('\n');
+    await ff.writeFile('concat.txt', new TextEncoder().encode(concatContent));
+    await ff.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'output.mp4']);
+    report('최종 파일 읽는 중...', 96);
+    finalData = await ff.readFile('output.mp4');
+    for (const f of chunkFiles) await ff.deleteFile(f).catch(() => {});
+    await ff.deleteFile('concat.txt').catch(() => {});
+    await ff.deleteFile('output.mp4').catch(() => {});
+  }
   report('✅ 렌더링 완료!', 100);
-
-  // 임시 파일 정리
-  for (const f of partFiles) ff.deleteFile(f).catch(() => {});
-  ff.deleteFile('concat.txt').catch(() => {});
-  ff.deleteFile('output.mp4').catch(() => {});
   if (fontPath) ff.deleteFile(fontPath).catch(() => {});
 
-  return new Blob([data.buffer], { type: 'video/mp4' });
+  return new Blob([finalData.buffer], { type: 'video/mp4' });
 }
 
 /**
