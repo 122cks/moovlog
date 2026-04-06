@@ -68,10 +68,10 @@ async function getFFmpeg(onLog) {
           fetchToBlobURL(`${cdn}/ffmpeg-core.js`,   'text/javascript',  30_000),
           fetchToBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm', 30_000),
         ]);
-        onLog?.(`[FFmpeg] 다운로드 완료, WASM 초기화 중... (약 10~30초)`);
-        // ⚠️ ff.load() 자체도 hang 가능 → 35초 타임아웃 (CDN당 총 ~65초, 전체 3CDN = ~3분)
+        onLog?.(`[FFmpeg] 다운로드 완료, WASM 초기화 중... (약 20~60초)`);
+        // ⚠️ ff.load() 자체도 hang 가능 → 120초 타임아웃 (저사양 기기 대응)
         const initTimeout = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('WASM 초기화 타임아웃 — 다음 CDN 시도')), 35_000)
+          setTimeout(() => reject(new Error('WASM 초기화 타임아웃 — 다음 CDN 시도')), 120_000)
         );
         try {
           await Promise.race([ff.load({ coreURL, wasmURL }), initTimeout]);

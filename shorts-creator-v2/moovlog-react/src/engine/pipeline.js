@@ -9,6 +9,7 @@ import { generateAllTTS, ensureAudio, sleep } from './tts.js';
 import { splitCaptions } from './utils.js';
 import { firebaseUploadOriginals, firebaseReplaceRestaurantData } from './firebase.js';
 import { saveLastResult } from './sessionPersistence.js';
+import { enrichAnalysisWithSceneData } from './sceneSaliency.js';
 // firebaseUploadVideo는 VideoPlayer에서 직접 사용 — pipeline에서 pipelineSessionId 노출
 
 // ─── 자막 분할 ────────────────────────────────────────────
@@ -521,6 +522,30 @@ export async function startMake() {
 
     // analysis 저장 (VideoRenderer의 focus_coords · aesthetic_score 활용)
     setAnalysis(analysis);
+
+    // ── STEP 3.5: 영상 씬 자동 분석 (Scene & Saliency Detection) ────────────
+    // 업로드된 동영상에서 프레임 차이 분석으로 컷 편집점을 자동 감지하고
+    // best_start_pct를 가장 흥미로운(Saliency) 구간으로 보정합니다
+    const hasVideoFiles = files.some(f => f.type === 'video');
+    if (hasVideoFiles) {
+      setPipeline(3, 'AI 영상 씬 분석 중... (Scene Detection)', '프레임 차이 분석으로 컷 편집점 + 최적 시작 구간 자동 감지');
+      try {
+        analysis = await enrichAnalysisWithSceneData(files, analysis, (msg) => {
+          // UI 진행 메시지 토스트로 표시
+          console.log('[SceneSaliency]', msg);
+        });
+        setAnalysis(analysis);
+        const sceneCountMsg = analysis.per_image
+          ?.filter(p => p.scene_cuts?.length > 1)
+          .map(p => `영상${p.idx + 1}: ${p.scene_cuts.length}컷`)
+          .join(', ');
+        if (sceneCountMsg) {
+          addToast(`씬 자동 감지 완료 — ${sceneCountMsg}`, 'ok');
+        }
+      } catch (sceneErr) {
+        console.warn('[SceneSaliency] 씬 감지 실패 (무시하고 계속):', sceneErr.message);
+      }
+    }
 
     // ── STEP 4: 전체 스토리보드 우선 설계 ─────────────────────────────
     setPipeline(4, '전체 스토리보드 설계 중...', '먼저 내러티브 구조를 완성하고 컷 배치는 다음 단계에서 보정합니다');
