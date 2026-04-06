@@ -1,0 +1,227 @@
+##############################################################################
+# .github/workflows/build-release.yml
+#
+# 무브먼트 Shorts Creator — 자동 빌드 & GitHub Releases 배포
+#
+# 트리거:
+#   - main 브랜치 push 중 태그가 'v*.*.*' 형식인 경우
+#   - 예: git tag v2.76.0 && git push origin v2.76.0
+#
+# 필수 Secrets (GitHub → Settings → Secrets → Actions):
+#   (없어도 빌드 가능, 서명 없는 무기명 빌드로 배포됨)
+#   WIN_CSC_LINK          - 코드 서명 인증서 경로 (선택)
+#   WIN_CSC_KEY_PASSWORD  - 인증서 암호 (선택)
+#   ANDROID_KEYSTORE_B64  - base64 인코딩된 .keystore 파일 (선택)
+#   ANDROID_KEY_ALIAS     - keystore alias (선택)
+#   ANDROID_KEY_PASSWORD  - keystore 비밀번호 (선택)
+#   ANDROID_STORE_PASSWORD - store 비밀번호 (선택)
+##############################################################################
+
+name: Build & Release
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+    workflow_dispatch: # 수동 실행도 허용
+
+env:
+    NODE_VERSION: "20"
+    JAVA_VERSION: "17"
+
+jobs:
+    # ────────────────────────────────────────────────────────────────────────
+    # JOB 1: Windows .exe (NSIS 인스톨러)
+    # ────────────────────────────────────────────────────────────────────────
+    build-windows:
+        name: Windows NSIS Installer
+        runs-on: windows-latest
+        defaults:
+            run:
+                working-directory: ./electron-app
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js ${{ env.NODE_VERSION }}
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+                  cache: "npm"
+                  cache-dependency-path: electron-app/package-lock.json
+
+            - name: Install dependencies
+              run: npm ci --prefer-offline
+
+            # FFmpeg 번들 바이너리 다운로드 (캐시 활용)
+            - name: Cache FFmpeg binaries
+              id: cache-ffmpeg
+              uses: actions/cache@v4
+              with:
+                  path: ffmpeg-bin
+                  key: ffmpeg-win-${{ hashFiles('electron-app/package.json') }}
+
+            - name: Download FFmpeg (Windows)
+              if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
+              shell: pwsh
+              run: |
+                  $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+                  Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+                  Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+                  $binDir = Get-ChildItem ffmpeg_tmp -Recurse -Directory | Where-Object { $_.Name -eq "bin" } | Select-Object -First 1
+                  New-Item -ItemType Directory -Force -Path ../ffmpeg-bin | Out-Null
+                  Copy-Item "$($binDir.FullName)\ffmpeg.exe"  -Destination ../ffmpeg-bin\ffmpeg.exe
+                  Copy-Item "$($binDir.FullName)\ffprobe.exe" -Destination ../ffmpeg-bin\ffprobe.exe
+                  Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
+              working-directory: ${{ github.workspace }}/electron-app
+
+            - name: Build Windows NSIS installer
+              env:
+                  WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+                  WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+                  CSC_IDENTITY_AUTO_DISCOVERY: "false"
+              run: npm run build:win-installer
+
+            - name: Upload .exe artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: windows-installer
+                  path: electron-app/dist-electron/*.exe
+                  if-no-files-found: error
+                  retention-days: 7
+
+    # ────────────────────────────────────────────────────────────────────────
+    # JOB 2: Android APK (서명 선택)
+    # ────────────────────────────────────────────────────────────────────────
+    build-android:
+        name: Android APK
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: ./android-app
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Setup Java ${{ env.JAVA_VERSION }}
+              uses: actions/setup-java@v4
+              with:
+                  distribution: "temurin"
+                  java-version: ${{ env.JAVA_VERSION }}
+
+            - name: Setup Android SDK
+              uses: android-actions/setup-android@v3
+
+            - name: Cache Gradle
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ~/.gradle/caches
+                      ~/.gradle/wrapper
+                  key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+                  restore-keys: gradle-
+
+            # Keystore 복원 (Secrets에 설정된 경우)
+            - name: Restore keystore
+              if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+              run: |
+                  echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/moovlog.keystore
+
+            - name: Build APK (signed or debug)
+              run: |
+                  if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+                    echo "서명 APK 빌드"
+                    ./gradlew assembleRelease \
+                      -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/moovlog.keystore \
+                      -Pandroid.injected.signing.store.password=${{ secrets.ANDROID_STORE_PASSWORD }} \
+                      -Pandroid.injected.signing.key.alias=${{ secrets.ANDROID_KEY_ALIAS }} \
+                      -Pandroid.injected.signing.key.password=${{ secrets.ANDROID_KEY_PASSWORD }}
+                  else
+                    echo "DEBUG APK 빌드 (키스토어 없음)"
+                    ./gradlew assembleDebug
+                  fi
+
+            - name: Find APK
+              id: find-apk
+              run: |
+                  APK=$(find . -name "*.apk" | head -1)
+                  echo "path=$APK" >> $GITHUB_OUTPUT
+
+            - name: Upload APK artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: android-apk
+                  path: ${{ steps.find-apk.outputs.path }}
+                  if-no-files-found: warn
+                  retention-days: 7
+
+    # ────────────────────────────────────────────────────────────────────────
+    # JOB 3: GitHub Release 생성 및 파일 첨부
+    # ────────────────────────────────────────────────────────────────────────
+    release:
+        name: Create GitHub Release
+        needs: [build-windows, build-android]
+        runs-on: ubuntu-latest
+        if: startsWith(github.ref, 'refs/tags/')
+        permissions:
+            contents: write # Release 생성·수정 필요
+
+        steps:
+            - name: Checkout (태그 메시지 읽기용)
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Download Windows artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: windows-installer
+                  path: release-files/
+
+            - name: Download Android artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: android-apk
+                  path: release-files/
+              continue-on-error: true # APK 빌드 실패해도 Release는 진행
+
+            - name: Extract version from tag
+              id: ver
+              run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+            - name: Generate release notes
+              id: notes
+              run: |
+                  # 직전 태그부터 현재까지의 커밋 목록 자동 생성
+                  PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+                  if [ -n "$PREV" ]; then
+                    LOG=$(git log ${PREV}..HEAD --pretty=format:"- %s (%an)" --no-merges)
+                  else
+                    LOG=$(git log HEAD~10..HEAD --pretty=format:"- %s (%an)" --no-merges)
+                  fi
+                  {
+                    echo "## 무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}"
+                    echo ""
+                    echo "### 변경 사항"
+                    echo "$LOG"
+                    echo ""
+                    echo "### 설치 방법"
+                    echo "- **Windows**: \`무브먼트 Shorts Creator Setup *.exe\` 실행"
+                    echo "- **Android**: \`*.apk\` 파일을 기기에 복사 후 설치 (설정 → 알 수 없는 앱 허용)"
+                  } > release_notes.md
+                  cat release_notes.md
+
+            - name: Create Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  name: "무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}"
+                  body_path: release_notes.md
+                  draft: false
+                  prerelease: false
+                  files: |
+                      release-files/*.exe
+                      release-files/*.apk
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

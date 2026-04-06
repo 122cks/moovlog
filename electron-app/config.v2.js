@@ -31,7 +31,7 @@ function env(key, fallback = null) {
 // ─────────────────────────────────────────────────────────────────────────
 const APP = {
   name: '무브먼트 Shorts Creator',
-  version: '2.75',
+  version: '2.76',
   buildDate: '2026-04-06',
   githubOwner: '122cks',
   githubRepo: 'moovlog',
@@ -111,8 +111,8 @@ const PATHS = {
 // ─────────────────────────────────────────────────────────────────────────
 const ANDROID = {
   webUrl: 'https://122cks.github.io/moovlog/shorts-creator/',
-  versionName: '2.75',
-  versionCode: 3,
+  versionName: '2.76',
+  versionCode: 4,
   minSdk: 24,
   targetSdk: 34,
   // AdMob (Optional — 환경 변수에서 로드)

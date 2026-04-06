@@ -10,8 +10,8 @@ android {
         applicationId "com.moovlog.shorts"
         minSdk 24
         targetSdk 34
-        versionCode 3
-        versionName "2.75"
+        versionCode 4
+        versionName "2.76"
     }
 
     signingConfigs {

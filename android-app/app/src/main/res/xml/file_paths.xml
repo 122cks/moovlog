@@ -1,12 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- FileProvider paths for shareVideo() bridge (#92) -->
+<!--
+  FileProvider paths — shareVideo() 브릿지 권한 설정 (#92/#94)
+
+  실기기 공유 시 "권한 없음" 에러를 막으려면 영상이 저장되는
+  모든 경로를 여기에 선언해야 합니다.
+
+  - files-path       : getFilesDir()  → /data/data/pkg/files/
+  - cache-path       : getCacheDir()  → /data/data/pkg/cache/
+  - external-path    : Environment.getExternalStorageDirectory() (기기 루트)
+  - external-files-path : getExternalFilesDir() → /sdcard/Android/data/pkg/files/
+  - external-cache-path : getExternalCacheDir()
+  - external-media-path : getExternalMediaDirs() (Android Q+)
+
+  path="." 는 해당 디렉터리 전체를 허용합니다.
+-->
 <paths>
-    <!-- 내부 앱 파일 -->
-    <files-path name="files" path="." />
-    <!-- 외부 저장소 공유 -->
-    <external-path name="external" path="." />
-    <!-- 외부 파일 디렉터리 -->
-    <external-files-path name="external_files" path="." />
-    <!-- 다운로드 폴더 -->
-    <external-path name="downloads" path="Download/" />
+    <!-- 앱 내부 파일 (캐시 포함) -->
+    <files-path name="internal_files" path="." />
+    <cache-path name="internal_cache" path="." />
+
+    <!-- 외부 저장소 전체 (갤러리·DCIM·Download 등) -->
+    <external-path name="external_root" path="." />
+    <external-path name="external_dcim" path="DCIM/" />
+    <external-path name="external_pictures" path="Pictures/" />
+    <external-path name="external_movies" path="Movies/" />
+    <external-path name="external_downloads" path="Download/" />
+
+    <!-- 앱 전용 외부 저장소 -->
+    <external-files-path name="external_app_files" path="." />
+    <external-cache-path name="external_app_cache" path="." />
+
+    <!-- Android 10+ 미디어 디렉터리 -->
+    <external-media-path name="external_media" path="." />
 </paths>

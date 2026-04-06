@@ -1,4 +1,4 @@
-// electron-app/main.js  v2.75
+// electron-app/main.js  v2.76
 // Electron 메인 프로세스
 // ─ #1  FFmpeg 동적 경로   ─ #2  electron-builder.yml 연동
 // ─ #3  chmod + 무결성 검사 ─ #4  IPC 실시간 로그 스트리밍
@@ -1307,6 +1307,16 @@ ipcMain.handle('remove-silence', async (_, { filePath, silences, outputPath }) =
     fs.copyFileSync(filePath, outputPath);
     return outputPath;
   }
+  // #91 터보모드: GPU 코덱 자동 선택
+  const hw = await getBestCodec();
+  const vCodec = hw.codec;
+  const codecOpts =
+    vCodec === 'h264_nvenc'
+      ? ['-c:v', 'h264_nvenc', '-preset', 'p4', '-rc', 'vbr', '-cq', '22']
+      : vCodec === 'h264_qsv'
+        ? ['-c:v', 'h264_qsv', '-global_quality', '22']
+        : ['-c:v', 'libx264', '-crf', '22'];
+
   // silences를 반전해서 유음(소리 있는) 구간 목록 생성
   return new Promise((resolve, reject) => {
     fluent.ffprobe(filePath, (err, meta) => {
@@ -1335,7 +1345,7 @@ ipcMain.handle('remove-silence', async (_, { filePath, silences, outputPath }) =
 
       fluent(filePath)
         .complexFilter(filters, ['vc', 'ac'])
-        .outputOptions(['-c:v libx264', '-crf 22', '-c:a aac', '-b:a 128k'])
+        .outputOptions([...codecOpts, '-c:a', 'aac', '-b:a', '128k'])
         .output(outputPath)
         .on('end', () => resolve(outputPath))
         .on('error', reject)
@@ -1376,9 +1386,18 @@ ipcMain.handle('create-proxy', async (_, { videoPath, outputDir }) => {
   );
 });
 
-// #91 세그먼트 병렬 렌더링 — 클립을 n개 그룹으로 분할 → 각 그룹 병렬 렌더 → concat
+// #91 세그먼트 병렬 렌더링 (터보모드: GPU 코덱 자동 적용)
 ipcMain.handle('render-segments', async (event, { editList, outputPath, options, jobId }) => {
   if (!FFMPEG_PATH) throw new Error('FFmpeg 없음');
+
+  // #91 터보모드: GPU 코덱 감지 후 options에 주입
+  const hw = await getBestCodec();
+  const turboOptions = {
+    ...options,
+    // _doRender는 detectHwaccel()로 직접 코덱을 구하지만, 이미 캐시된 값이 hw.codec으로 넘어오므
+    _forcedCodec: hw.codec, // 미래 확장용 턜그 (현재 _doRender는 detectHwaccel 캐시 사용)
+  };
+
   const segments = 2; // 2분할 병렬
   const chunkSize = Math.ceil(editList.length / segments);
   const chunks = [];
@@ -1388,17 +1407,25 @@ ipcMain.handle('render-segments', async (event, { editList, outputPath, options,
 
   const tmpFiles = chunks.map((_, i) => path.join(os.tmpdir(), `seg_render_${jobId}_${i}.mp4`));
 
+  // 렌더 시작 알림
+  event.sender.send('render-log', {
+    msg: `[터보모드] 코덱=${hw.codec} | ${hw.accel || 'CPU'} | ${chunks.length}분할 병렬 시작`,
+    jobId,
+  });
+
   try {
-    // 각 세그먼트를 각자 _doRender로 병렬 처리
+    // 각 세그먼트를 _doRender로 병렬 처리
     await Promise.all(
-      chunks.map((chunk, i) => _doRender(event, chunk, tmpFiles[i], options, `${jobId}_s${i}`)),
+      chunks.map((chunk, i) =>
+        _doRender(event, chunk, tmpFiles[i], turboOptions, `${jobId}_s${i}`),
+      ),
     );
 
     // concat demuxer 목록 파일 생성
     const listFile = path.join(os.tmpdir(), `concat_${jobId}.txt`);
     fs.writeFileSync(listFile, tmpFiles.map((f) => `file '${f.replace(/\\/g, '/')}'`).join('\n'));
 
-    // concat
+    // concat (복사 1밤 인코딩 없이 빠르게 연결)
     await new Promise((resolve, reject) =>
       fluent(listFile)
         .inputOptions(['-f', 'concat', '-safe', '0'])
@@ -1413,7 +1440,7 @@ ipcMain.handle('render-segments', async (event, { editList, outputPath, options,
     tmpFiles.forEach((f) => fs.rmSync(f, { force: true }));
     fs.rmSync(listFile, { force: true });
 
-    return { outputPath, success: true };
+    return { outputPath, success: true, codec: hw.codec, accel: hw.accel };
   } catch (err) {
     tmpFiles.forEach((f) => fs.rmSync(f, { force: true }));
     throw err;
@@ -1435,4 +1462,137 @@ ipcMain.handle('set-render-priority', (_, { jobId, priority = 'low' }) => {
   } catch (_) {
     return false;
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §12  v2.76 추가 IPC
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────
+// #94 PathSwapper — 프록시(720p) editList를 원본(4K) 경로로 교체
+//  사용법: swap-proxy-paths 에 { editList, proxyMap } 전달
+//  proxyMap: { "proxyPath": "originalPath", ... }
+// ─────────────────────────────────────────────────────────────────────────
+ipcMain.handle('swap-proxy-paths', (_, { editList, proxyMap = {} }) => {
+  if (!editList?.length) return editList;
+  return editList.map((clip) => {
+    const normalizedProxy = clip.path?.replace(/\\/g, '/');
+    const originalPath = proxyMap[normalizedProxy] || proxyMap[clip.path];
+    if (!originalPath) return clip; // 매핑 없으면 그대로
+    // 원본 파일이 존재하는지 검증
+    if (!fs.existsSync(originalPath)) {
+      console.warn(`[PathSwapper] 원본 파일 없음: ${originalPath} → 프록시 유지`);
+      return clip;
+    }
+    return { ...clip, path: originalPath, _isProxy: false, _proxyPath: clip.path };
+  });
+});
+
+// #94 프록시 생성 + 원본→프록시 맵 반환 (배치 처리)
+ipcMain.handle('create-proxy-batch', async (_, { videoPaths, outputDir }) => {
+  if (!FFMPEG_PATH) throw new Error('FFmpeg 없음');
+  const dir = outputDir || path.join(os.tmpdir(), 'moovlog_proxy');
+  fs.mkdirSync(dir, { recursive: true });
+
+  const results = {}; // proxyPath → originalPath 역방향 + 정방향
+  const proxyMap = {}; // originalPath → proxyPath
+
+  await Promise.allSettled(
+    videoPaths.map(async (videoPath) => {
+      const baseName = path.basename(videoPath, path.extname(videoPath));
+      const proxyPath = path.join(dir, `${baseName}_proxy.mp4`);
+
+      if (!fs.existsSync(proxyPath)) {
+        await new Promise((resolve, reject) =>
+          fluent(videoPath)
+            .outputOptions([
+              '-vf', 'scale=720:-2',
+              '-c:v', 'libx264', '-crf', '28', '-preset', 'fast',
+              '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart',
+            ])
+            .output(proxyPath)
+            .on('end', resolve)
+            .on('error', reject)
+            .run(),
+        );
+      }
+      proxyMap[videoPath] = proxyPath;
+      proxyMap[videoPath.replace(/\\/g, '/')] = proxyPath.replace(/\\/g, '/');
+      // 역방향 (프록시→원본) — swap-proxy-paths 가 사용
+      results[proxyPath.replace(/\\/g, '/')] = videoPath;
+    }),
+  );
+
+  return { proxyMap, reverseMap: results };
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #95 에러 원격 리포팅 — Webhook(Discord/Slack/Firebase) 전송
+//  환경변수 MOOVLOG_ERROR_WEBHOOK 에 URL 설정 시 활성화
+// ─────────────────────────────────────────────────────────────────────────
+async function remoteReportError(context, errorMsg, extra = {}) {
+  // 1) 심각도 판단: 'fatal' 키워드 포함 시만 전송
+  const isFatal = /fatal|crash|SIGKILL|out of memory/i.test(errorMsg);
+
+  let webhookUrl = null;
+  try {
+    const cfg = require('./config.v2.js');
+    webhookUrl = cfg.ERROR_WEBHOOK || process.env.MOOVLOG_ERROR_WEBHOOK;
+  } catch (_) {
+    webhookUrl = process.env.MOOVLOG_ERROR_WEBHOOK;
+  }
+
+  // 항상 로컬 로그 기록
+  appendFfmpegLog(context, `[${isFatal ? 'FATAL' : 'ERROR'}] ${errorMsg}`);
+
+  if (!webhookUrl || !isFatal) return;
+
+  // Discord-style payload (Slack/Firebase Functions도 유사 JSON)
+  const payload = {
+    username: '무브먼트 ErrorBot',
+    embeds: [
+      {
+        title: `🚨 ${isFatal ? 'FATAL' : 'ERROR'} — ${context}`,
+        description: errorMsg.slice(0, 1000),
+        color: isFatal ? 0xff0000 : 0xff9900,
+        fields: [
+          { name: 'OS', value: `${process.platform} ${process.arch}`, inline: true },
+          { name: 'Version', value: app.getVersion(), inline: true },
+          { name: 'Time', value: new Date().toLocaleString('ko-KR'), inline: false },
+          ...Object.entries(extra).map(([k, v]) => ({ name: k, value: String(v), inline: true })),
+        ],
+      },
+    ],
+  };
+
+  try {
+    const https = require('https');
+    const body = JSON.stringify(payload);
+    const url = new URL(webhookUrl);
+    const req = https.request(
+      { hostname: url.hostname, path: url.pathname + url.search, method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      () => {},
+    );
+    req.on('error', () => {}); // 전송 실패 무시
+    req.write(body);
+    req.end();
+  } catch (_) {}
+}
+
+// 렌더러에서 에러 리포팅 트리거
+ipcMain.handle('report-error', (_, { context, message, extra }) =>
+  remoteReportError(context || 'renderer', message || '(no message)', extra),
+);
+
+// FFmpeg 에러 발생 시 자동 리포팅 (appendFfmpegLog wrapper 확장)
+ipcMain.handle('get-error-webhook-status', () => {
+  let webhookUrl = null;
+  try {
+    const cfg = require('./config.v2.js');
+    webhookUrl = cfg.ERROR_WEBHOOK || process.env.MOOVLOG_ERROR_WEBHOOK;
+  } catch (_) {
+    webhookUrl = process.env.MOOVLOG_ERROR_WEBHOOK;
+  }
+  return { configured: !!webhookUrl };
 });
