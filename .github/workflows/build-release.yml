@@ -129,6 +129,22 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/moovlog.keystore
 
+      - name: Validate keystore secrets
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            MISSING=""
+            [ -z "${{ secrets.ANDROID_STORE_PASSWORD }}" ] && MISSING="$MISSING ANDROID_STORE_PASSWORD"
+            [ -z "${{ secrets.ANDROID_KEY_ALIAS }}" ]     && MISSING="$MISSING ANDROID_KEY_ALIAS"
+            [ -z "${{ secrets.ANDROID_KEY_PASSWORD }}" ]  && MISSING="$MISSING ANDROID_KEY_PASSWORD"
+            if [ -n "$MISSING" ]; then
+              echo "⚠️  KEYSTORE_B64 설정됨, 누락 Secrets:${MISSING} → 디버그 빌드로 대체"
+            else
+              echo "✅ 키스토어 Secrets 검증 완료 — 서명 빌드 진행"
+            fi
+          else
+            echo "ℹ️  ANDROID_KEYSTORE_B64 미설정 → 디버그 빌드"
+          fi
+
       - name: Build APK (signed or debug)
         run: |
           if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
@@ -144,11 +160,22 @@ jobs:
             ./gradlew assembleDebug -PversionCode=${{ github.run_number }}
           fi
 
-      - name: Find APK
+      - name: Find and Rename APK to Moovlog_YYMMDD_vX.Y.Z.apk
         id: find-apk
         run: |
           APK=$(find . -name "*.apk" | head -1)
-          echo "path=$APK" >> $GITHUB_OUTPUT
+          if [ -n "$APK" ] && [ -f "$APK" ]; then
+            DATE=$(date +%y%m%d)
+            VER="${{ github.ref_name }}"
+            NEW_NAME="Moovlog_${DATE}_${VER}.apk"
+            DIR=$(dirname "$APK")
+            mv "$APK" "$DIR/$NEW_NAME"
+            echo "path=$DIR/$NEW_NAME" >> $GITHUB_OUTPUT
+            echo "name=$NEW_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "path=$APK" >> $GITHUB_OUTPUT
+            echo "name=$(basename ${APK:-unknown.apk})" >> $GITHUB_OUTPUT
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -264,7 +291,7 @@ jobs:
           if [ "$RELEASE_RESULT" = "success" ]; then
             echo "emoji=✅"            >> $GITHUB_OUTPUT
             echo "color=3066993"       >> $GITHUB_OUTPUT
-            echo "msg=빌드 & 배포 성공!" >> $GITHUB_OUTPUT
+            echo "msg=${GITHUB_REF_NAME} 정식 버전 배포 완료! 🎉 (고기 엔진 탑재 🥩)" >> $GITHUB_OUTPUT
           else
             echo "emoji=❌"                          >> $GITHUB_OUTPUT
             echo "color=15158332"                    >> $GITHUB_OUTPUT

@@ -10,7 +10,9 @@
     "dev": "cross-env NODE_ENV=development electron .",
     "build:win": "cross-env WIN_CSC_LINK= CSC_LINK= CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder@26.8.1 --win portable",
     "build:win-installer": "cross-env WIN_CSC_LINK= CSC_LINK= CSC_IDENTITY_AUTO_DISCOVERY=false npx electron-builder@26.8.1 --win nsis",
-    "build:mac": "npx electron-builder@26.8.1 --mac dmg"
+    "build:mac": "npx electron-builder@26.8.1 --mac dmg",
+    "clean": "node -e \"require('fs').rmSync('./dist-electron',{recursive:true,force:true})\"",
+    "build:clean": "npm run clean && npm run build:win-installer"
   },
   "dependencies": {
     "electron-updater": "^6.3.4",
@@ -55,7 +57,9 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "uninstallerIcon": "build/icon.ico",
+      "shortcutName": "Moovlog Shorts Creator",
+      "artifactName": "Moovlog-${version}-Setup.exe"
     },
     "mac": {
       "target": "dmg",

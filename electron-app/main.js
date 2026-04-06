@@ -308,6 +308,24 @@ function appendFfmpegLog(jobId, line) {
     }
     const entry = `[${new Date().toISOString()}][${jobId}] ${line}\n`;
     fs.appendFileSync(logPath, entry, 'utf8');
+    // 중요 에러는 AppData 로그에도 기록
+    if (/error|fail/i.test(line)) appendAppLog('ERROR', `[${jobId}] ${line}`);
+  } catch (_) {}
+}
+
+// #v2.80 앱 로그 — AppData/Roaming/moovlog/logs/ (에러 추적/Discord 리포트용)
+function getAppLogDir() {
+  return process.platform === 'win32'
+    ? path.join(process.env.APPDATA || os.homedir(), 'moovlog', 'logs')
+    : path.join(os.homedir(), '.moovlog', 'logs');
+}
+function appendAppLog(level, msg) {
+  try {
+    const dir = getAppLogDir();
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const date = new Date().toISOString().slice(0, 10);
+    const entry = `[${new Date().toISOString()}][${level}] ${msg}\n`;
+    fs.appendFileSync(path.join(dir, `moovlog_${date}.log`), entry, 'utf8');
   } catch (_) {}
 }
 
@@ -368,7 +386,7 @@ function createWindow() {
     height: 860,
     minWidth: 800,
     minHeight: 600,
-    title: '무브먼트 Shorts Creator',
+    title: `Moovlog Shorts Creator v${app.getVersion()} (Stable)`,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -422,6 +440,14 @@ function setTrayProgress(pct) {
       {
         label: '창 표시',
         click: () => (mainWindow ? mainWindow.show() : createWindow()),
+      },
+      { type: 'separator' },
+      {
+        label: '부팅 시 자동 실행 (트레이)',
+        type: 'checkbox',
+        checked: app.getLoginItemSettings().openAtLogin,
+        click: (item) =>
+          app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true }),
       },
       { label: '종료', click: () => app.quit() },
     ]),
@@ -554,7 +580,7 @@ app.whenReady().then(async () => {
         .showMessageBox(mainWindow, {
           type: 'info',
           title: '업데이트 사용 가능',
-          message: `새 버전 v${info.version}이 있습니다.`,
+          message: `새로운 v${info.version} 업데이트가 있습니다!`,
           detail: '지금 다운로드하시겠습니까? 설치는 앱 종료 시 자동으로 진행됩니다.',
           buttons: ['지금 다운로드', '나중에'],
         })
@@ -579,6 +605,34 @@ app.whenReady().then(async () => {
     });
     // 앱 시작 30초 후 업데이트 확인 (서버 부하 분산)
     setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 30000);
+  } else {
+    // 패키징 안 된 환경: GitHub Releases API 직접 버전 체크 (개발·업데이트 확인용)
+    setTimeout(async () => {
+      try {
+        const r = await fetch('https://api.github.com/repos/122cks/moovlog/releases/latest', {
+          headers: { 'User-Agent': 'moovlog-desktop' },
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        const latestTag = (data.tag_name || '').replace(/^v/, '');
+        const currentVer = app.getVersion();
+        if (latestTag && latestTag !== currentVer && mainWindow) {
+          dialog
+            .showMessageBox(mainWindow, {
+              type: 'info',
+              title: '업데이트 알림',
+              message: `새로운 v${latestTag} 업데이트가 있습니다!`,
+              detail: `현재: v${currentVer} → 최신: v${latestTag}\nGitHub Releases에서 다운로드하세요.`,
+              buttons: ['릴리스 페이지 열기', '나중에'],
+            })
+            .then(({ response }) => {
+              if (response === 0)
+                shell.openExternal('https://github.com/122cks/moovlog/releases/latest');
+            })
+            .catch(() => {});
+        }
+      } catch (_) {}
+    }, 15_000);
   }
 
   detectHwaccel().catch(() => {}); // 백그라운드 감지
@@ -624,6 +678,13 @@ app.on('window-all-closed', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // IPC 핸들러
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ── 앱 로그 기록 (렌더러 → 메인): AppData/Roaming/moovlog/logs/ ───────────
+ipcMain.on('app-log', (_, { level, msg } = {}) => {
+  appendAppLog(level || 'INFO', String(msg || ''));
+});
+// 로그 디렉토리 경로 반환 (renderer에서 경로 안내 시 사용)
+ipcMain.handle('get-app-log-dir', () => getAppLogDir());
 
 // ── FFmpeg 상태 (#1, #7, #48) ────────────────────────────────────────────
 ipcMain.handle('ffmpeg-status', async () => {

@@ -2,6 +2,13 @@ plugins {
     id 'com.android.application'
 }
 
+// local.properties에서 서명 정보 로드 (로컬 전용, git에는 커밋되지 않음)
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+
 android {
     namespace 'com.moovlog.shorts'
     compileSdk 34
@@ -12,17 +19,17 @@ android {
         targetSdk 34
         // GITHUB_RUN_NUMBER 환경변수로 자동 증가. 로컈 빌드시 기본값 5 사용
         versionCode (project.findProperty('versionCode') as Integer) ?: 5
-        versionName "2.79"
+        versionName "2.80"
         // 한국어 외 불필요한 리소스(문자열, 날짜형식 등) 제거 → APK 용량 감소
         resConfigs "ko", "en"
     }
 
     signingConfigs {
         release {
-            storeFile     file(project.findProperty('storeFile') ?: "../moovlog.keystore")
-            storePassword project.findProperty('storePassword') ?: ""
-            keyAlias      project.findProperty('keyAlias')      ?: "moovlog"
-            keyPassword   project.findProperty('keyPassword')   ?: ""
+            storeFile     file(project.findProperty('storeFile')     ?: localProps['storeFile']     ?: "../moovlog.keystore")
+            storePassword project.findProperty('storePassword')      ?: localProps['storePassword'] ?: ""
+            keyAlias      project.findProperty('keyAlias')           ?: localProps['keyAlias']      ?: "moovlog"
+            keyPassword   project.findProperty('keyPassword')        ?: localProps['keyPassword']   ?: ""
         }
     }
 
@@ -57,4 +64,13 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.core:core:1.12.0'
+}
+
+// kotlin-stdlib-jdk7/jdk8 은 kotlin-stdlib 1.8+ 에 통합됨 → 중복 클래스 충돌 해소
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.0'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0'
+    }
 }
