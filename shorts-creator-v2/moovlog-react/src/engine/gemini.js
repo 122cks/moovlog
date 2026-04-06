@@ -24,7 +24,7 @@ async function fetchWithTimeout(url, options, timeout = 60000) {
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error(`?ㅽ듃?뚰겕 ??꾩븘??(${Math.round(timeout / 1000)}s 珥덇낵)`);
+    if (e.name === 'AbortError') throw new Error(`요청 시간 초과(${Math.round(timeout / 1000)}s 제한)`);
     throw e;
   } finally {
     clearTimeout(id);
@@ -59,26 +59,26 @@ export async function geminiWithFallback(body, timeoutMs = 60000) {
       return await apiPost(getApiUrl(model), body, timeoutMs);
     } catch (e) {
       lastErr = e;
-      console.warn(`[Gemini] ${model} ?ㅽ뙣 ???ㅼ쓬 紐⑤뜽:`, e.message);
+      console.warn(`[Gemini] ${model} 실패, 다음 모델:`, e.message);
     }
   }
-  throw lastErr || new Error('紐⑤뱺 Gemini 紐⑤뜽 ?ㅽ뙣');
+  throw lastErr || new Error('모든 Gemini 모델 실패');
 }
 
 // ??? 蹂묐젹 寃쎌웳 (媛??鍮좊Ⅸ 紐⑤뜽 ?묐떟 梨꾪깮) ???????????????
 // Promise.any: ?섎굹?쇰룄 ?깃났?섎㈃ 利됱떆 諛섑솚, 紐⑤몢 ?ㅽ뙣?섎㈃ AggregateError
 export async function geminiRace(body, models = TEXT_MODELS, timeoutMs = 28000) {
-  if (!models.length) throw new Error('紐⑤뜽 紐⑸줉 ?놁쓬');
+  if (!models.length) throw new Error('모델 목록 없음');
   const attempts = models.map(model =>
     apiPost(getApiUrl(model), body, timeoutMs)
       .then(r => ({ model, data: r }))
       .catch(e => {
-        console.warn(`[Gemini 蹂묐젹] ${model} ?ㅽ뙣:`, e.message);
+        console.warn(`[Gemini 경쟁] ${model} 실패:`, e.message);
         throw e;
       })
   );
   const result = await Promise.any(attempts);
-  console.log(`[Gemini ?? 梨꾪깮 紐⑤뜽: ${result.model}`);
+  console.log(`[Gemini ✓] 낙찰 모델: ${result.model}`);
   return result.data;
 }
 
@@ -87,11 +87,11 @@ const MAX_IMG_SIZE = 1280; // Gemini Vision? ?대? 由ъ궗?댁쫰 ??1280px ?�
 export function toB64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = () => reject(new Error(`'${file.name}' ?뚯씪???쎌쓣 ???놁뒿?덈떎.`));
+    reader.onerror = () => reject(new Error(`'${file.name}' 파일을 읽을 수 없습니다.`));
 
     reader.onload = () => {
       const img = new Image();
-      img.onerror = () => reject(new Error('?대?吏 ?뚯떛 ?ㅽ뙣'));
+      img.onerror = () => reject(new Error('이미지 로딩 실패'));
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let { width: w, height: h } = img;
@@ -176,7 +176,7 @@ export function safeExtractText(data) {
   const candidate = data?.candidates?.[0];
   const finishReason = candidate?.finishReason;
   if (finishReason === 'SAFETY') {
-    throw new Error('肄섑뀗痢??덉쟾???뺤콉???섑빐 ?앹꽦??李⑤떒?섏뿀?듬땲?? 吏덉쓽瑜??섏젙??二쇱꽭??');
+    throw new Error('콘텐츠 정책에 의해 생성이 차단됐습니다. 지시어를 수정해 주세요.');
   }
   if (finishReason && finishReason !== 'STOP' && finishReason !== 'MAX_TOKENS') {
     console.warn(`[Gemini] finishReason: ${finishReason}`);
@@ -192,7 +192,7 @@ export async function visionAnalysis(restaurantName, researchData = '', restaura
   const buildBatchPartsGrouped = async (fileSlice, baseIdx) =>
     Promise.all(fileSlice.map(async (m, li) => {
       const i = baseIdx + li;
-      const label = { text: `\n--- [?먮낯 誘몃뵒??踰덊샇 media_idx: ${i}] ---` };
+      const label = { text: `\n--- [미디어 파일 번호 media_idx: ${i}] ---` };
       if (m.type === 'image') {
         try { const b64 = await toB64(m.file); return [label, { inline_data: { mime_type: m.file.type || 'image/jpeg', data: b64 } }]; }
         catch (_) { return [label]; }
@@ -212,7 +212,7 @@ export async function visionAnalysis(restaurantName, researchData = '', restaura
   const slice4 = files.slice(VISION_BATCH * 4, totalMedia);
 
   if (!slice0.length) {
-    return { keywords: [restaurantName, '留쏆쭛'], mood: '媛먯꽦?곸씤', per_image: [], recommended_order: [] };
+    return { keywords: [restaurantName, '맛집'], mood: '분위기있는', per_image: [], recommended_order: [] };
   }
 
   // 諛곗튂 parts 蹂묐젹 鍮뚮뱶 (?뚯씪蹂?洹몃９ ?좎?)
@@ -347,7 +347,7 @@ JSON留?諛섑솚 ??per_image 諛곗뿴 媛???ぉ??narration_hint ?꾨뱶留??ы
     const _s2 = raw2.indexOf('{'), _e2 = raw2.lastIndexOf('}');
     secondResult = JSON.parse(_s2 >= 0 && _e2 > _s2 ? raw2.slice(_s2, _e2 + 1) : raw2.replace(/```json|```/g, '').trim());
   } catch (e) {
-    console.warn('[visionAnalysis 2-pass] 2踰덉㎏ ?⑥뒪 ?ㅽ뙣:', e.message);
+    console.warn('[visionAnalysis 2-pass] 2단계 통과 실패:', e.message);
   }
 
   // ?? 寃곌낵 蹂묓빀: narration_hint 二쇱엯 ??
@@ -388,11 +388,11 @@ export async function researchRestaurant(restaurantName) {
       }, 25000);
       const text = safeExtractText(data)?.trim();
       if (text && text.length > 20) {
-        console.log(`[researchRestaurant ?? ${model} 寃???깃났`);
+        console.log(`[researchRestaurant ✓] ${model} 검색 성공`);
         return text;
       }
     } catch (e) {
-      console.warn(`[researchRestaurant] ${model} ?ㅽ뙣:`, e.message);
+      console.warn(`[researchRestaurant] ${model} 실패:`, e.message);
     }
   }
   return ''; // 議곗궗 ?ㅽ뙣 ??鍮?臾몄옄????generateScript媛 gracefully skip

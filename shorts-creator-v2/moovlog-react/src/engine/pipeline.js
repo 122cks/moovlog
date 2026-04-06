@@ -8,6 +8,7 @@ import { detectRestaurantType, geminiQualityCheck } from './gemini-classify.js';
 import { generateAllTTS, ensureAudio, sleep } from './tts.js';
 import { splitCaptions } from './utils.js';
 import { firebaseUploadOriginals, firebaseReplaceRestaurantData } from './firebase.js';
+import { saveLastResult } from './sessionPersistence.js';
 // firebaseUploadVideo는 VideoPlayer에서 직접 사용 — pipeline에서 pipelineSessionId 노출
 
 // ─── 자막 분할 ────────────────────────────────────────────
@@ -765,6 +766,10 @@ export async function startMake() {
 
     await sleep(300);
     hidePipeline();
+    // 완료된 결과를 localStorage에 저장 → 이어하기 기능용
+    const finalScript = useVideoStore.getState().script || workingScript;
+    const finalQcScore = useVideoStore.getState().qcScore;
+    saveLastResult(finalScript, restaurantName.trim(), finalQcScore);
     setShowResult(true);
 
   } catch (err) {

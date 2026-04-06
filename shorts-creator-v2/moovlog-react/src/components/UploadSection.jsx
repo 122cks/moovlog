@@ -5,6 +5,8 @@ import { startMake } from '../engine/pipeline.js';
 import { setGeminiKey } from '../engine/gemini.js';
 import { setTypeCastKeys } from '../engine/tts.js';
 import { getMarketingKits, searchMarketingKits } from '../engine/firebase.js';
+import { saveDraft, loadDraft, loadDriveSession, clearDriveSession, loadLastResult, clearLastResult } from '../engine/sessionPersistence.js';
+import { loadToken } from '../engine/AuthService.js';
 import DrivePicker from './DrivePicker.jsx';
 import PromptInput from './PromptInput.jsx';
 
@@ -68,10 +70,12 @@ function KitTabsPanel({ kit, addToast }) {
 
 export default function UploadSection() {
   const {
-    files, addFiles, removeFile, restaurantName, setRestaurantName,
+    files, addFiles, addFilesAsync, removeFile, restaurantName, setRestaurantName,
     selectedTemplate, setTemplate, aspectRatio, setAspectRatio,
     restaurantType, setRestaurantType,
     requiredKeywords, setRequiredKeywords,
+    selectedHook, setHook, userPrompt, setUserPrompt,
+    setScript, setQcScore, setShowResult,
     addToast, showResult,
   } = useVideoStore();
 
@@ -79,12 +83,17 @@ export default function UploadSection() {
   const dropRef      = useRef();
   const kitListRef   = useRef();   // 마케팅 키트 목록 스크롤 컨테이너
   const itemRefs     = useRef({}); // 각 아코디언 아이템 ref
+  const saveDraftTimer = useRef(null);
 
   // 마케팅 키트 이력
   const [kitHistory,   setKitHistory]   = useState([]);
   const [kitSearch,    setKitSearch]    = useState('');
   const [kitLoading,   setKitLoading]   = useState(false);
   const [selectedKit,  setSelectedKit]  = useState(null); // 펼쳐볼 키트
+
+  // 이어하기 세션
+  const [driveResume, setDriveResume] = useState(null);  // Drive 파일 메타데이터
+  const [prevResult,  setPrevResult]  = useState(null);  // 이전 생성 결과
 
   const loadKits = useCallback(async (kw = '') => {
     setKitLoading(true);
@@ -98,6 +107,34 @@ export default function UploadSection() {
 
   useEffect(() => { loadKits(); }, [loadKits]);
 
+  // 마운트 시: 폼 초안 복원 + 이전 Drive/결과 세션 확인
+  useEffect(() => {
+    const draft = loadDraft();
+    if (draft) {
+      if (draft.restaurantName)  setRestaurantName(draft.restaurantName);
+      if (draft.restaurantType)  setRestaurantType(draft.restaurantType);
+      if (draft.selectedTemplate) setTemplate(draft.selectedTemplate);
+      if (draft.selectedHook)    setHook(draft.selectedHook);
+      if (draft.aspectRatio)     setAspectRatio(draft.aspectRatio);
+      if (draft.userPrompt)      setUserPrompt(draft.userPrompt);
+      if (draft.requiredKeywords) setRequiredKeywords(draft.requiredKeywords);
+    }
+    const driveSession = loadDriveSession();
+    if (driveSession?.files?.length) setDriveResume(driveSession);
+
+    const lastResult = loadLastResult();
+    if (lastResult?.script) setPrevResult(lastResult);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 폼 상태 자동 저장 (600ms debounce)
+  useEffect(() => {
+    clearTimeout(saveDraftTimer.current);
+    saveDraftTimer.current = setTimeout(() => {
+      saveDraft({ restaurantName, restaurantType, selectedTemplate, selectedHook, aspectRatio, userPrompt, requiredKeywords });
+    }, 600);
+    return () => clearTimeout(saveDraftTimer.current);
+  }, [restaurantName, restaurantType, selectedTemplate, selectedHook, aspectRatio, userPrompt, requiredKeywords]);
+
   // ResultScreen에서 돌아올 때(showResult: true→false) 최신 키트 자동 새로고침
   const prevShowResult = useRef(false);
   useEffect(() => {
@@ -106,6 +143,41 @@ export default function UploadSection() {
     }
     prevShowResult.current = showResult;
   }, [showResult]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Drive 파일 재다운로드 ────────────────────────────────
+  const handleReDriveDownload = useCallback(async (driveFiles) => {
+    const token = loadToken();
+    if (!token) {
+      addToast('Google Drive 재로그인이 필요합니다. Drive 버튼을 눌러 로그인하세요.', 'inf');
+      return;
+    }
+    addToast(`Drive에서 ${driveFiles.length}개 파일 다시 불러오는 중...`, 'inf');
+    try {
+      const downloaded = await Promise.all(driveFiles.map(async (doc) => {
+        const res = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(doc.id)}?alt=media`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.status === 401) throw new Error('Drive 토큰 만료 — Drive 버튼으로 재로그인하세요.');
+        if (!res.ok) throw new Error(`'${doc.name}' 다운로드 실패 (${res.status})`);
+        const blob = await res.blob();
+        return new File([blob], doc.name, { type: doc.mimeType || blob.type });
+      }));
+      await (addFilesAsync || addFiles)(downloaded);
+      addToast(`${downloaded.length}개 파일 복원 완료 ✅`, 'ok');
+    } catch (err) {
+      addToast(err.message || 'Drive 파일 복원 실패 — Drive 버튼으로 다시 선택해주세요.', 'err');
+    }
+  }, [addFiles, addFilesAsync, addToast]);
+
+  // ── 이전 결과 복원 ───────────────────────────────────────
+  const handleRestoreResult = useCallback((saved) => {
+    if (saved.restaurantName) setRestaurantName(saved.restaurantName);
+    if (saved.script) setScript(saved.script);
+    if (typeof saved.qcScore === 'number') setQcScore(saved.qcScore);
+    setShowResult(true);
+    addToast(`「${saved.restaurantName}」 이전 결과를 불러왔습니다 ✅`, 'ok');
+  }, [setRestaurantName, setScript, setQcScore, setShowResult, addToast]);
 
   // ── 드래그앤드롭 ─────────────────────────────────────────
   const onDragOver  = useCallback(e => { e.preventDefault(); dropRef.current?.classList.add('over'); }, []);
@@ -169,6 +241,53 @@ export default function UploadSection() {
 
   return (
     <main className="app-main">
+
+      {/* ── 이어서 진행 패널 ───────────────────────────────── */}
+      {(driveResume || prevResult) && (
+        <div className="card" style={{ marginBottom: 14, border: '1px solid rgba(124,58,237,0.4)', background: 'rgba(124,58,237,0.07)', padding: '12px 16px' }}>
+          <p style={{ margin: '0 0 10px', fontWeight: 700, fontSize: '0.88rem', color: '#c4b5fd' }}>
+            <i className="fas fa-redo-alt" style={{ marginRight: 6 }} />이전 작업 이어서 진행
+          </p>
+          {driveResume && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
+              <svg width="14" height="12" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+              </svg>
+              <span style={{ flex: 1, fontSize: '0.81rem', color: '#ccc' }}>
+                Drive {driveResume.files.length}개 파일 — {driveResume.files.slice(0, 2).map(f => f.name).join(', ')}{driveResume.files.length > 2 ? ` 외 ${driveResume.files.length - 2}개` : ''}
+              </span>
+              <button
+                onClick={() => handleReDriveDownload(driveResume.files)}
+                style={{ background: '#4285F4', border: 'none', borderRadius: 8, padding: '6px 13px', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+              >다시 불러오기</button>
+              <button
+                onClick={() => { clearDriveSession(); setDriveResume(null); }}
+                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '0.95rem', lineHeight: 1 }}
+                title="이 항목 숨기기"
+              >✕</button>
+            </div>
+          )}
+          {prevResult && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderTop: driveResume ? '1px solid rgba(255,255,255,0.07)' : 'none', marginTop: driveResume ? 8 : 0 }}>
+              <i className="fas fa-film" style={{ color: '#a78bfa', fontSize: '1rem', flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: '0.81rem', color: '#ccc' }}>
+                {prevResult.restaurantName} — 이전 생성 결과
+                {typeof prevResult.qcScore === 'number' ? ` (QC ${prevResult.qcScore}/100)` : ''}
+              </span>
+              <button
+                onClick={() => handleRestoreResult(prevResult)}
+                style={{ background: '#7c3aed', border: 'none', borderRadius: 8, padding: '6px 13px', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 700, whiteSpace: 'nowrap' }}
+              >결과 복원</button>
+              <button
+                onClick={() => { clearLastResult(); setPrevResult(null); }}
+                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '0.95rem', lineHeight: 1 }}
+                title="이 항목 숨기기"
+              >✕</button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 화면 비율 선택 */}
       <div className="ratio-row">
         {RATIOS.map(r => (

@@ -5,6 +5,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useVideoStore } from '../store/videoStore.js';
 import { saveToken, loadToken, clearToken } from '../engine/AuthService.js';
+import { saveDriveSession } from '../engine/sessionPersistence.js';
 
 const DRIVE_ICON = (
   <svg width="16" height="14" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
@@ -109,6 +110,8 @@ function DriveBrowserModal({ accessToken, onClose, onConfirm, addToast }) {
         if (!blob.size) throw new Error(`'${doc.name}' 공유 권한을 확인하세요.`);
         return new File([blob], doc.name, { type: doc.mimeType || blob.type });
       }));
+      // Drive 파일 메타데이터를 localStorage에 저장 → 이어하기 기능용
+      saveDriveSession(picked);
       onConfirm(files);
     } catch (err) {
       addToast(err.message || '다운로드 중 오류 발생', 'err');
