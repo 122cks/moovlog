@@ -20,7 +20,7 @@ desktop.ini
 
 # Build outputs
 dist/
-build/
+android-app/**/build/
 .gradle/
 openJdk-25/
 *.keystore
@@ -29,3 +29,10 @@ local.properties
 
 # 로컬 FFmpeg 바이너리 (용량 크므로 git 제외)
 ffmpeg-*/
+
+# Electron 빌드 산출물 (dist-electron 내 실행파일 제외)
+electron-app/dist-electron/*.exe
+electron-app/dist-electron/*.exe.blockmap
+electron-app/dist-electron/*.7z
+electron-app/dist-electron/win-unpacked/
+electron-app/dist-electron/.icon-ico/

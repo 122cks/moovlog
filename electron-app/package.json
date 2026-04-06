@@ -1,6 +1,6 @@
 {
   "name": "moovlog-electron",
-  "version": "2.80.0",
+  "version": "2.81.0",
   "description": "무브먼트 Shorts Creator — 데스크탑 설치형 앱 (로컬 FFmpeg 연동)",
   "main": "main.js",
   "author": "122cks",
@@ -21,7 +21,8 @@
   "devDependencies": {
     "cross-env": "^7.0.3",
     "electron": "^30.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^3.0.1"
   },
   "build": {
     "appId": "com.moovlog.desktop",

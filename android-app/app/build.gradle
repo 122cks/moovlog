@@ -19,7 +19,7 @@ android {
         targetSdk 34
         // GITHUB_RUN_NUMBER 환경변수로 자동 증가. 로컈 빌드시 기본값 5 사용
         versionCode (project.findProperty('versionCode') as Integer) ?: 5
-        versionName "2.80"
+        versionName "2.81"
         // 한국어 외 불필요한 리소스(문자열, 날짜형식 등) 제거 → APK 용량 감소
         resConfigs "ko", "en"
     }
