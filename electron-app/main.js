@@ -897,7 +897,13 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
     } catch (err) {
       const isGpuErr = isHwaccelError(err);
       console.warn(`[render-video] 시도 ${attempt} 실패 (GPU오류=${isGpuErr}):`, err?.message);
-      if (!isGpuErr || attempt >= MAX_ATTEMPTS) throw err;
+      if (!isGpuErr || attempt >= MAX_ATTEMPTS) {
+        // fluent-ffmpeg 동기 throw('No input specified' 등)도 한글 메시지로 치환
+        const friendlyMsg = humanizeFfmpegError(err);
+        throw friendlyMsg !== (err?.message || String(err))
+          ? Object.assign(new Error(friendlyMsg), { originalError: err })
+          : err;
+      }
       // GPU 오류: 캐시 무효화 후 다음 시도에서 libx264 강제 사용
       _hwaccelCache = null;
     }
