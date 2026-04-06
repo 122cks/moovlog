@@ -821,7 +821,9 @@ ipcMain.handle('get-render-presets', async () => {
 // GPU 코덱 오류 여부 판별 (NVENC / QSV / AMF 관련 FFmpeg 에러 메시지)
 function isHwaccelError(err) {
   const msg = (err?.message || String(err)).toLowerCase();
-  return /nvenc|h264_nvenc|h264_qsv|h264_amf|no hardware|hardware encoder|init_encoder|direct3d|amf_context/.test(msg);
+  return /nvenc|h264_nvenc|h264_qsv|h264_amf|no hardware|hardware encoder|init_encoder|direct3d|amf_context/.test(
+    msg,
+  );
 }
 
 // FFmpeg raw 에러를 사용자 친화적 한글 메시지로 치환
@@ -833,8 +835,7 @@ function humanizeFfmpegError(err) {
     return `파일을 찾을 수 없습니다. 경로를 확인해주세요.\n(${raw.slice(0, 120)})`;
   if (/invalid data|moov atom not found/i.test(raw))
     return `손상된 영상 파일입니다. 다른 파일로 대체해주세요.\n(${raw.slice(0, 120)})`;
-  if (/permission denied/i.test(raw))
-    return '파일 접근 권한이 없습니다. 폴더 권한을 확인해주세요.';
+  if (/permission denied/i.test(raw)) return '파일 접근 권한이 없습니다. 폴더 권한을 확인해주세요.';
   return raw; // 기타 에러는 원문 유지
 }
 
@@ -850,14 +851,20 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
   for (const clip of editList) {
     const rawPath = (clip.path || '').replace(/^file:\/\/\//, '').replace(/\//g, path.sep);
     if (!rawPath) {
-      throw new Error(`클립 소스 경로가 비어 있습니다. 파일을 다시 추가해주세요. (순서: ${editList.indexOf(clip) + 1}번째)`);
+      throw new Error(
+        `클립 소스 경로가 비어 있습니다. 파일을 다시 추가해주세요. (순서: ${editList.indexOf(clip) + 1}번째)`,
+      );
     }
     if (!ALLOWED_EXT.test(rawPath)) {
-      throw new Error(`지원하지 않는 파일 형식입니다: "${path.basename(rawPath)}"\n지원 형식: mp4, mov, avi, mkv, webm 등`);
+      throw new Error(
+        `지원하지 않는 파일 형식입니다: "${path.basename(rawPath)}"\n지원 형식: mp4, mov, avi, mkv, webm 등`,
+      );
     }
     // 한글·특수문자 경로 포함 실제 존재 여부 확인
     if (!fs.existsSync(rawPath)) {
-      throw new Error(`소스 파일을 찾을 수 없습니다: "${path.basename(rawPath)}"\n경로를 확인하거나 파일을 다시 추가해주세요.`);
+      throw new Error(
+        `소스 파일을 찾을 수 없습니다: "${path.basename(rawPath)}"\n경로를 확인하거나 파일을 다시 추가해주세요.`,
+      );
     }
   }
   // ─────────────────────────────────────────────────────────────────────
@@ -990,13 +997,34 @@ async function _doRender(event, editList, outputPath, options, jobId) {
   return new Promise((resolve, reject) => {
     let cmd = fluent();
 
+    // ── Gapless 스냅: 클립 간 gap이 있으면 앞 클립 duration을 연장 ─────────
+    // 타임라인 position 기준으로 정렬 후, 앞 클립 끝과 뒤 클립 시작 사이 간격을 메움
+    const snappedList = editList.map((c, i) => {
+      if (i === editList.length - 1) return { ...c };
+      const next = editList[i + 1];
+      const thisEnd = (c.timelinePos || 0) + (c.duration || 3);
+      const nextStart = next.timelinePos || 0;
+      const gap = nextStart - thisEnd;
+      // gap이 0.05초 이상이면 duration을 늘려 붙임 (0.5초 이하 gap만 보정)
+      if (gap > 0.05 && gap <= 0.5) {
+        return { ...c, duration: (c.duration || 3) + gap };
+      }
+      return { ...c };
+    });
+
     // 입력 파일들
-    editList.forEach((clip) => {
+    snappedList.forEach((clip) => {
       const cleanPath = clip.path.replace(/^file:\/\/\//, '').replace(/\//g, path.sep);
+      // HEVC(H.265) / VP9 / AV1 등 비표준 코덱을 안전하게 소프트웨어 디코딩
+      // -vf format=yuv420p 는 complexFilter에서 설정하므로 여기선 hwaccel만 세팅
+      cmd = cmd.addInputOption('-hwaccel', 'auto');
       if ((clip.start || 0) > 0) cmd = cmd.addInputOption('-ss', String(clip.start));
       cmd = cmd.addInputOption('-t', String(Math.max(0.1, clip.duration || 3)));
       cmd = cmd.input(cleanPath);
     });
+
+    // Gapless 스냅 처리 후 totalDur 재계산 (엔딩 크레딧 타이밍 정확도 확보)
+    const snappedTotalDur = snappedList.reduce((s, c) => s + Math.max(0.1, c.duration || 3), 0);
 
     // BGM 입력 (#32)
     const hasBgm = bgmPath && fs.existsSync(bgmPath);
@@ -1010,17 +1038,18 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     const filters = [];
 
     // 각 씬 스케일·크롭 (#35 자동 리프레임)
+    // format=yuv420p 선행 → HEVC/AV1 등 비표준 픽셀 포맷으로 인한 검은 화면 방지
     for (let i = 0; i < n; i++) {
       const speed = speedRamp !== 1.0 ? `,setpts=${1 / speedRamp}*PTS` : '';
       if (autoReframe) {
         filters.push(
-          `[${i}:v]scale=${width * 2}:-2,` +
+          `[${i}:v]format=yuv420p,scale=${width * 2}:-2,` +
             `crop=${width}:${height}:(iw-${width})/2:(ih-${height})/2,` +
             `setsar=1,fps=${fps}${speed}[v${i}]`,
         );
       } else {
         filters.push(
-          `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=increase,` +
+          `[${i}:v]format=yuv420p,scale=${width}:${height}:force_original_aspect_ratio=increase,` +
             `crop=${width}:${height},setsar=1,fps=${fps}${speed}[v${i}]`,
         );
       }
@@ -1029,11 +1058,11 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     // concat 또는 xfade (#8, #34)
     let lastVid = 'vc';
     if (crossfade > 0 && n > 1) {
-      // xfade 연쇄
+      // xfade 연쇄 — snappedList 기준 duration으로 offset 계산
       let prev = 'v0';
       for (let i = 1; i < n; i++) {
         const out = i === n - 1 ? 'vc' : `cf${i}`;
-        const offset = editList
+        const offset = snappedList
           .slice(0, i)
           .reduce((s, c) => s + Math.max(0.1, c.duration || 3) - crossfade, 0);
         filters.push(
@@ -1042,7 +1071,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
         prev = out;
       }
     } else {
-      filters.push(`${editList.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[vc]`);
+      filters.push(`${snappedList.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[vc]`);
     }
 
     // LUT 색감 (#39)
@@ -1175,7 +1204,10 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       renderJobs.delete(jobId);
       autoSaveClear();
       const friendlyMsg = humanizeFfmpegError(err);
-      const wrappedErr = friendlyMsg !== (err?.message || String(err)) ? Object.assign(new Error(friendlyMsg), { originalError: err }) : err;
+      const wrappedErr =
+        friendlyMsg !== (err?.message || String(err))
+          ? Object.assign(new Error(friendlyMsg), { originalError: err })
+          : err;
       reject(wrappedErr);
     });
 
