@@ -1,5 +1,23 @@
 {
+  "name": "moovlog-workspace",
+  "version": "2.72.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "electron-app",
+    "shorts-creator-v2/moovlog-react"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=shorts-creator-v2/moovlog-react",
+    "dev:electron": "npm run dev --workspace=electron-app",
+    "build:web": "npm run build:safe --workspace=shorts-creator-v2/moovlog-react",
+    "build:electron": "npm run build:win --workspace=electron-app",
+    "build:all": "turbo run build",
+    "deploy:web": "npm run deploy:now --workspace=shorts-creator-v2/moovlog-react",
+    "test": "turbo run test"
+  },
   "devDependencies": {
-    "eslint": "^10.0.3"
+    "eslint": "^10.0.3",
+    "turbo": "^2.0.0"
   }
 }

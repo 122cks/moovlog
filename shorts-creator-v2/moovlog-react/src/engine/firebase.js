@@ -81,7 +81,7 @@ export async function firebaseSaveSession(script, restaurantName) {
       template:   'auto',
       sceneCount: script.scenes.length,
       title:      script.title || '',
-      version:    'v2.71-react',
+      version:    'v2.72-react',
       videoUrl:   null,
       ext:        null,
       createdAt:  serverTimestamp(),
@@ -102,7 +102,7 @@ export async function firebaseUploadVideo(blob, ext, restaurantName, pipelineSes
     await addDoc(collection(db, 'generations'), {
       restaurant: restaurantName || '',
       videoUrl: url, ext,
-      version: 'v2.71-react',
+      version: 'v2.72-react',
       createdAt: serverTimestamp(),
     });
     if (sessionDocId) {

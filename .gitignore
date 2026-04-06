@@ -26,3 +26,6 @@ openJdk-25/
 *.keystore
 local.properties
 /moovlog-shorts-creator.apk
+
+# 로컬 FFmpeg 바이너리 (용량 크므로 git 제외)
+ffmpeg-*/

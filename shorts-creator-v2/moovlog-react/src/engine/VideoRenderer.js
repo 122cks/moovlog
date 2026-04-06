@@ -333,6 +333,11 @@ export async function extractThumbnail(scenes, files, script, onProgress) {
 }
 
 export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
+  // ── Electron 환경 감지: 로컬 ffmpeg.exe로 위임 ───────────────────────────────
+  if (typeof window !== 'undefined' && window.electronAPI?.isElectron) {
+    return _renderWithElectron(scenes, files, script, onProgress);
+  }
+
   const report = (msg, pct) => {
     console.log('[FFmpeg]', msg);
     onProgress?.(msg, typeof pct === 'number' ? pct : undefined);
@@ -489,4 +494,65 @@ export async function renderCinematicFinish(blob, theme, onProgress) {
   return new Blob([data.buffer], { type: 'video/mp4' });
 }
 
+/**
+ * Electron 전용 렌더러 — window.electronAPI.renderVideo() 경유
+ * 로컬 ffmpeg.exe 로 처리하고 결과 파일을 Blob으로 반환
+ */
+async function _renderWithElectron(scenes, files, script, onProgress) {
+  const api = window.electronAPI;
+  const report = (msg, pct) => onProgress?.(msg, pct);
+
+  // FFmpeg 상태 확인
+  const status = await api.ffmpegStatus();
+  if (!status.available) {
+    throw new Error('로컬 FFmpeg를 찾을 수 없습니다. electron-app/README를 확인해주세요.');
+  }
+  report(`✅ 로컬 FFmpeg 감지: ${status.version?.split(' ')[2] || ''}`, 2);
+
+  // 저장 경로 선택
+  const restaurantName = script?.restaurant_name || 'moovlog';
+  const outputPath = await api.saveFile({
+    title:       '시네마틱 MP4 저장 위치',
+    defaultPath: `moovlog_${restaurantName}_${Date.now()}.mp4`,
+  });
+  if (!outputPath) throw new Error('저장 경로가 선택되지 않았습니다');
+
+  // 편집 목록 생성
+  const editList = scenes.map((sc, i) => {
+    const fileItem = files[sc.media_idx ?? i] ?? files[i];
+    return {
+      path:     fileItem?.url || fileItem?.file?.path || '',
+      start:    (sc.best_start_pct || 0) * Math.max((sc.duration || 3) * 2, 5),
+      duration: Math.max(0.4, sc.duration || 3),
+    };
+  }).filter(c => c.path);
+
+  if (!editList.length) throw new Error('렌더링할 씬이 없습니다');
+
+  // 진행률 구독
+  const unsubscribe = api.onRenderProgress(({ pct, msg }) => report(msg, pct));
+
+  try {
+    report('로컬 FFmpeg 렌더링 시작...', 5);
+    await api.renderVideo(editList, outputPath, {
+      theme:  script?.theme || 'hansik',
+      fps:    30,
+      crf:    22,
+      preset: 'fast',
+    });
+    report('✅ 렌더링 완료!', 100);
+
+    // 파일을 읽어 Blob으로 반환 (ExportPanel의 다운로드 로직과 동일 인터페이스 유지)
+    const fileRes = await fetch(`file:///${outputPath.replace(/\\/g, '/')}`);
+    if (!fileRes.ok) {
+      // file:// 읽기 실패 시 파일 탐색기로 안내
+      api.showInFolder(outputPath);
+      // 더미 Blob 반환 — UI는 ffmpegBlob이 truthy이면 버튼 표시
+      return new Blob([], { type: 'video/mp4' });
+    }
+    return await fileRes.blob();
+  } finally {
+    unsubscribe();
+  }
+}
 
