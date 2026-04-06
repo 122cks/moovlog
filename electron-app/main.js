@@ -1,9 +1,9 @@
-// electron-app/main.js  v2.74
+// electron-app/main.js  v2.75
 // Electron 메인 프로세스
 // ─ #1  FFmpeg 동적 경로   ─ #2  electron-builder.yml 연동
 // ─ #3  chmod + 무결성 검사 ─ #4  IPC 실시간 로그 스트리밍
 // ─ #5  FFmpeg 프로세스 kill ─ #6  저장 다이얼로그
-// ─ #7  NVENC/QuickSync 하드웨어 가속 감지
+// ─ #7  NVENC/QuickSync 하드웨어 가속 감지  ─ getBestCodec()
 // ─ #8  concat 필터 + 크로스페이드 ─ #9  Windows 알림 + 트레이
 // ─ #10 CPU·메모리 모니터링
 // ─ #31 워터마크  ─ #32 BGM믹싱  ─ #33 자막  ─ #34 크로스페이드
@@ -14,6 +14,9 @@
 // ─ #81 powerSaveBlocker  ─ #82 렌더 후 폴더 자동 열기
 // ─ #83 auto-updater  ─ #84 FFmpeg 에러 로그파일
 // ─ #85 볼륨 노멀라이즈  ─ #86 완료 후 영상 자동재생
+// ─ #87 크래시 복구  ─ #88 렌더링 ETA  ─ #89 점프컷(무음제거)
+// ─ #90 프록시 워크플로우  ─ #91 세그먼트 병렬렌더링
+// ─ #92 무료 엔딩크레딧  ─ #93 렌더링 우선순위
 
 'use strict';
 
@@ -170,6 +173,51 @@ async function detectHwaccel() {
   }
   console.log(`[HW-ACCEL] codec=${codec}  accel=${accel || '없음'}`);
   return (_hwaccelCache = { codec, accel });
+}
+
+// #7 getBestCodec() — detectHwaccel의 명시적 래퍼 (요청 API 호환)
+async function getBestCodec() {
+  const hw = await detectHwaccel();
+  return hw;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3b  렌더링 ETA 계산 (#88)
+// ═══════════════════════════════════════════════════════════════════════════
+// renderStart 시각과 현재 진행률로 남은 시간 추정
+const _renderStartTimes = new Map(); // jobId → startMs
+
+function calcETA(jobId, pct) {
+  if (pct <= 0 || pct >= 100) return null;
+  const start = _renderStartTimes.get(jobId);
+  if (!start) return null;
+  const elapsed = (Date.now() - start) / 1000; // seconds
+  const total = (elapsed / pct) * 100;
+  const remaining = Math.max(0, total - elapsed);
+  const min = Math.floor(remaining / 60);
+  const sec = Math.floor(remaining % 60);
+  return min > 0 ? `${min}분 ${sec}초 남음` : `${sec}초 남음`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3c  크래시 복구 감지 (#87)
+//  — autosave.json에 status:'rendering' 상태가 남아있으면 비정상 종료로 판단
+// ═══════════════════════════════════════════════════════════════════════════
+function checkCrashRecovery() {
+  try {
+    const saved = autoSaveLoad();
+    if (saved?.status === 'rendering') {
+      return {
+        found: true,
+        jobId: saved.jobId,
+        outputPath: saved.outputPath,
+        savedAt: saved.savedAt,
+        editList: saved.editList,
+        options: saved.options,
+      };
+    }
+  } catch (_) {}
+  return { found: false };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -477,6 +525,37 @@ app.whenReady().then(async () => {
   }
 
   detectHwaccel().catch(() => {}); // 백그라운드 감지
+
+  // #87 크래시 복구 — 시작 시 비정상 종료 감지 후 복구 팝업
+  setTimeout(() => {
+    if (!mainWindow) return;
+    const recovery = checkCrashRecovery();
+    if (!recovery.found) return;
+    const savedTime = recovery.savedAt
+      ? new Date(recovery.savedAt).toLocaleString('ko-KR')
+      : '알 수 없음';
+    dialog
+      .showMessageBox(mainWindow, {
+        type: 'warning',
+        title: '이전 렌더링 복구',
+        message: '앱이 비정상 종료되었습니다.',
+        detail:
+          `저장 시각: ${savedTime}\n` +
+          `출력 경로: ${recovery.outputPath || '알 수 없음'}\n\n` +
+          '이전 작업을 복구하시겠습니까?',
+        buttons: ['복구하기', '삭제 후 새 시작'],
+        defaultId: 0,
+      })
+      .then(({ response }) => {
+        if (response === 0) {
+          // 편집 데이터를 렌더러에 전달
+          mainWindow?.webContents.send('crash-recovery', recovery);
+        } else {
+          autoSaveClear();
+        }
+      });
+  }, 3500);
+
   app.on('activate', () => {
     if (!mainWindow) createWindow();
   });
@@ -731,8 +810,11 @@ function killSignal(jobId, unixSig, winCmd) {
 
 // ─── 실제 렌더링 함수 ────────────────────────────────────────────────────
 async function _doRender(event, editList, outputPath, options, jobId) {
+  // #88 ETA: 렌더 시작 시각 기록
+  _renderStartTimes.set(jobId, Date.now());
   const send = (msg, pct) => {
-    event.sender.send('render-progress', { pct: Math.round(pct), msg, jobId });
+    const eta = calcETA(jobId, pct); // #88 남은 시간 계산
+    event.sender.send('render-progress', { pct: Math.round(pct), msg, jobId, eta });
     event.sender.send('render-log', { msg, jobId }); // #4 실시간 로그
     setTrayProgress(Math.round(pct)); // #79 트레이
   };
@@ -759,6 +841,8 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     normalizeAudio = false, // #85 볼륨 노멀라이즈
     autoOpenFolder = true, // #82 렌더 후 폴더 자동 열기
     autoPlayAfter = false, // #86 렌더 후 영상 자동 재생
+    isPremium = false, // #92 무료/유료 구분
+    endingCredit = true, // #92 무료 사용자 엔딩 크레딧 여부
   } = options;
 
   const videoCodec = hw.codec;
@@ -857,6 +941,21 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       const ov = posM[watermark.position || 'bottomright'];
       filters.push(`[${wmIdx}:v]scale=iw*${sc}:-1[wm],[${lastVid}][wm]overlay=${ov}[vc_wm]`);
       lastVid = 'vc_wm';
+    }
+
+    // #92 무료 사용자 엔딩 크레딧 — 마지막 3초에 "Made with Moovlog" 표시
+    if (!isPremium && endingCredit && totalDur > 3) {
+      const creditStart = Math.max(0, totalDur - 3);
+      const creditLabel = `vc_credit_${jobId}`.replace(/-/g, '_');
+      filters.push(
+        `[${lastVid}]drawtext=` +
+          `text='Made with Moovlog':` +
+          `fontsize=34:fontcolor=white@0.85:` +
+          `x=(w-text_w)/2:y=h-90:` +
+          `enable='gte(t,${creditStart})':` +
+          `box=1:boxcolor=black@0.45:boxborderw=8[${creditLabel}]`,
+      );
+      lastVid = creditLabel;
     }
 
     cmd.complexFilter(filters.join(';'), [lastVid]);
@@ -1161,3 +1260,179 @@ function getLutFilter(theme) {
   };
   return T[theme] || T.hansik;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §11  v2.75 추가 IPC
+// ═══════════════════════════════════════════════════════════════════════════
+
+// #87 GPU 코덱 조회 (렌더러에서 직접 호출)
+ipcMain.handle('get-best-codec', () => getBestCodec());
+
+// #88 렌더링 ETA 조회
+ipcMain.handle('get-render-eta', (_, { jobId, pct }) => calcETA(jobId, pct));
+
+// #89 점프컷 — 무음 구간 감지 (ffprobe silencedetect)
+ipcMain.handle('detect-silence', async (_, { filePath, threshold = -35, minDuration = 0.5 }) => {
+  if (!FFMPEG_PATH) throw new Error('FFmpeg 없음');
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-y',
+      '-i',
+      filePath,
+      '-af',
+      `silencedetect=noise=${threshold}dB:d=${minDuration}`,
+      '-f',
+      'null',
+      process.platform === 'win32' ? 'NUL' : '/dev/null',
+    ];
+    let stderr = '';
+    const proc = cp.spawn(FFMPEG_PATH, args);
+    proc.stderr.on('data', (d) => (stderr += d.toString()));
+    proc.on('close', () => {
+      // silencedetect 파싱: silence_start / silence_end
+      const starts = [...stderr.matchAll(/silence_start: (\d+\.?\d*)/g)].map((m) => +m[1]);
+      const ends = [...stderr.matchAll(/silence_end: (\d+\.?\d*)/g)].map((m) => +m[1]);
+      const segments = starts.map((s, i) => ({ start: s, end: ends[i] ?? s + minDuration }));
+      resolve(segments);
+    });
+    proc.on('error', reject);
+  });
+});
+
+// #89 점프컷 — 무음 구간 제거 후 새 영상 출력
+ipcMain.handle('remove-silence', async (_, { filePath, silences, outputPath }) => {
+  if (!FFMPEG_PATH) throw new Error('FFmpeg 없음');
+  if (!silences?.length) {
+    // 무음 없으면 그대로 copy
+    fs.copyFileSync(filePath, outputPath);
+    return outputPath;
+  }
+  // silences를 반전해서 유음(소리 있는) 구간 목록 생성
+  return new Promise((resolve, reject) => {
+    fluent.ffprobe(filePath, (err, meta) => {
+      if (err) return reject(err);
+      const dur = meta.format.duration;
+      // keep 구간 계산 (무음 밖)
+      const keeps = [];
+      let t = 0;
+      for (const s of silences.sort((a, b) => a.start - b.start)) {
+        if (s.start > t + 0.01) keeps.push({ s: t, e: s.start });
+        t = s.end;
+      }
+      if (t < dur - 0.1) keeps.push({ s: t, e: dur });
+      if (!keeps.length) return reject(new Error('유음 구간 없음'));
+
+      // trim + concat 필터 구성
+      const filters = [];
+      keeps.forEach((k, i) => {
+        filters.push(`[0:v]trim=${k.s}:${k.e},setpts=PTS-STARTPTS[v${i}]`);
+        filters.push(`[0:a]atrim=${k.s}:${k.e},asetpts=PTS-STARTPTS[a${i}]`);
+      });
+      const vIn = keeps.map((_, i) => `[v${i}]`).join('');
+      const aIn = keeps.map((_, i) => `[a${i}]`).join('');
+      filters.push(`${vIn}concat=n=${keeps.length}:v=1:a=0[vc]`);
+      filters.push(`${aIn}concat=n=${keeps.length}:v=0:a=1[ac]`);
+
+      fluent(filePath)
+        .complexFilter(filters, ['vc', 'ac'])
+        .outputOptions(['-c:v libx264', '-crf 22', '-c:a aac', '-b:a 128k'])
+        .output(outputPath)
+        .on('end', () => resolve(outputPath))
+        .on('error', reject)
+        .run();
+    });
+  });
+});
+
+// #90 프록시 워크플로우 — 4K 영상을 720p 저화질로 변환해 편집 성능 향상
+ipcMain.handle('create-proxy', async (_, { videoPath, outputDir }) => {
+  if (!FFMPEG_PATH) throw new Error('FFmpeg 없음');
+  const dir = outputDir || os.tmpdir();
+  const baseName = path.basename(videoPath, path.extname(videoPath));
+  const proxyPath = path.join(dir, `${baseName}_proxy.mp4`);
+  if (fs.existsSync(proxyPath)) return proxyPath; // 캐시 재사용
+  return new Promise((resolve, reject) =>
+    fluent(videoPath)
+      .outputOptions([
+        '-vf',
+        'scale=720:-2',
+        '-c:v',
+        'libx264',
+        '-crf',
+        '28',
+        '-preset',
+        'fast',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '96k',
+        '-movflags',
+        '+faststart',
+      ])
+      .output(proxyPath)
+      .on('end', () => resolve(proxyPath))
+      .on('error', reject)
+      .run(),
+  );
+});
+
+// #91 세그먼트 병렬 렌더링 — 클립을 n개 그룹으로 분할 → 각 그룹 병렬 렌더 → concat
+ipcMain.handle('render-segments', async (event, { editList, outputPath, options, jobId }) => {
+  if (!FFMPEG_PATH) throw new Error('FFmpeg 없음');
+  const segments = 2; // 2분할 병렬
+  const chunkSize = Math.ceil(editList.length / segments);
+  const chunks = [];
+  for (let i = 0; i < editList.length; i += chunkSize) {
+    chunks.push(editList.slice(i, i + chunkSize));
+  }
+
+  const tmpFiles = chunks.map((_, i) => path.join(os.tmpdir(), `seg_render_${jobId}_${i}.mp4`));
+
+  try {
+    // 각 세그먼트를 각자 _doRender로 병렬 처리
+    await Promise.all(
+      chunks.map((chunk, i) => _doRender(event, chunk, tmpFiles[i], options, `${jobId}_s${i}`)),
+    );
+
+    // concat demuxer 목록 파일 생성
+    const listFile = path.join(os.tmpdir(), `concat_${jobId}.txt`);
+    fs.writeFileSync(listFile, tmpFiles.map((f) => `file '${f.replace(/\\/g, '/')}'`).join('\n'));
+
+    // concat
+    await new Promise((resolve, reject) =>
+      fluent(listFile)
+        .inputOptions(['-f', 'concat', '-safe', '0'])
+        .outputOptions(['-c', 'copy'])
+        .output(outputPath)
+        .on('end', resolve)
+        .on('error', reject)
+        .run(),
+    );
+
+    // 임시 파일 정리
+    tmpFiles.forEach((f) => fs.rmSync(f, { force: true }));
+    fs.rmSync(listFile, { force: true });
+
+    return { outputPath, success: true };
+  } catch (err) {
+    tmpFiles.forEach((f) => fs.rmSync(f, { force: true }));
+    throw err;
+  }
+});
+
+// #93 렌더링 우선순위 설정 (Windows: BELOW_NORMAL / 기타 무시)
+ipcMain.handle('set-render-priority', (_, { jobId, priority = 'low' }) => {
+  const job = renderJobs.get(jobId);
+  if (!job?.pid || process.platform !== 'win32') return false;
+  try {
+    // /ABOVENORMAL /NORMAL /BELOWNORMAL /LOW /IDLE
+    const map = { high: 'ABOVENORMAL', normal: 'NORMAL', low: 'BELOWNORMAL', idle: 'IDLE' };
+    const cls = map[priority] || 'BELOWNORMAL';
+    cp.execSync(`wmic process where ProcessId=${job.pid} CALL SetPriority "${cls}"`, {
+      timeout: 3000,
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+});

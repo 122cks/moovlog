@@ -17,7 +17,12 @@ import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.webkit.ConsoleMessage;
 import android.webkit.GeolocationPermissions;
+import android.content.Context;
+import android.media.MediaScannerConnection;
+import android.os.Vibrator;
+import android.os.VibrationEffect;
 import android.webkit.JavascriptInterface;
+import java.io.File;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -238,10 +243,66 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public String getAppVersion() { return "2.74"; }
+        public String getAppVersion() { return "2.75"; }
 
         @JavascriptInterface
         public boolean isNativeApp() { return true; }
+
+        // #92 영상 공유 — Instagram / YouTube / TikTok
+        @JavascriptInterface
+        public void shareVideo(String filePath, String platform) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                File file = new File(filePath);
+                if (!file.exists()) {
+                    Toast.makeText(MainActivity.this, "파일 없음: " + filePath, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                Uri uri = androidx.core.content.FileProvider.getUriForFile(
+                    MainActivity.this,
+                    getPackageName() + ".provider",
+                    file
+                );
+                Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                shareIntent.setType("video/mp4");
+                shareIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                if ("instagram".equals(platform)) shareIntent.setPackage("com.instagram.android");
+                else if ("youtube".equals(platform)) shareIntent.setPackage("com.google.android.youtube");
+                else if ("tiktok".equals(platform)) shareIntent.setPackage("com.ss.android.ugc.trill");
+                try {
+                    startActivity(Intent.createChooser(shareIntent, "공유하기"));
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this, "공유 앱을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        // #93 햅틱 피드백 — light(50ms) / heavy(200ms)
+        @SuppressWarnings("deprecation")
+        @JavascriptInterface
+        public void haptic(String type) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                if (v == null) return;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    long ms = "heavy".equals(type) ? 200L : 50L;
+                    v.vibrate(VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE));
+                } else {
+                    v.vibrate("heavy".equals(type) ? 200L : 50L);
+                }
+            });
+        }
+
+        // #94 MediaStore 스캔 — 갤러리에 즉시 노출
+        @JavascriptInterface
+        public void scanMediaFile(String filePath) {
+            MediaScannerConnection.scanFile(
+                MainActivity.this,
+                new String[]{filePath},
+                new String[]{"video/mp4"},
+                null
+            );
+        }
     }
 
     // ── 몰입형 모드 ─────────────────────────────────────────────────────

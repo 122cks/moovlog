@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider paths for shareVideo() bridge (#92) -->
+<paths>
+    <!-- 내부 앱 파일 -->
+    <files-path name="files" path="." />
+    <!-- 외부 저장소 공유 -->
+    <external-path name="external" path="." />
+    <!-- 외부 파일 디렉터리 -->
+    <external-files-path name="external_files" path="." />
+    <!-- 다운로드 폴더 -->
+    <external-path name="downloads" path="Download/" />
+</paths>
