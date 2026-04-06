@@ -20,389 +20,389 @@
 name: Build & Release
 
 on:
-    push:
-        tags:
-            - "v*.*.*"
-    workflow_dispatch: # 수동 실행도 허용
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: # 수동 실행도 허용
 
 env:
-    NODE_VERSION: "20"
-    JAVA_VERSION: "17"
+  NODE_VERSION: "20"
+  JAVA_VERSION: "17"
 
 jobs:
-    # ────────────────────────────────────────────────────────────────────────
-    # JOB 1: Windows .exe (NSIS 인스톨러)
-    # ────────────────────────────────────────────────────────────────────────
-    build-windows:
-        name: Windows NSIS Installer
-        runs-on: windows-latest
-        defaults:
-            run:
-                working-directory: ./electron-app
+  # ────────────────────────────────────────────────────────────────────────
+  # JOB 1: Windows .exe (NSIS 인스톨러)
+  # ────────────────────────────────────────────────────────────────────────
+  build-windows:
+    name: Windows NSIS Installer
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./electron-app
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Setup Node.js ${{ env.NODE_VERSION }}
-              uses: actions/setup-node@v4
-              with:
-                  node-version: ${{ env.NODE_VERSION }}
-                  cache: "npm"
-                  cache-dependency-path: electron-app/package-lock.json
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: electron-app/package-lock.json
 
-            - name: Install dependencies
-              run: npm ci --prefer-offline
+      - name: Install dependencies
+        run: npm ci --prefer-offline
 
-            # FFmpeg 번들 바이너리 다운로드 (캐시 활용)
-            - name: Cache FFmpeg binaries
-              id: cache-ffmpeg
-              uses: actions/cache@v4
-              with:
-                  path: ffmpeg-bin
-                  key: ffmpeg-win-${{ hashFiles('electron-app/package.json') }}
+      # FFmpeg 번들 바이너리 다운로드 (캐시 활용)
+      - name: Cache FFmpeg binaries
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: ffmpeg-bin
+          key: ffmpeg-win-${{ hashFiles('electron-app/package.json') }}
 
-            - name: Download FFmpeg (Windows)
-              if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
-              shell: pwsh
-              run: |
-                  $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-                  Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
-                  Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
-                  $binDir = Get-ChildItem ffmpeg_tmp -Recurse -Directory | Where-Object { $_.Name -eq "bin" } | Select-Object -First 1
-                  New-Item -ItemType Directory -Force -Path ../ffmpeg-bin | Out-Null
-                  Copy-Item "$($binDir.FullName)\ffmpeg.exe"  -Destination ../ffmpeg-bin\ffmpeg.exe
-                  Copy-Item "$($binDir.FullName)\ffprobe.exe" -Destination ../ffmpeg-bin\ffprobe.exe
-                  Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
-              working-directory: ${{ github.workspace }}/electron-app
+      - name: Download FFmpeg (Windows)
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          $binDir = Get-ChildItem ffmpeg_tmp -Recurse -Directory | Where-Object { $_.Name -eq "bin" } | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path ../ffmpeg-bin | Out-Null
+          Copy-Item "$($binDir.FullName)\ffmpeg.exe"  -Destination ../ffmpeg-bin\ffmpeg.exe
+          Copy-Item "$($binDir.FullName)\ffprobe.exe" -Destination ../ffmpeg-bin\ffprobe.exe
+          Remove-Item ffmpeg.zip, ffmpeg_tmp -Recurse -Force
+        working-directory: ${{ github.workspace }}/electron-app
 
-            - name: Build Windows NSIS installer
-              env:
-                  WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-                  WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-                  CSC_IDENTITY_AUTO_DISCOVERY: "false"
-              run: npm run build:win-installer
+      - name: Build Windows NSIS installer
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run build:win-installer
 
-            - name: Upload .exe artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: windows-installer
-                  path: electron-app/dist-electron/*.exe
-                  if-no-files-found: error
-                  retention-days: 7
+      - name: Upload .exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: electron-app/dist-electron/*.exe
+          if-no-files-found: error
+          retention-days: 7
 
-    # ────────────────────────────────────────────────────────────────────────
-    # JOB 2: Android APK (서명 선택)
-    # ────────────────────────────────────────────────────────────────────────
-    build-android:
-        name: Android APK
-        runs-on: ubuntu-latest
-        defaults:
-            run:
-                working-directory: ./android-app
+  # ────────────────────────────────────────────────────────────────────────
+  # JOB 2: Android APK (서명 선택)
+  # ────────────────────────────────────────────────────────────────────────
+  build-android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./android-app
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-            - name: Setup Java ${{ env.JAVA_VERSION }}
-              uses: actions/setup-java@v4
-              with:
-                  distribution: "temurin"
-                  java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: ${{ env.JAVA_VERSION }}
 
-            - name: Setup Android SDK
-              uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-            - name: Cache Gradle
-              uses: actions/cache@v4
-              with:
-                  path: |
-                      ~/.gradle/caches
-                      ~/.gradle/wrapper
-                  key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-                  restore-keys: gradle-
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
 
-            # Keystore 복원 (Secrets에 설정된 경우)
-            - name: Restore keystore
-              if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
-              run: |
-                  echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/moovlog.keystore
+      # Keystore 복원 (Secrets에 설정된 경우)
+      - name: Restore keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/moovlog.keystore
 
-            - name: Build APK (signed or debug)
-              run: |
-                  if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
-                    echo "서명 APK 빌드"
-                    ./gradlew assembleRelease \
-                      -PversionCode=${{ github.run_number }} \
-                      -PstoreFile=$GITHUB_WORKSPACE/moovlog.keystore \
-                      -PstorePassword=${{ secrets.ANDROID_STORE_PASSWORD }} \
-                      -PkeyAlias=${{ secrets.ANDROID_KEY_ALIAS }} \
-                      -PkeyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-                  else
-                    echo "DEBUG APK 빌드 (키스토어 없음)"
-                    ./gradlew assembleDebug -PversionCode=${{ github.run_number }}
-                  fi
+      - name: Build APK (signed or debug)
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            echo "서명 APK 빌드"
+            ./gradlew assembleRelease \
+              -PversionCode=${{ github.run_number }} \
+              -PstoreFile=$GITHUB_WORKSPACE/moovlog.keystore \
+              -PstorePassword=${{ secrets.ANDROID_STORE_PASSWORD }} \
+              -PkeyAlias=${{ secrets.ANDROID_KEY_ALIAS }} \
+              -PkeyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          else
+            echo "DEBUG APK 빌드 (키스토어 없음)"
+            ./gradlew assembleDebug -PversionCode=${{ github.run_number }}
+          fi
 
-            - name: Find APK
-              id: find-apk
-              run: |
-                  APK=$(find . -name "*.apk" | head -1)
-                  echo "path=$APK" >> $GITHUB_OUTPUT
+      - name: Find APK
+        id: find-apk
+        run: |
+          APK=$(find . -name "*.apk" | head -1)
+          echo "path=$APK" >> $GITHUB_OUTPUT
 
-            - name: Upload APK artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: android-apk
-                  path: ${{ steps.find-apk.outputs.path }}
-                  if-no-files-found: warn
-                  retention-days: 7
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: ${{ steps.find-apk.outputs.path }}
+          if-no-files-found: warn
+          retention-days: 7
 
-    # ────────────────────────────────────────────────────────────────────────
-    # JOB 3: GitHub Release 생성 및 파일 첨부
-    # ────────────────────────────────────────────────────────────────────────
-    release:
-        name: Create GitHub Release
-        needs: [build-windows, build-android]
-        runs-on: ubuntu-latest
-        if: startsWith(github.ref, 'refs/tags/')
-        permissions:
-            contents: write # Release 생성·수정 필요
+  # ────────────────────────────────────────────────────────────────────────
+  # JOB 3: GitHub Release 생성 및 파일 첨부
+  # ────────────────────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-windows, build-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write # Release 생성·수정 필요
 
-        steps:
-            - name: Checkout (태그 메시지 읽기용)
-              uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
+    steps:
+      - name: Checkout (태그 메시지 읽기용)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-            - name: Download Windows artifact
-              uses: actions/download-artifact@v4
-              with:
-                  name: windows-installer
-                  path: release-files/
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-installer
+          path: release-files/
 
-            - name: Download Android artifact
-              uses: actions/download-artifact@v4
-              with:
-                  name: android-apk
-                  path: release-files/
-              continue-on-error: true # APK 빌드 실패해도 Release는 진행
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release-files/
+        continue-on-error: true # APK 빌드 실패해도 Release는 진행
 
-            - name: Extract version from tag
-              id: ver
-              run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+      - name: Extract version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-            - name: Generate release notes
-              id: notes
-              run: |
-                  # 직전 태그부터 현재까지의 커밋 목록 자동 생성
-                  PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-                  if [ -n "$PREV" ]; then
-                    LOG=$(git log ${PREV}..HEAD --pretty=format:"- %s (%an)" --no-merges)
-                  else
-                    LOG=$(git log HEAD~10..HEAD --pretty=format:"- %s (%an)" --no-merges)
-                  fi
-                  {
-                    echo "## 무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}"
-                    echo ""
-                    echo "### 변경 사항"
-                    echo "$LOG"
-                    echo ""
-                    echo "### 설치 방법"
-                    echo "- **Windows**: \`무브먼트 Shorts Creator Setup *.exe\` 실행"
-                    echo "- **Android**: \`*.apk\` 파일을 기기에 복사 후 설치 (설정 → 알 수 없는 앱 허용)"
-                  } > release_notes.md
-                  cat release_notes.md
+      - name: Generate release notes
+        id: notes
+        run: |
+          # 직전 태그부터 현재까지의 커밋 목록 자동 생성
+          PREV=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV" ]; then
+            LOG=$(git log ${PREV}..HEAD --pretty=format:"- %s (%an)" --no-merges)
+          else
+            LOG=$(git log HEAD~10..HEAD --pretty=format:"- %s (%an)" --no-merges)
+          fi
+          {
+            echo "## 무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}"
+            echo ""
+            echo "### 변경 사항"
+            echo "$LOG"
+            echo ""
+            echo "### 설치 방법"
+            echo "- **Windows**: \`무브먼트 Shorts Creator Setup *.exe\` 실행"
+            echo "- **Android**: \`*.apk\` 파일을 기기에 복사 후 설치 (설정 → 알 수 없는 앱 허용)"
+          } > release_notes.md
+          cat release_notes.md
 
-            - name: Create Release
-              uses: softprops/action-gh-release@v2
-              with:
-                  name: "무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}"
-                  body_path: release_notes.md
-                  draft: false
-                  prerelease: false
-                  files: |
-                      release-files/*.exe
-                      release-files/*.apk
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: |
+            release-files/*.exe
+            release-files/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # ────────────────────────────────────────────────────────────────────────
-    # JOB 4: Discord / Telegram 빌드 완료 알림
-    # ─────────────────────────────────────────────────────────────────────────
-    # 필수 Secrets (선택):
-    #   DISCORD_WEBHOOK       - Discord 웹훅 URL
-    #   TELEGRAM_BOT_TOKEN    - 텔레그램 봇 토큰
-    #   TELEGRAM_CHAT_ID      - 텔레그램 채팅 ID
-    # ────────────────────────────────────────────────────────────────────────
-    notify:
-        name: Build Notification
-        needs: [build-windows, build-android, release]
-        runs-on: ubuntu-latest
-        if: always() && startsWith(github.ref, 'refs/tags/')
+  # ────────────────────────────────────────────────────────────────────────
+  # JOB 4: Discord / Telegram 빌드 완료 알림
+  # ─────────────────────────────────────────────────────────────────────────
+  # 필수 Secrets (선택):
+  #   DISCORD_WEBHOOK       - Discord 웹훅 URL
+  #   TELEGRAM_BOT_TOKEN    - 텔레그램 봇 토큰
+  #   TELEGRAM_CHAT_ID      - 텔레그램 채팅 ID
+  # ────────────────────────────────────────────────────────────────────────
+  notify:
+    name: Build Notification
+    needs: [build-windows, build-android, release]
+    runs-on: ubuntu-latest
+    if: always() && startsWith(github.ref, 'refs/tags/')
 
-        steps:
-            - name: Extract version
-              id: ver
-              run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+    steps:
+      - name: Extract version
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
-            # APK artifact 다운로드 (텔레그램 직접 전송용)
-            - name: Download APK artifact
-              if: needs.build-android.result == 'success'
-              uses: actions/download-artifact@v4
-              with:
-                  name: android-apk
-                  path: tg-apk/
-              continue-on-error: true
+      # APK artifact 다운로드 (텔레그램 직접 전송용)
+      - name: Download APK artifact
+        if: needs.build-android.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: tg-apk/
+        continue-on-error: true
 
-            - name: Set build status info
-              id: status
-              run: |
-                  RELEASE_RESULT="${{ needs.release.result }}"
-                  WIN_RESULT="${{ needs.build-windows.result }}"
-                  APK_RESULT="${{ needs.build-android.result }}"
-                  if [ "$RELEASE_RESULT" = "success" ]; then
-                    echo "emoji=✅"            >> $GITHUB_OUTPUT
-                    echo "color=3066993"       >> $GITHUB_OUTPUT
-                    echo "msg=빌드 & 배포 성공!" >> $GITHUB_OUTPUT
-                  else
-                    echo "emoji=❌"                          >> $GITHUB_OUTPUT
-                    echo "color=15158332"                    >> $GITHUB_OUTPUT
-                    echo "msg=빌드 실패 (win=$WIN_RESULT, apk=$APK_RESULT, release=$RELEASE_RESULT)" >> $GITHUB_OUTPUT
-                  fi
-                  echo "release_url=https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" >> $GITHUB_OUTPUT
-                  echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
-                  # 커밋 메시지 첫 줄 (100자 제한)
-                  COMMIT_MSG=$(git log -1 --pretty=format:"%s" | cut -c1-100)
-                  echo "commit_msg=${COMMIT_MSG}" >> $GITHUB_OUTPUT
-                  # 파일 크기 계산 (release-files/ 없으면 N/A)
-                  if ls release-files/ 2>/dev/null | grep -qE '\.(exe|apk)$'; then
-                    SIZES=$(find release-files/ -name '*.exe' -o -name '*.apk' | \
-                      xargs -I{} sh -c 'printf "%s: %s\n" "$(basename {})" "$(du -sh {} | cut -f1)"' 2>/dev/null | tr '\n' '\n' || echo 'N/A')
-                  else
-                    SIZES='N/A'
-                  fi
-                  echo "file_sizes=${SIZES}" >> $GITHUB_OUTPUT
-                  # SHA-256 해시 값 계산
-                  if ls release-files/ 2>/dev/null | grep -qE '\.(exe|apk)$'; then
-                    HASHES=$(find release-files/ -name '*.exe' -o -name '*.apk' | sort | \
-                      xargs -I{} sh -c 'printf "`%s`\n  `sha256: %s`\n" "$(basename {})" "$(sha256sum {} | cut -d" " -f1)"' 2>/dev/null || echo 'N/A')
-                  else
-                    HASHES='N/A'
-                  fi
-                  echo "file_hashes=${HASHES}" >> $GITHUB_OUTPUT
-            # ── APK 직접 다운로드 URL 계산 (#9 자동 설치 버튼) ─────
-            - name: APK 직접 다운로드 URL 계산
-              id: apk-url
-              run: |
-                  VERSION="${{ steps.ver.outputs.version }}"
-                  REPO="${{ github.repository }}"
-                  APK=$(find tg-apk/ -name "*.apk" 2>/dev/null | head -1)
-                  if [ -n "$APK" ]; then
-                    APK_NAME=$(basename "$APK")
-                    APK_SHA=$(sha256sum "$APK" | cut -d' ' -f1)
-                    echo "url=https://github.com/${REPO}/releases/download/v${VERSION}/${APK_NAME}" >> $GITHUB_OUTPUT
-                    echo "name=${APK_NAME}" >> $GITHUB_OUTPUT
-                    echo "sha256=${APK_SHA}" >> $GITHUB_OUTPUT
-                  else
-                    echo "url=${{ steps.status.outputs.release_url }}" >> $GITHUB_OUTPUT
-                    echo "name=" >> $GITHUB_OUTPUT
-                    echo "sha256=" >> $GITHUB_OUTPUT
-                  fi
-            # ── Discord 알림 ──────────────────────────────────────────────
-            - name: Discord 빌드 완료 알림
-              if: ${{ secrets.DISCORD_WEBHOOK != '' }}
-              run: |
-                  curl -s -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
-                    -H "Content-Type: application/json" \
-                    -d '{
-                      "embeds": [{
-                        "title": "${{ steps.status.outputs.emoji }} 무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}",
-                        "description": "${{ steps.status.outputs.msg }}",
-                        "color": ${{ steps.status.outputs.color }},
-                        "url": "${{ steps.status.outputs.release_url }}",
-                        "fields": [
-                          {"name": "버전",  "value": "v${{ steps.ver.outputs.version }}", "inline": true},
-                          {"name": "커밋",  "value": "`${{ steps.status.outputs.sha_short }}`", "inline": true},
-                          {"name": "커밋 메시지", "value": "${{ steps.status.outputs.commit_msg }}", "inline": false},
-                          {"name": "📦 파일 크기", "value": "${{ steps.status.outputs.file_sizes }}", "inline": false},
-                          {"name": "🔒 무결성 검증 완료", "value": "${{ steps.status.outputs.file_hashes }}", "inline": false},
-                          {"name": "📲 최신 APK 폰에 설치하기", "value": "[⬇ 직접 다운로드 (APK)](${{ steps.apk-url.outputs.url }})\n💾 파일: ${{ steps.apk-url.outputs.name }}", "inline": false},
-                          {"name": "📥 전체 릴리스 다운로드", "value": "[⬇ exe / apk 파일 받기](${{ steps.status.outputs.release_url }})", "inline": false}
-                        ],
-                        "footer": {"text": "GitHub Actions • ${{ github.workflow }}"},
-                        "timestamp": "${{ github.event.head_commit.timestamp }}"
-                      }]
-                    }'
+      - name: Set build status info
+        id: status
+        run: |
+          RELEASE_RESULT="${{ needs.release.result }}"
+          WIN_RESULT="${{ needs.build-windows.result }}"
+          APK_RESULT="${{ needs.build-android.result }}"
+          if [ "$RELEASE_RESULT" = "success" ]; then
+            echo "emoji=✅"            >> $GITHUB_OUTPUT
+            echo "color=3066993"       >> $GITHUB_OUTPUT
+            echo "msg=빌드 & 배포 성공!" >> $GITHUB_OUTPUT
+          else
+            echo "emoji=❌"                          >> $GITHUB_OUTPUT
+            echo "color=15158332"                    >> $GITHUB_OUTPUT
+            echo "msg=빌드 실패 (win=$WIN_RESULT, apk=$APK_RESULT, release=$RELEASE_RESULT)" >> $GITHUB_OUTPUT
+          fi
+          echo "release_url=https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          # 커밋 메시지 첫 줄 (100자 제한)
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s" | cut -c1-100)
+          echo "commit_msg=${COMMIT_MSG}" >> $GITHUB_OUTPUT
+          # 파일 크기 계산 (release-files/ 없으면 N/A)
+          if ls release-files/ 2>/dev/null | grep -qE '\.(exe|apk)$'; then
+            SIZES=$(find release-files/ -name '*.exe' -o -name '*.apk' | \
+              xargs -I{} sh -c 'printf "%s: %s\n" "$(basename {})" "$(du -sh {} | cut -f1)"' 2>/dev/null | tr '\n' '\n' || echo 'N/A')
+          else
+            SIZES='N/A'
+          fi
+          echo "file_sizes=${SIZES}" >> $GITHUB_OUTPUT
+          # SHA-256 해시 값 계산
+          if ls release-files/ 2>/dev/null | grep -qE '\.(exe|apk)$'; then
+            HASHES=$(find release-files/ -name '*.exe' -o -name '*.apk' | sort | \
+              xargs -I{} sh -c 'printf "`%s`\n  `sha256: %s`\n" "$(basename {})" "$(sha256sum {} | cut -d" " -f1)"' 2>/dev/null || echo 'N/A')
+          else
+            HASHES='N/A'
+          fi
+          echo "file_hashes=${HASHES}" >> $GITHUB_OUTPUT
+      # ── APK 직접 다운로드 URL 계산 (#9 자동 설치 버튼) ─────
+      - name: APK 직접 다운로드 URL 계산
+        id: apk-url
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          REPO="${{ github.repository }}"
+          APK=$(find tg-apk/ -name "*.apk" 2>/dev/null | head -1)
+          if [ -n "$APK" ]; then
+            APK_NAME=$(basename "$APK")
+            APK_SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+            echo "url=https://github.com/${REPO}/releases/download/v${VERSION}/${APK_NAME}" >> $GITHUB_OUTPUT
+            echo "name=${APK_NAME}" >> $GITHUB_OUTPUT
+            echo "sha256=${APK_SHA}" >> $GITHUB_OUTPUT
+          else
+            echo "url=${{ steps.status.outputs.release_url }}" >> $GITHUB_OUTPUT
+            echo "name=" >> $GITHUB_OUTPUT
+            echo "sha256=" >> $GITHUB_OUTPUT
+          fi
+      # ── Discord 알림 ──────────────────────────────────────────────
+      - name: Discord 빌드 완료 알림
+        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+        run: |
+          curl -s -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "${{ steps.status.outputs.emoji }} 무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}",
+                "description": "${{ steps.status.outputs.msg }}",
+                "color": ${{ steps.status.outputs.color }},
+                "url": "${{ steps.status.outputs.release_url }}",
+                "fields": [
+                  {"name": "버전",  "value": "v${{ steps.ver.outputs.version }}", "inline": true},
+                  {"name": "커밋",  "value": "`${{ steps.status.outputs.sha_short }}`", "inline": true},
+                  {"name": "커밋 메시지", "value": "${{ steps.status.outputs.commit_msg }}", "inline": false},
+                  {"name": "📦 파일 크기", "value": "${{ steps.status.outputs.file_sizes }}", "inline": false},
+                  {"name": "🔒 무결성 검증 완료", "value": "${{ steps.status.outputs.file_hashes }}", "inline": false},
+                  {"name": "📲 최신 APK 폰에 설치하기", "value": "[⬇ 직접 다운로드 (APK)](${{ steps.apk-url.outputs.url }})\n💾 파일: ${{ steps.apk-url.outputs.name }}", "inline": false},
+                  {"name": "📥 전체 릴리스 다운로드", "value": "[⬇ exe / apk 파일 받기](${{ steps.status.outputs.release_url }})", "inline": false}
+                ],
+                "footer": {"text": "GitHub Actions • ${{ github.workflow }}"},
+                "timestamp": "${{ github.event.head_commit.timestamp }}"
+              }]
+            }'
 
-            # ── Telegram 알림 ─────────────────────────────────────────────
-            - name: Telegram 빌드 완료 알림
-              if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
-              run: |
-                  VERSION="v${{ steps.ver.outputs.version }}"
-                  EMOJI="${{ steps.status.outputs.emoji }}"
-                  URL="${{ steps.status.outputs.release_url }}"
-                  COMMIT="${{ steps.status.outputs.commit_msg }}"
-                  MSG="${EMOJI} *무브먼트 Shorts Creator ${VERSION}*"$'\n'"${{ steps.status.outputs.msg }}"$'\n\n'"📝 ${COMMIT}"$'\n\n'"📦 [릴리스 다운로드](${URL})"
-                  curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-                    -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                    -d "parse_mode=Markdown" \
-                    -d "disable_web_page_preview=false" \
-                    --data-urlencode "text=${MSG}"
+      # ── Telegram 알림 ─────────────────────────────────────────────
+      - name: Telegram 빌드 완료 알림
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        run: |
+          VERSION="v${{ steps.ver.outputs.version }}"
+          EMOJI="${{ steps.status.outputs.emoji }}"
+          URL="${{ steps.status.outputs.release_url }}"
+          COMMIT="${{ steps.status.outputs.commit_msg }}"
+          MSG="${EMOJI} *무브먼트 Shorts Creator ${VERSION}*"$'\n'"${{ steps.status.outputs.msg }}"$'\n\n'"📝 ${COMMIT}"$'\n\n'"📦 [릴리스 다운로드](${URL})"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "parse_mode=Markdown" \
+            -d "disable_web_page_preview=false" \
+            --data-urlencode "text=${MSG}"
 
-            # ── Telegram APK 파일 직접 전송 ───────────────────────────────
-            - name: Telegram APK 파일 전송
-              if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' && needs.build-android.result == 'success' }}
-              run: |
-                  APK=$(find tg-apk/ -name "*.apk" 2>/dev/null | head -1)
-                  if [ -z "$APK" ]; then
-                    echo "APK 파일 없음 — 전송 건너뜀"
-                    exit 0
-                  fi
-                  VERSION="v${{ steps.ver.outputs.version }}"
-                  CAPTION="📦 무브먼트 Shorts Creator ${VERSION}"$'\n'"설치: 설정 → 알 수 없는 앱 → 허용 후 실행"
-                  curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-                    -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                    -F "document=@${APK}" \
-                    --data-urlencode "caption=${CAPTION}"
+      # ── Telegram APK 파일 직접 전송 ───────────────────────────────
+      - name: Telegram APK 파일 전송
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' && needs.build-android.result == 'success' }}
+        run: |
+          APK=$(find tg-apk/ -name "*.apk" 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "APK 파일 없음 — 전송 건너뜀"
+            exit 0
+          fi
+          VERSION="v${{ steps.ver.outputs.version }}"
+          CAPTION="📦 무브먼트 Shorts Creator ${VERSION}"$'\n'"설치: 설정 → 알 수 없는 앱 → 허용 후 실행"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+            -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F "document=@${APK}" \
+            --data-urlencode "caption=${CAPTION}"
 
-    # ══════════════════════════════════════════════════════════════════════════
-    #  JOB 5 : 빌드 실패 전용 알림  (tag push 시 앞 job이 하나라도 실패하면 실행)
-    # ══════════════════════════════════════════════════════════════════════════
+  # ══════════════════════════════════════════════════════════════════════════
+  #  JOB 5 : 빌드 실패 전용 알림  (tag push 시 앞 job이 하나라도 실패하면 실행)
+  # ══════════════════════════════════════════════════════════════════════════
 
-    notify-failure:
-        name: Build Failure Alert
-        needs: [build-windows, build-android, release]
-        runs-on: ubuntu-latest
-        if: failure() && startsWith(github.ref, 'refs/tags/')
-        steps:
-            - name: Discord 빌드 실패 알림
-              if: ${{ secrets.DISCORD_WEBHOOK != '' }}
-              run: |
-                  LOGS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  TAG="${{ github.ref_name }}"
-                  curl -s -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
-                    -H "Content-Type: application/json" \
-                    -d '{
-                      "embeds": [{
-                        "title": "🚨 빌드 실패 — 무브먼트 Shorts Creator '"${TAG}"'",
-                        "description": "Actions 파이프라인이 실패했습니다. 로그를 확인하세요.",
-                        "color": 15158332,
-                        "fields": [
-                          {"name": "에러 로그", "value": "[▶ Actions 실행 보기]('"${LOGS_URL}"')", "inline": false}
-                        ],
-                        "footer": {"text": "GitHub Actions • ${{ github.workflow }}"}
-                      }]
-                    }'
+  notify-failure:
+    name: Build Failure Alert
+    needs: [build-windows, build-android, release]
+    runs-on: ubuntu-latest
+    if: failure() && startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Discord 빌드 실패 알림
+        if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+        run: |
+          LOGS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TAG="${{ github.ref_name }}"
+          curl -s -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "embeds": [{
+                "title": "🚨 빌드 실패 — 무브먼트 Shorts Creator '"${TAG}"'",
+                "description": "Actions 파이프라인이 실패했습니다. 로그를 확인하세요.",
+                "color": 15158332,
+                "fields": [
+                  {"name": "에러 로그", "value": "[▶ Actions 실행 보기]('"${LOGS_URL}"')", "inline": false}
+                ],
+                "footer": {"text": "GitHub Actions • ${{ github.workflow }}"}
+              }]
+            }'
 
-            - name: Telegram 빌드 실패 알림
-              if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
-              run: |
-                  LOGS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                  TAG="${{ github.ref_name }}"
-                  MSG="🚨 *빌드 실패 — ${TAG}*"$'\n'"Actions 파이프라인이 실패했습니다."$'\n\n'"[▶ 에러 로그 보기](${LOGS_URL})"
-                  curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-                    -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                    -d "parse_mode=Markdown" \
-                    -d "disable_web_page_preview=false" \
-                    --data-urlencode "text=${MSG}"
+      - name: Telegram 빌드 실패 알림
+        if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        run: |
+          LOGS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TAG="${{ github.ref_name }}"
+          MSG="🚨 *빌드 실패 — ${TAG}*"$'\n'"Actions 파이프라인이 실패했습니다."$'\n\n'"[▶ 에러 로그 보기](${LOGS_URL})"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "parse_mode=Markdown" \
+            -d "disable_web_page_preview=false" \
+            --data-urlencode "text=${MSG}"

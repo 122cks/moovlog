@@ -983,10 +983,10 @@ async function _doRender(event, editList, outputPath, options, jobId) {
   const {
     theme = 'hansik',
     fps = 30,
-    crf = 22,
+    crf = 18, // #2 고화질 기본값 (인스타 릴스 권장 무손실급)
     preset = 'fast',
-    width = 720,
-    height = 1280,
+    width = 1080, // #9 인스타 릴스 표준 가로해상도
+    height = 1920, // #9 인스타 릴스 표준 세로해상도
     watermark = null, // #31 { path, position, scale }
     subtitle = null, // #33 { text, fontPath, size, color, y }
     bgmPath = null, // #32
@@ -1003,6 +1003,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     boxblur = true, // #13 해상도 불일치 시 boxblur 배경 채우기 (autoReframe=false 시 활성)
     unsharp = false, // #24 선명도 향상 필터 (unsharp mask)
     nightMode = false, // #28 야간/노이즈 영상 hqdn3d 제거 필터
+    qrPath = null, // #10 엔딩 QR 코드 이미지 경로 (options.qrPath)
   } = options;
 
   const videoCodec = options._forceLibx264 ? 'libx264' : hw.codec;
@@ -1147,19 +1148,37 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       lastVid = 'vc_wm';
     }
 
-    // #92 무료 사용자 엔딩 크레딧 — 마지막 3초에 "Made with Moovlog" 표시
-    if (!isPremium && endingCredit && snappedTotalDur > 3) {
-      const creditStart = Math.max(0, snappedTotalDur - 3);
+    // #10 엔딩 크레딧 — 마지막 2초 엔딩 애니메이션
+    // • 엔딩 시작 시점부터 키프레임 기반 alpha 페이드인 (0→1)
+    // • QR 코드 이미지가 있으면 overlay 크레딧 + 모든 찾는 drawtext
+    if (endingCredit && snappedTotalDur > 2) {
+      const creditStart = Math.max(0, snappedTotalDur - 2);
       const creditLabel = `vc_credit_${jobId}`.replace(/-/g, '_');
+      // 시간 t 기반 페이드인: 0 → 1 (1초 동안)
+      const fadeExpr = `if(gte(t,${creditStart}),min((t-${creditStart})*2\,1),0)`;
+      // 주 텍스트: '이동블로그 무브먼트'
       filters.push(
         `[${lastVid}]drawtext=` +
-          `text='Made with Moovlog':` +
-          `fontsize=34:fontcolor=white@0.85:` +
-          `x=(w-text_w)/2:y=h-90:` +
-          `enable='gte(t,${creditStart})':` +
-          `box=1:boxcolor=black@0.45:boxborderw=8[${creditLabel}]`,
+          `text='이동블로그 무브먼트':` +
+          `fontsize=44:fontcolor=white:alpha='${fadeExpr}':` +
+          `x=(w-text_w)/2:y=h-140:` +
+          `box=1:boxcolor=black@0.6:boxborderw=12[${creditLabel}]`,
       );
       lastVid = creditLabel;
+
+      // QR 코드 이미지 오버레이 + 페이드인 (#10)
+      const hasQr = qrPath && fs.existsSync(qrPath);
+      if (hasQr) {
+        const qrIdx = n + (hasBgm ? 1 : 0) + (hasWm ? 1 : 0);
+        cmd = cmd.addInputOption('-loop', '1').addInputOption('-t', '2').input(qrPath);
+        const qrLabel = `vc_qr_${jobId}`.replace(/-/g, '_');
+        filters.push(
+          `[${qrIdx}:v]scale=160:-1,format=yuv420p[qr_img]`,
+          // alpha 스케일링으로 페이드인 효과 (format yuva 미지원 시 생략 가능)
+          `[${lastVid}][qr_img]overlay=(W-w)/2:H-h-200:enable='gte(t,${creditStart})':shortest=0[${qrLabel}]`,
+        );
+        lastVid = qrLabel;
+      }
     }
 
     cmd.complexFilter(filters.join(';'), [lastVid]);
