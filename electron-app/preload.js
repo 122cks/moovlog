@@ -78,4 +78,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // ── 앱 정보 ───────────────────────────────────────────────────────────
   appInfo: () => ipcRenderer.invoke("app-info"),
+
+  // ── #97 마지막 렌더 옵션 저장/불러오기 ──────────────────────────────
+  saveRenderOptions: (opts) => ipcRenderer.invoke("save-render-options", opts),
+  loadRenderOptions: ()     => ipcRenderer.invoke("load-render-options"),
 });

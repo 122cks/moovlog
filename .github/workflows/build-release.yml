@@ -225,3 +225,76 @@ jobs:
                       release-files/*.apk
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # ────────────────────────────────────────────────────────────────────────
+    # JOB 4: Discord / Telegram 빌드 완료 알림
+    # ─────────────────────────────────────────────────────────────────────────
+    # 필수 Secrets (선택):
+    #   DISCORD_WEBHOOK       - Discord 웹훅 URL
+    #   TELEGRAM_BOT_TOKEN    - 텔레그램 봇 토큰
+    #   TELEGRAM_CHAT_ID      - 텔레그램 채팅 ID
+    # ────────────────────────────────────────────────────────────────────────
+    notify:
+        name: Build Notification
+        needs: [build-windows, build-android, release]
+        runs-on: ubuntu-latest
+        if: always() && startsWith(github.ref, 'refs/tags/')
+
+        steps:
+            - name: Extract version
+              id: ver
+              run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+            - name: Set build status info
+              id: status
+              run: |
+                  RELEASE_RESULT="${{ needs.release.result }}"
+                  WIN_RESULT="${{ needs.build-windows.result }}"
+                  APK_RESULT="${{ needs.build-android.result }}"
+                  if [ "$RELEASE_RESULT" = "success" ]; then
+                    echo "emoji=✅"            >> $GITHUB_OUTPUT
+                    echo "color=3066993"       >> $GITHUB_OUTPUT
+                    echo "msg=빌드 & 배포 성공!" >> $GITHUB_OUTPUT
+                  else
+                    echo "emoji=❌"                          >> $GITHUB_OUTPUT
+                    echo "color=15158332"                    >> $GITHUB_OUTPUT
+                    echo "msg=빌드 실패 (win=$WIN_RESULT, apk=$APK_RESULT, release=$RELEASE_RESULT)" >> $GITHUB_OUTPUT
+                  fi
+                  echo "release_url=https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}" >> $GITHUB_OUTPUT
+                  echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+            # ── Discord 알림 ──────────────────────────────────────────────
+            - name: Discord 빌드 완료 알림
+              if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+              run: |
+                  curl -s -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
+                    -H "Content-Type: application/json" \
+                    -d '{
+                      "embeds": [{
+                        "title": "${{ steps.status.outputs.emoji }} 무브먼트 Shorts Creator v${{ steps.ver.outputs.version }}",
+                        "description": "${{ steps.status.outputs.msg }}",
+                        "color": ${{ steps.status.outputs.color }},
+                        "url": "${{ steps.status.outputs.release_url }}",
+                        "fields": [
+                          {"name": "버전",  "value": "v${{ steps.ver.outputs.version }}", "inline": true},
+                          {"name": "커밋",  "value": "`${{ steps.status.outputs.sha_short }}`", "inline": true},
+                          {"name": "배포",  "value": "[Release 페이지](${{ steps.status.outputs.release_url }})", "inline": false}
+                        ],
+                        "footer": {"text": "GitHub Actions • ${{ github.workflow }}"},
+                        "timestamp": "${{ github.event.head_commit.timestamp }}"
+                      }]
+                    }'
+
+            # ── Telegram 알림 ─────────────────────────────────────────────
+            - name: Telegram 빌드 완료 알림
+              if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+              run: |
+                  VERSION="v${{ steps.ver.outputs.version }}"
+                  EMOJI="${{ steps.status.outputs.emoji }}"
+                  URL="${{ steps.status.outputs.release_url }}"
+                  MSG="${EMOJI} *무브먼트 Shorts Creator ${VERSION}*"$'\n'"${{ steps.status.outputs.msg }}"$'\n\n'"📦 [릴리스 다운로드](${URL})"
+                  curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+                    -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+                    -d "parse_mode=Markdown" \
+                    -d "disable_web_page_preview=false" \
+                    --data-urlencode "text=${MSG}"

@@ -221,9 +221,20 @@ function checkCrashRecovery() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// §4  CPU 코어 수 자동 감지 → -threads 최적화 (#80)
+// §4  CPU 코어 수 자동 감지 → -threads 최적화 (#80 / #97)
 // ═══════════════════════════════════════════════════════════════════════════
-const CPU_THREADS = Math.max(1, Math.floor(os.cpus().length * 0.75));
+const _CPU_TOTAL = os.cpus().length;
+const CPU_THREADS = Math.max(1, Math.floor(_CPU_TOTAL * 0.75)); // 정적 기본값 (status/presets 호환용)
+
+// #97 동적 스레드 계산 — 렌더 시점의 가용 메모리 상황을 반영
+// 가용 RAM < 2 GB → 25%  |  < 4 GB → 50%  |  그 이상 → 75%
+function getDynamicThreads() {
+  const freeMB = os.freemem() / 1048576;
+  const ratio  = freeMB < 2048 ? 0.25 : freeMB < 4096 ? 0.5 : 0.75;
+  const t      = Math.max(1, Math.floor(_CPU_TOTAL * ratio));
+  console.log(`[DynThread] 가용 RAM ${Math.round(freeMB)} MB → 스레드 ${t}/${_CPU_TOTAL}`);
+  return t;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // §5  렌더링 큐 (#74) + 프로세스 추적 (#5) + powerSaveBlocker (#81)
@@ -987,7 +998,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       twoPass && videoCodec === 'libx264'
         ? `-pass 2 -passlogfile "${path.join(os.tmpdir(), 'moovlog_pass')}"`
         : '',
-      `-threads ${CPU_THREADS}`,
+      `-threads ${getDynamicThreads()}`, // #97 동적 스레드
       '-c:a aac',
       '-b:a 128k',
       '-movflags +faststart',
@@ -1506,9 +1517,20 @@ ipcMain.handle('create-proxy-batch', async (_, { videoPaths, outputDir }) => {
         await new Promise((resolve, reject) =>
           fluent(videoPath)
             .outputOptions([
-              '-vf', 'scale=720:-2',
-              '-c:v', 'libx264', '-crf', '28', '-preset', 'fast',
-              '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart',
+              '-vf',
+              'scale=720:-2',
+              '-c:v',
+              'libx264',
+              '-crf',
+              '28',
+              '-preset',
+              'fast',
+              '-c:a',
+              'aac',
+              '-b:a',
+              '96k',
+              '-movflags',
+              '+faststart',
             ])
             .output(proxyPath)
             .on('end', resolve)
@@ -1570,8 +1592,12 @@ async function remoteReportError(context, errorMsg, extra = {}) {
     const body = JSON.stringify(payload);
     const url = new URL(webhookUrl);
     const req = https.request(
-      { hostname: url.hostname, path: url.pathname + url.search, method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+      },
       () => {},
     );
     req.on('error', () => {}); // 전송 실패 무시
