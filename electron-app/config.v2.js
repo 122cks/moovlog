@@ -164,4 +164,9 @@ module.exports = {
   // 편의 접근자
   isProduction: () => typeof process !== 'undefined' && process.env?.NODE_ENV !== 'development',
   isDevelopment: () => typeof process !== 'undefined' && process.env?.NODE_ENV === 'development',
+
+  // ── [#10 Discord 웹훅] 렌더링 완료 / 에러 알림 ────────────────────────
+  // 환경변수 MOOVLOG_SUCCESS_WEBHOOK 에 Discord Webhook URL 설정 시 활성화
+  SUCCESS_WEBHOOK: env('MOOVLOG_SUCCESS_WEBHOOK'),
+  ERROR_WEBHOOK: env('MOOVLOG_ERROR_WEBHOOK'),
 };

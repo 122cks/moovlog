@@ -14,6 +14,8 @@ interface AppActions {
   addFiles:       (files: MediaItem[]) => void;
   removeFile:     (idx: number) => void;
   setLoaded:      (loaded: LoadedMedia[]) => void;
+  /** [Electron #3] 영상 썸네일 URL 업데이트 (FFmpeg 첫 프레임 추출 후 호출) */
+  updateFileThumbnail: (idx: number, thumbnailUrl: string) => void;
 
   // 입력
   setRestaurantName: (name: string) => void;
@@ -83,6 +85,12 @@ export const useAppStore = create<AppState & { toasts: Toast[] } & AppActions>()
 
       removeFile: (idx) =>
         set((s) => ({ files: s.files.filter((_, i) => i !== idx) }), false, 'removeFile'),
+
+      updateFileThumbnail: (idx, thumbnailUrl) =>
+        set((s) => {
+          const files = s.files.map((f, i) => (i === idx ? { ...f, thumbnailUrl } : f));
+          return { files };
+        }, false, 'updateFileThumbnail'),
 
       setLoaded: (loaded) => set({ loaded }, false, 'setLoaded'),
 

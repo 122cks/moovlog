@@ -8,10 +8,21 @@ import { TemplatePicker } from '@/components/TemplatePicker';
 import { runPipeline } from '@/hooks/usePipeline';
 import type { MediaItem } from '@/types/state';
 
+// [Electron 경로] window.electronAPI 타입 선언 (런타임 감지)
+declare global {
+  interface Window {
+    electronAPI?: {
+      isElectron: boolean;
+      extractThumbnail: (opts: { filePath: string; time?: number }) => Promise<string>;
+    };
+  }
+}
+
 export function UploadPhase() {
   const files         = useAppStore((s) => s.files);
   const addFiles      = useAppStore((s) => s.addFiles);
   const removeFile    = useAppStore((s) => s.removeFile);
+  const updateFileThumbnail = useAppStore((s) => s.updateFileThumbnail);
   const name          = useAppStore((s) => s.restaurantName);
   const setName       = useAppStore((s) => s.setRestaurantName);
   const pushToast     = useAppStore((s) => s.pushToast);
@@ -26,9 +37,27 @@ export function UploadPhase() {
       file: f,
       url:  URL.createObjectURL(f),
       type: f.type.startsWith('video/') ? 'video' : 'image',
+      // [Step 1 해결] Electron에서 file.path에 실제 파일시스템 경로가 담깁니다.
+      // 일반 웹 브라우저에서는 undefined (보안상 경로 숨김)
+      path: (f as unknown as { path?: string }).path || undefined,
     }));
     addFiles(items);
-  }, [files.length, addFiles, pushToast]);
+
+    // [#3 미리보기 썸네일] Electron 환경: 영상 파일 첫 프레임을 FFmpeg로 추출 후 캐시
+    if (window.electronAPI?.isElectron) {
+      const currentCount = files.length;
+      items.forEach((item, i) => {
+        if (item.type === 'video' && item.path) {
+          window.electronAPI!.extractThumbnail({ filePath: item.path, time: 1 })
+            .then((thumbPath) => {
+              // file:// 프로토콜로 변환하여 <img> src에 바로 사용 가능
+              updateFileThumbnail(currentCount + i, `file:///${thumbPath.replace(/\\/g, '/')}`);
+            })
+            .catch(() => { /* 썸네일 추출 실패 시 video 요소 fallback */ });
+        }
+      });
+    }
+  }, [files.length, addFiles, updateFileThumbnail, pushToast]);
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault(); setDragging(false);
@@ -82,6 +111,9 @@ export function UploadPhase() {
             <div key={i} className="relative aspect-square overflow-hidden rounded-xl bg-zinc-800">
               {item.type === 'image' ? (
                 <img src={item.url} alt="" className="h-full w-full object-cover" />
+              ) : item.thumbnailUrl ? (
+                /* [#3] FFmpeg 추출 썸네일 (Electron) — 첫 프레임 정적 이미지 */
+                <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
               ) : (
                 <video src={item.url} className="h-full w-full object-cover" muted />
               )}

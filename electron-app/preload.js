@@ -94,4 +94,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // missingIndices: 존재하지 않는 파일의 editList 인덱스 배열
   // 렌더러에서 이 이벤트를 받아 해당 클립을 빨간색으로 하이라이트 하세요.
   onRenderValidationError: (cb) => subscribe('render-validation-error', cb),
+
+  // ── [#6 임시 파일 클리너] 렌더링 완료 후 tmp 파일 삭제 ─────────────
+  cleanupTmpFiles: () => ipcRenderer.invoke('cleanup-tmp-files'),
+
+  // ── [#8 에러 로그 스냅샷] FFmpeg 오류 시 editList 경로 리포트 저장 ──
+  renderErrorSnapshot: (opts) => ipcRenderer.invoke('render-error-snapshot', opts),
 });

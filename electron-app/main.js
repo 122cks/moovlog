@@ -1029,6 +1029,17 @@ function humanizeFfmpegError(err) {
 ipcMain.handle('render-video', async (event, { editList, outputPath, options = {}, jobId }) => {
   if (!FFMPEG_PATH) throw new Error('FFmpeg를 찾을 수 없습니다. 경로를 확인해주세요.');
 
+  // ── [Step 2 해결] 경로가 없는 클립이 하나라도 있으면 즉시 중단 ─────────
+  if (Array.isArray(editList)) {
+    const hasEmptyPath = editList.some((clip) => !clip.path || clip.path === '');
+    if (hasEmptyPath) {
+      return {
+        success: false,
+        error: '일부 파일의 경로를 읽을 수 없습니다. 파일을 다시 선택해주세요.',
+      };
+    }
+  }
+
   // ── 입력 검증 (No input specified 방어) ──────────────────────────────
   if (!Array.isArray(editList) || editList.length === 0) {
     throw new Error(
@@ -1226,10 +1237,13 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     // 입력 파일들
     const _IS_VIDEO = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv)$/i;
     snappedList.forEach((clip) => {
-      const cleanPath = clip.path
-        .replace(/^\/file:\/\/\//, '')
-        .replace(/^file:\/\/\//, '')
-        .replace(/\//g, path.sep);
+      const cleanPath = path.normalize(
+        clip.path
+          .replace(/^\/file:\/\/\//, '')
+          .replace(/^file:\/\/\//, '')
+          .replace(/[^\\/]*\.asar[\\/]/g, '') // [#1 절대경로 보정] app.asar 경로가 붙어 있으면 제거
+          .replace(/\//g, path.sep),
+      );
       if (_IS_VIDEO.test(cleanPath)) {
         // 동영상 입력: HEVC/H.265 소프트웨어 디코딩 + 손상 프레임 복구
         cmd = cmd.addInputOption('-hwaccel', 'auto');
@@ -1451,10 +1465,17 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       const m = line.match(/time=(\d+):(\d+):(\d+\.\d+)/);
       if (m) {
         const elapsed = +m[1] * 3600 + +m[2] * 60 + +m[3];
-        send(
-          `인코딩 중... ${Math.round((elapsed / totalDur) * 100)}%`,
-          5 + (elapsed / totalDur) * 90,
-        );
+        const pct = 5 + (elapsed / totalDur) * 90;
+        // [#5 인코딩 진행률 표시] 퍼센트별 고기 굽기 메시지
+        const meatMsg =
+          pct < 20
+            ? `재료 준비 중... 🍖 ${Math.round(pct)}%`
+            : pct < 50
+              ? `고기 굽는 중 🥩 ${Math.round(pct)}%`
+              : pct < 80
+                ? `황금 마이야르 반응... ✨ ${Math.round(pct)}%`
+                : `거의 완성! 🎬 ${Math.round(pct)}%`;
+        send(meatMsg, pct);
       }
     });
 
@@ -1502,6 +1523,9 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       if (autoOpenFolder) {
         shell.showItemInFolder(outputPath);
       }
+
+      // [#10 최종 배포 알림] Discord 렌더링 완료 웹훅
+      _sendDiscordSuccess(path.basename(outputPath));
 
       // #86 완료 후 영상 자동 재생
       if (autoPlayAfter) {
@@ -2169,5 +2193,93 @@ ipcMain.handle('load-render-options', () => {
       } catch (_) {}
     }
     return { ok: false, opts: _DEFAULT_RENDER_OPTS, isDefault: true };
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §14  v2.81.0 에러 제로 고도화 — 추가 IPC
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── [#10 최종 배포 알림] Discord 렌더링 완료 웹훅 ──────────────────────
+// 환경변수 MOOVLOG_SUCCESS_WEBHOOK 또는 config.v2.js SUCCESS_WEBHOOK 에 URL 설정 시 활성화
+function _sendDiscordSuccess(filename) {
+  let webhookUrl = null;
+  try {
+    const cfg = require('./config.v2.js');
+    webhookUrl = cfg.SUCCESS_WEBHOOK || process.env.MOOVLOG_SUCCESS_WEBHOOK;
+  } catch (_) {
+    webhookUrl = process.env.MOOVLOG_SUCCESS_WEBHOOK;
+  }
+  if (!webhookUrl) return;
+  try {
+    const payload = JSON.stringify({
+      username: '무브먼트 RenderBot',
+      content: `🥩 렌더링 완료! \`${filename}\` (v${app.getVersion()}) — PC 버전 경로 오류 완벽 수정! 이제 바로 구우세요 🔥`,
+    });
+    const https = require('https');
+    const url = new URL(webhookUrl);
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        path: url.pathname + url.search,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+      },
+      () => {},
+    );
+    req.on('error', () => {});
+    req.write(payload);
+    req.end();
+  } catch (_) {}
+}
+
+// ── [#6 임시 파일 클리너] 렌더링 완료 후 AppData/tmp 내 moovlog_ 패턴 파일 삭제 ──
+ipcMain.handle('cleanup-tmp-files', async () => {
+  const tmpDir = os.tmpdir();
+  let deleted = 0;
+  try {
+    const entries = fs.readdirSync(tmpDir);
+    for (const f of entries) {
+      if (/^(moovlog_|thumb_\d+|seg_render_|seg_\d+\.mp4|concat_)/.test(f)) {
+        try {
+          fs.rmSync(path.join(tmpDir, f), { force: true, recursive: true });
+          deleted++;
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  appendAppLog('INFO', `[cleanup-tmp] 임시 파일 ${deleted}개 삭제`);
+  return { deleted };
+});
+
+// ── [#8 에러 로그 스냅샷] FFmpeg 오류 시 editList 경로 상태를 리포트 파일로 저장 ──
+ipcMain.handle('render-error-snapshot', (_, { editList = [], errorMsg = '' } = {}) => {
+  try {
+    const snapshotDir = path.join(app.getPath('userData'), 'error_snapshots');
+    if (!fs.existsSync(snapshotDir)) fs.mkdirSync(snapshotDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const snapshot = {
+      timestamp: new Date().toISOString(),
+      error: errorMsg,
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      clips: editList.map((c, i) => ({
+        index: i + 1,
+        path: c.path || '(없음)',
+        name: c.name || path.basename(c.path || '(없음)'),
+        exists: c.path ? fs.existsSync(c.path) : false,
+        duration: c.duration,
+      })),
+    };
+    const outPath = path.join(snapshotDir, `render_error_${ts}.txt`);
+    fs.writeFileSync(outPath, JSON.stringify(snapshot, null, 2), 'utf8');
+    appendAppLog('ERROR', `[error-snapshot] ${outPath}`);
+    return { ok: true, path: outPath };
+  } catch (e) {
+    return { ok: false, error: e.message };
   }
 });

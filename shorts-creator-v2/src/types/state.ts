@@ -9,6 +9,16 @@ export interface MediaItem {
   /** URL.createObjectURL() 결과 */
   url: string;
   type: 'image' | 'video';
+  /**
+   * [Electron 전용] 실제 파일시스템 경로 (file.path).
+   * 일반 브라우저에서는 undefined — FFmpeg IPC 호출 시 필수.
+   */
+  path?: string;
+  /**
+   * [Electron 전용] FFmpeg 추출 썸네일 경로 (영상 전용).
+   * 추출 전에는 undefined, 추출 후 `file://` URL로 설정.
+   */
+  thumbnailUrl?: string;
 }
 
 /** preload() 이후 로드된 미디어 요소 */
