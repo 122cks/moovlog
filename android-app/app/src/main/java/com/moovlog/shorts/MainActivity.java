@@ -29,7 +29,10 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.text.InputType;
+import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
@@ -327,6 +330,80 @@ public class MainActivity extends Activity {
                                 "공유 앱을 찾을 수 없습니다.", Toast.LENGTH_SHORT).show();
                     }
                 }
+            });
+        }
+
+        // #96 파일명 입력 팝업 후 공유 — 공유 전 이름 커스터마이징
+        // JS: Android.shareVideoWithNamePicker(filePath, platform)
+        @JavascriptInterface
+        public void shareVideoWithNamePicker(String filePath, String platform) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                File srcFile = new File(filePath);
+                if (!srcFile.exists()) {
+                    Toast.makeText(MainActivity.this,
+                            "영상 파일을 찾을 수 없습니다.\n경로: " + filePath,
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                // 현재 파일명에서 확장자 분리
+                String origName = srcFile.getName();
+                int dotIdx = origName.lastIndexOf('.');
+                String baseName = dotIdx > 0 ? origName.substring(0, dotIdx) : origName;
+                String ext = dotIdx > 0 ? origName.substring(dotIdx) : ".mp4";
+
+                // 파일명 입력 EditText 생성
+                EditText nameInput = new EditText(MainActivity.this);
+                nameInput.setText(baseName);
+                nameInput.setSelectAllOnFocus(true);
+                nameInput.setInputType(InputType.TYPE_CLASS_TEXT
+                        | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+                nameInput.setSingleLine(true);
+                nameInput.setHint("파일 이름 (확장자 제외)");
+
+                // 여백 추가
+                int dp = (int) (16 * getResources().getDisplayMetrics().density);
+                LinearLayout container = new LinearLayout(MainActivity.this);
+                container.setOrientation(LinearLayout.VERTICAL);
+                container.setPadding(dp, dp / 2, dp, 0);
+                container.addView(nameInput);
+
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("공유할 파일 이름")
+                        .setMessage("저장될 파일명을 입력하세요 (확장자 자동 추가)")
+                        .setView(container)
+                        .setPositiveButton("공유", (dialog, which) -> {
+                            String inputName = nameInput.getText().toString().trim();
+                            if (inputName.isEmpty()) {
+                                inputName = baseName;
+                            }
+
+                            // 파일 시스템에서 허용되지 않는 문자 치환
+                            inputName = inputName.replaceAll("[\\\\/:*?\"<>|]", "_");
+
+                            // 캐시 디렉터리에 새 이름으로 복사 (원본 보존)
+                            File destFile = new File(getCacheDir(),
+                                    inputName + ext);
+                            try (java.io.FileInputStream in
+                                    = new java.io.FileInputStream(srcFile); java.io.FileOutputStream out
+                                    = new java.io.FileOutputStream(destFile)) {
+                                byte[] buf = new byte[65536];
+                                int len;
+                                while ((len = in.read(buf)) > 0) {
+                                    out.write(buf, 0, len);
+                                }
+                            } catch (java.io.IOException e) {
+                                Toast.makeText(MainActivity.this,
+                                        "파일 준비 실패: " + e.getMessage(),
+                                        Toast.LENGTH_LONG).show();
+                                return;
+                            }
+
+                            // 새 경로로 기존 shareVideo 호출
+                            shareVideo(destFile.getAbsolutePath(), platform);
+                        })
+                        .setNegativeButton("취소", null)
+                        .show();
             });
         }
 
