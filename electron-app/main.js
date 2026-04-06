@@ -39,6 +39,24 @@ const cp = require('child_process');
 const crypto = require('crypto');
 const fluent = require('fluent-ffmpeg');
 
+// ── [Patch 4] .env 폴백: 파일 없어도 앱이 죽지 않음, 기본값 자동 설정
+(function loadDotEnv() {
+  try {
+    const envFile = path.join(__dirname, '.env');
+    if (!fs.existsSync(envFile)) return;
+    fs.readFileSync(envFile, 'utf8')
+      .split(/\r?\n/)
+      .forEach((line) => {
+        const m = line.match(/^([^#=\s][^=]*?)=(.*)$/);
+        if (m && !(m[1].trim() in process.env)) {
+          process.env[m[1].trim()] = m[2].trim().replace(/^["']|["']$/g, '');
+        }
+      });
+  } catch (_) {}
+  // 기본값 폴백 — .env 없어도 앱이 정상 동작
+  process.env.NODE_ENV = process.env.NODE_ENV || 'production';
+})();
+
 // #83 — 자동 업데이트 (패키징 환경에서만 활성화)
 let autoUpdater = null;
 if (app.isPackaged) {
@@ -107,10 +125,11 @@ ensureExec(FFPROBE_PATH);
 // ═══════════════════════════════════════════════════════════════════════════
 function getUserDataPath(file) {
   // app.getPath은 ready 이후에만 사용 가능
+  // [Patch 3] path.normalize로 Windows/Mac 경로 구분자 정규화
   try {
-    return path.join(app.getPath('userData'), file);
+    return path.normalize(path.join(app.getPath('userData'), file));
   } catch (_) {
-    return path.join(os.tmpdir(), file);
+    return path.normalize(path.join(os.tmpdir(), file));
   }
 }
 let _hashCache = {};
@@ -329,6 +348,32 @@ function appendAppLog(level, msg) {
   } catch (_) {}
 }
 
+// ── [Patch 1] 전역 미처리 에러 → error.log 실시간 기록
+function getErrorLogPath() {
+  try {
+    return path.normalize(path.join(app.getPath('userData'), 'error.log'));
+  } catch (_) {
+    return path.normalize(path.join(os.tmpdir(), 'moovlog_error.log'));
+  }
+}
+function writeErrorLog(type, err) {
+  try {
+    const entry = `[${new Date().toISOString()}][${type}] ${err?.stack || err}\n`;
+    fs.appendFileSync(getErrorLogPath(), entry, 'utf8');
+  } catch (_) {}
+  try {
+    appendAppLog('FATAL', String(err?.message || err));
+  } catch (_) {}
+}
+process.on('uncaughtException', (err) => {
+  writeErrorLog('uncaughtException', err);
+  console.error('[FATAL uncaughtException]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  writeErrorLog('unhandledRejection', reason);
+  console.error('[FATAL unhandledRejection]', reason);
+});
+
 function enqueueRender(task) {
   return new Promise((resolve, reject) => {
     renderQueue.push({ task, resolve, reject });
@@ -395,15 +440,21 @@ function createWindow() {
     },
   });
 
-  const distIndex = path.resolve(__dirname, '../shorts-creator-v2/moovlog-react/dist/index.html');
+  // [Patch 3] path.normalize로 경로 구분자 정규화 (Windows/Mac 공통)
+  const distIndex = path.normalize(
+    path.resolve(__dirname, '../shorts-creator-v2/moovlog-react/dist/index.html'),
+  );
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools();
   } else if (fs.existsSync(distIndex)) {
     mainWindow.loadFile(distIndex);
   } else {
     mainWindow.loadURL('https://122cks.github.io/moovlog/shorts-creator/');
+  }
+  // [Patch 5] 비패키징 환경(npm start / npm run dev) → DevTools 자동 실행
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
   }
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -548,7 +599,32 @@ function buildAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// ── [Patch 2] 필수 모듈 존재 확인 — 없으면 알림창 표시 후 종료
+async function checkRequiredModules() {
+  const missing = [];
+  for (const modId of ['fluent-ffmpeg', 'electron-updater']) {
+    try {
+      require.resolve(modId);
+    } catch (_) {
+      missing.push(modId);
+    }
+  }
+  if (missing.length > 0) {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: '필수 라이브러리 미설치',
+      message: '다음 라이브러리가 설치되어 있지 않습니다:',
+      detail: missing.join('\n') + '\n\n터미널에서 아래 명령을 실행하세요:\nnpm install',
+      buttons: ['종료'],
+    });
+    app.quit();
+    return false;
+  }
+  return true;
+}
+
 app.whenReady().then(async () => {
+  if (!(await checkRequiredModules())) return;
   loadHashCache();
   buildAppMenu();
   createWindow();
