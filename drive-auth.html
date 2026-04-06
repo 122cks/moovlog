@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Google Drive 로그인 — MOOVLOG</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111; color: #eee;
+      font-family: 'Noto Sans KR', sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      height: 100vh; gap: 18px; padding: 24px;
+    }
+    .icon { font-size: 3rem; }
+    .title { font-size: 1.1rem; font-weight: 700; }
+    .desc  { font-size: 0.85rem; color: #aaa; text-align: center; line-height: 1.6; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 3px solid #333; border-top-color: #7c3aed;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .err { color: #f87171; font-size: 0.85rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="icon">🔑</div>
+  <div class="title">Google 계정으로 로그인</div>
+  <div class="desc" id="desc">Google 라이브러리 로딩 중...</div>
+  <div class="spinner" id="spinner"></div>
+  <button id="loginBtn"
+    onclick="startAuth()"
+    disabled
+    style="display:none;background:#7c3aed;border:none;border-radius:10px;padding:12px 28px;color:#fff;font-size:1rem;font-weight:700;cursor:pointer;letter-spacing:0.02em;margin-top:4px;"
+  >🔑 Google로 로그인</button>
+
+  <!-- Google Identity Services — COOP 없이 로드되어 OAuth 팝업 정상 동작 -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    var desc     = document.getElementById('desc');
+    var spinner  = document.getElementById('spinner');
+    var loginBtn = document.getElementById('loginBtn');
+    var clientId = new URLSearchParams(location.search).get('cid');
+    var tokenClient = null;
+
+    function showErr(msg) {
+      spinner.style.display  = 'none';
+      loginBtn.style.display = 'none';
+      desc.textContent       = '오류: ' + msg;
+      desc.className         = 'err';
+    }
+
+    // 버튼 클릭 시 호출 — 반드시 사용자 제스처(클릭) 컨텍스트에서 실행해야
+    // 브라우저가 팝업을 허용합니다.
+    function startAuth() {
+      if (!tokenClient) { showErr('아직 준비 중입니다. 잠시 후 다시 클릭해주세요.'); return; }
+      loginBtn.disabled      = true;
+      loginBtn.textContent   = '로그인 창 열리는 중...';
+      spinner.style.display  = 'block';
+      desc.textContent       = 'Google 로그인 창이 열립니다. 팝업 차단 시 주소창 옆 아이콘을 클릭해 허용해주세요.';
+      tokenClient.requestAccessToken({ prompt: 'select_account' });
+    }
+
+    function initClient() {
+      if (!clientId) { showErr('client_id 파라미터가 없습니다.'); return; }
+
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: 'https://www.googleapis.com/auth/drive.readonly',
+        callback: function(resp) {
+          if (resp.error) {
+            if (resp.error === 'popup_closed_by_user' || resp.error === 'access_denied') {
+              desc.textContent       = '로그인이 취소되었습니다. 다시 시도하려면 버튼을 클릭하세요.';
+              spinner.style.display  = 'none';
+              loginBtn.disabled      = false;
+              loginBtn.textContent   = '🔑 Google로 로그인';
+              return;
+            }
+            showErr(resp.error);
+            setTimeout(function() { try { window.close(); } catch(e) {} }, 2500);
+            return;
+          }
+
+          // ✅ 로그인 성공 — localStorage에 토큰 저장 → 메인 탭 storage 이벤트로 전달
+          try {
+            localStorage.setItem('moovlog_drive_token_pending', JSON.stringify({
+              token: resp.access_token,
+              ts: Date.now()
+            }));
+          } catch(e) {}
+
+          spinner.style.display  = 'none';
+          loginBtn.style.display = 'none';
+          desc.textContent       = '✅ 로그인 완료! 창을 닫는 중...';
+          setTimeout(function() { try { window.close(); } catch(e) {} }, 400);
+        }
+      });
+
+      // 준비 완료 → 버튼 표시 및 활성화
+      spinner.style.display  = 'none';
+      desc.textContent       = '아래 버튼을 클릭하여 Google 드라이브에 연결하세요.';
+      loginBtn.style.display = 'block';
+      loginBtn.disabled      = false;
+    }
+
+    // GIS 스크립트 로딩 대기 (async 로드이므로 폴링)
+    function waitForGIS(attempt) {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+        initClient();
+        return;
+      }
+      if ((attempt || 0) > 80) { showErr('Google 로그인 라이브러리 로딩 실패. 인터넷 연결을 확인해주세요.'); return; }
+      setTimeout(function() { waitForGIS((attempt || 0) + 1); }, 100);
+    }
+
+    waitForGIS();
+  </script>
+</body>
+</html>

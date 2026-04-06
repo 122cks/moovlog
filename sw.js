@@ -1,8 +1,8 @@
-// MOOVLOG Shorts Creator — Service Worker v2.49
+// MOOVLOG Shorts Creator — Service Worker v2.63
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
 const BASE_PATH = new URL(self.registration.scope).pathname;
-const CACHE_NAME = 'moovlog-v2.49-20260403-1';
+const CACHE_NAME = 'moovlog-v2.67-20260406-1';
 const STATIC_ASSETS = [
   BASE_PATH,
   `${BASE_PATH}index.html`,
@@ -38,6 +38,17 @@ self.addEventListener('fetch', e => {
   // ── FFmpeg WASM용 COOP/COEP 헤더 주입 ──────────────────────────────────────
   // mode === 'navigate': 메인 프레임 페이지 내비게이션 요청 (destination=document 보다 더 정확)
   // 같은 오리진 한정 적용 (cross-origin 리소스 불개입)
+
+  // ⚠️ drive-auth.html 예외: COOP 없이 서빙 → Google OAuth 팝업 통신 허용
+  // COOP(same-origin)이 적용된 창에서는 window.opener가 null이 되어 OAuth callback이 차단됨
+  if (e.request.mode === 'navigate' && url.pathname.endsWith('/drive-auth.html')) {
+    e.respondWith(
+      fetch(e.request, { credentials: 'same-origin' })
+        .catch(() => caches.match(e.request).then(c => c || new Response('오프라인', { status: 503 })))
+    );
+    return;
+  }
+
   if (e.request.mode === 'navigate' && url.origin === self.location.origin && url.pathname.startsWith(BASE_PATH)) {
     e.respondWith(
       fetch(e.request, { credentials: 'same-origin' }).then(res => {
@@ -47,7 +58,15 @@ self.addEventListener('fetch', e => {
         headers.set('Cross-Origin-Opener-Policy',   'same-origin');
         headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
         return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
-      }).catch(() => caches.match(e.request))
+      }).catch(async () => {
+        // 네트워크 실패 시 캐시에서 제공 — 헤더 반드시 주입 (crossOriginIsolated 유지)
+        const cached = await caches.match(e.request);
+        if (!cached) return new Response('오프라인 상태입니다. 네트워크를 확인해주세요.', { status: 503 });
+        const headers = new Headers(cached.headers);
+        headers.set('Cross-Origin-Opener-Policy',   'same-origin');
+        headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
+        return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
+      })
     );
     return;
   }
