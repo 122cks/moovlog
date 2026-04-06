@@ -824,8 +824,43 @@ function isHwaccelError(err) {
   return /nvenc|h264_nvenc|h264_qsv|h264_amf|no hardware|hardware encoder|init_encoder|direct3d|amf_context/.test(msg);
 }
 
+// FFmpeg raw 에러를 사용자 친화적 한글 메시지로 치환
+function humanizeFfmpegError(err) {
+  const raw = err?.message || String(err);
+  if (/no input specified/i.test(raw))
+    return '선택된 영상 소스가 없습니다. 파일을 다시 확인해주세요.';
+  if (/no such file|could not open/i.test(raw))
+    return `파일을 찾을 수 없습니다. 경로를 확인해주세요.\n(${raw.slice(0, 120)})`;
+  if (/invalid data|moov atom not found/i.test(raw))
+    return `손상된 영상 파일입니다. 다른 파일로 대체해주세요.\n(${raw.slice(0, 120)})`;
+  if (/permission denied/i.test(raw))
+    return '파일 접근 권한이 없습니다. 폴더 권한을 확인해주세요.';
+  return raw; // 기타 에러는 원문 유지
+}
+
 ipcMain.handle('render-video', async (event, { editList, outputPath, options = {}, jobId }) => {
   if (!FFMPEG_PATH) throw new Error('FFmpeg를 찾을 수 없습니다. 경로를 확인해주세요.');
+
+  // ── 입력 검증 (No input specified 방어) ──────────────────────────────
+  if (!Array.isArray(editList) || editList.length === 0) {
+    throw new Error('영상을 추가해주세요. 타임라인에 클립이 없으면 렌더링을 시작할 수 없습니다.');
+  }
+
+  const ALLOWED_EXT = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv)$/i;
+  for (const clip of editList) {
+    const rawPath = (clip.path || '').replace(/^file:\/\/\//, '').replace(/\//g, path.sep);
+    if (!rawPath) {
+      throw new Error(`클립 소스 경로가 비어 있습니다. 파일을 다시 추가해주세요. (순서: ${editList.indexOf(clip) + 1}번째)`);
+    }
+    if (!ALLOWED_EXT.test(rawPath)) {
+      throw new Error(`지원하지 않는 파일 형식입니다: "${path.basename(rawPath)}"\n지원 형식: mp4, mov, avi, mkv, webm 등`);
+    }
+    // 한글·특수문자 경로 포함 실제 존재 여부 확인
+    if (!fs.existsSync(rawPath)) {
+      throw new Error(`소스 파일을 찾을 수 없습니다: "${path.basename(rawPath)}"\n경로를 확인하거나 파일을 다시 추가해주세요.`);
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────
   const jid = jobId || `job_${Date.now()}`;
   const MAX_ATTEMPTS = 3;
 
@@ -1139,7 +1174,9 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     cmd.on('error', (err) => {
       renderJobs.delete(jobId);
       autoSaveClear();
-      reject(err);
+      const friendlyMsg = humanizeFfmpegError(err);
+      const wrappedErr = friendlyMsg !== (err?.message || String(err)) ? Object.assign(new Error(friendlyMsg), { originalError: err }) : err;
+      reject(wrappedErr);
     });
 
     cmd.on('end', () => {
