@@ -429,10 +429,19 @@ export async function startMake() {
 
   // 화면 꺼짐 방지 (Wake Lock API) — 생성 중 휴대폰 꺼져도 계속 진행
   let _wakeLock = null;
+  let _wakeLockInterval = null;
   try {
     if (navigator.wakeLock) {
       _wakeLock = await navigator.wakeLock.request('screen');
-      console.log('[WakeLock] 화면 잠금 방지 활성화');
+      console.log('[WakeLock] 화면 잌금 방지 활성화');
+      // 1분마다 재획득 (일부 및 3업그레이드 시 페이지 비시인 전환 시 자동 해제 로직 대응)
+      _wakeLockInterval = setInterval(async () => {
+        try {
+          if (document.visibilityState === 'visible' && navigator.wakeLock) {
+            _wakeLock = await navigator.wakeLock.request('screen');
+          }
+        } catch (_wlRenewErr) { /* 재획득 실패 무시 */ }
+      }, 60_000);
     }
   } catch (_wlErr) { /* 지원 안 해도 계속 진행 */ }
 
@@ -553,7 +562,36 @@ export async function startMake() {
     // ── STEP 5: 영상 삽입 설계 + 자막 매칭 검증 ─────────────────────────
     setPipeline(5, '영상 컷 삽입 + 자막 매칭 검증 중...', '스토리보드 확정 후 영상 위치와 자막-컷 정합성을 자동 교정합니다');
     const refinedPlan = refineScenesForStoryboard(workingScript.scenes || [], files, analysis);
-    workingScript = { ...workingScript, scenes: refinedPlan.scenes };
+    let _refinedScenes = refinedPlan.scenes;
+
+    // 🥩 grill 전용: 0번 씬에 mp4(원육 영상) 강제 배치 — 시청자 첫인상 극대화
+    if (effectiveType === 'grill') {
+      const _grillVidIdxs = files.map((f, i) => f.type === 'video' ? i : -1).filter(i => i >= 0);
+      if (_grillVidIdxs.length > 0 && _refinedScenes.length > 0) {
+        _refinedScenes = [{ ..._refinedScenes[0], media_idx: _grillVidIdxs[0] }, ..._refinedScenes.slice(1)];
+        addToast('🥩 고깃집 0번 씬: 원육 mp4 강제 배치 ✅', 'ok');
+      }
+    }
+
+    // 🍳 볶음밥/마무리/디저트 미디어 → 마지막-1 씬(CTA 직전)에 우선 배치
+    {
+      const _lastEdibleIdx = _refinedScenes.length >= 3 ? _refinedScenes.length - 2 : -1;
+      if (_lastEdibleIdx >= 0) {
+        const _friedRiceMediaIdx = files.findIndex((f, fi) => {
+          const mData = (analysis?.per_image || []).find(p => p.idx === fi) || {};
+          const cat = detectFoodCategory(`${mData.focus || ''} ${mData.narration_hint || ''}`, mData.food_category);
+          return cat === 'fried_rice' || cat === 'dessert';
+        });
+        if (_friedRiceMediaIdx >= 0 && _refinedScenes[_lastEdibleIdx].media_idx !== _friedRiceMediaIdx) {
+          _refinedScenes = _refinedScenes.map((sc, si) =>
+            si === _lastEdibleIdx ? { ...sc, media_idx: _friedRiceMediaIdx } : sc
+          );
+          addToast('🍳 볶음밥/마무리 컷: 마지막 직전 씬 고정 ✅', 'ok');
+        }
+      }
+    }
+
+    workingScript = { ...workingScript, scenes: _refinedScenes };
     setScript(workingScript);
     if (refinedPlan.mediaSwapCount > 0) {
       addToast(`컷 보정 완료: ${refinedPlan.mediaSwapCount}개 씬 media_idx 재배치`, 'ok');
@@ -665,6 +703,22 @@ export async function startMake() {
 
     // ── 영상 우선 배치 + b-roll 보충 (main flow) ──────────────────────────────
     applyVideoPriority(finalScenes, files, analysisMap, analysis, addToast);
+
+    // ── 식당 정보 카드: 첫 씬 자막에 식당명·업종 오버레이 ─────────────────────
+    // 시청자가 0.5초 안에 "어떤 식당인지" 인식 → 이탈률 감소
+    if (finalScenes.length > 0 && restaurantName) {
+      const _typeLabels = {
+        grill: '고깃집', cafe: '카페', hansik: '한식당', pub: '포차·주점',
+        seafood: '해산물', chinese: '중식당', noodle: '면 요리', bakery: '베이커리',
+      };
+      const _typeLabel = _typeLabels[effectiveType] || '맛집';
+      const _cap1 = String(finalScenes[0].caption1 || '');
+      // 이미 식당명이 포함된 경우 덮어쓰지 않음 (Gemini가 잘 넣어줬을 때)
+      const _shortName = restaurantName.length <= 12 ? restaurantName : restaurantName.slice(0, 12);
+      if (!_cap1.includes(restaurantName.slice(0, Math.min(4, restaurantName.length)))) {
+        finalScenes[0] = { ...finalScenes[0], caption1: _shortName, caption2: _typeLabel };
+      }
+    }
 
     // ── 씬-미디어 콘텐츠 자체 QA 로그 ──────────────────────────────────────────
     selfQALog(finalScenes, files, analysisMap);
@@ -821,6 +875,7 @@ export async function startMake() {
     addToast('오류: ' + (err?.message || String(err) || '알 수 없는 오류'), 'err');
   } finally {
     // Wake Lock 해제
+    if (_wakeLockInterval) { clearInterval(_wakeLockInterval); _wakeLockInterval = null; }
     if (_wakeLock) { _wakeLock.release().catch(() => {}); _wakeLock = null; }
   }
 }

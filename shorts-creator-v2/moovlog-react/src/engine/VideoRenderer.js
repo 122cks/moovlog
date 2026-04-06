@@ -7,6 +7,7 @@ import { fetchFile } from '@ffmpeg/util';
 import { useVideoStore } from '../store/videoStore.js';
 
 const FFMPEG_CORE_URLS = [
+  '/ffmpeg',                                                       // 로컬 WASM (public/ffmpeg/ 폴더 — 오프라인·최고속)
   'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',   // jsDelivr (빠름)
   'https://fastly.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd', // Fastly CDN (대안)
   'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd',              // unpkg 최종 폴백
@@ -92,8 +93,14 @@ async function getFFmpeg(onLog) {
       } catch (e) {
         // 실패한 FFmpeg 인스턴스 강제 종료 → 메모리/워커 정리
         try { ff.terminate(); } catch (_) {}
-        console.warn(`[FFmpeg] CDN ${cdnIdx + 1} 실패:`, e?.message || String(e));
-        onLog?.(`[FFmpeg] CDN ${cdnIdx + 1} 실패 (${e?.message || '알 수 없는 오류'}) — ${cdnIdx + 1 < FFMPEG_CORE_URLS.length ? '다음 CDN 시도 중...' : '모든 CDN 실패'}`);
+        const isLocal = cdnIdx === 0;
+        const hasNext = cdnIdx + 1 < FFMPEG_CORE_URLS.length;
+        const nextHint = isLocal
+          ? (hasNext ? 'CDN 다운로드로 전환합니다 (약 20~40초)' : '모든 경로 실패')
+          : (hasNext ? `CDN ${cdnIdx + 1} 시도 중...` : '모든 CDN 실패');
+        console.warn(`[FFmpeg] ${isLocal ? '로컬 WASM' : `CDN ${cdnIdx}`} 실패:`, e?.message || String(e));
+        onLog?.(`[FFmpeg] ${isLocal ? '로컬 WASM 없음' : `CDN ${cdnIdx} 실패`} (${e?.message || '알 수 없는 오류'}) — ${nextHint}`);
+        if (isLocal && hasNext) onLog?.('[FFmpeg] ⚠️ 네트워크가 불안정합니다. 외부 CDN으로 전환합니다...');
         lastErr = e;
       }
     }
@@ -418,7 +425,7 @@ export async function renderVideoWithFFmpeg(scenes, files, script, onProgress) {
           '-t', String(dur),
           '-vf', vf,
           '-r', String(FPS),
-          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '26',
+          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
           '-pix_fmt', 'yuv420p', '-an',
           outputName,
         ]);
@@ -483,7 +490,7 @@ export async function renderCinematicFinish(blob, theme, onProgress) {
   await ff.exec([
     '-i', 'raw_input.mp4',
     '-vf', `${lut},unsharp=3:3:1.0:3:3:0.0`,
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
     '-c:a', 'copy',
     'cinematic_out.mp4',
   ]);
@@ -537,8 +544,8 @@ async function _renderWithElectron(scenes, files, script, onProgress) {
     await api.renderVideo(editList, outputPath, {
       theme:  script?.theme || 'hansik',
       fps:    30,
-      crf:    22,
-      preset: 'fast',
+      crf:    18,
+      preset: 'ultrafast',
     });
     report('✅ 렌더링 완료!', 100);
 

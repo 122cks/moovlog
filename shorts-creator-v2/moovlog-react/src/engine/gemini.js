@@ -67,7 +67,7 @@ export async function geminiWithFallback(body, timeoutMs = 60000) {
 
 // ??? 蹂묐젹 寃쎌웳 (媛??鍮좊Ⅸ 紐⑤뜽 ?묐떟 梨꾪깮) ???????????????
 // Promise.any: ?섎굹?쇰룄 ?깃났?섎㈃ 利됱떆 諛섑솚, 紐⑤몢 ?ㅽ뙣?섎㈃ AggregateError
-export async function geminiRace(body, models = TEXT_MODELS, timeoutMs = 28000) {
+export async function geminiRace(body, models = TEXT_MODELS, timeoutMs = 60000) {
   if (!models.length) throw new Error('모델 목록 없음');
   const attempts = models.map(model =>
     apiPost(getApiUrl(model), body, timeoutMs)
