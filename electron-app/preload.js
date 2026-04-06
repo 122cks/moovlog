@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── 미디어 분석 ───────────────────────────────────────────────────────
   probeMedia: (filePath) => ipcRenderer.invoke('probe-media', filePath),
+  // #3 키워드 거리 기반 클립 정렬
+  sortClipsByKeywords: (opts) => ipcRenderer.invoke('sort-clips-by-keywords', opts),
 
   // ── 썸네일 추출 (#37) ─────────────────────────────────────────────────
   extractThumbnail: (opts) => ipcRenderer.invoke('extract-thumbnail', opts),

@@ -291,7 +291,24 @@ jobs:
                     HASHES='N/A'
                   fi
                   echo "file_hashes=${HASHES}" >> $GITHUB_OUTPUT
-
+            # ── APK 직접 다운로드 URL 계산 (#9 자동 설치 버튼) ─────
+            - name: APK 직접 다운로드 URL 계산
+              id: apk-url
+              run: |
+                  VERSION="${{ steps.ver.outputs.version }}"
+                  REPO="${{ github.repository }}"
+                  APK=$(find tg-apk/ -name "*.apk" 2>/dev/null | head -1)
+                  if [ -n "$APK" ]; then
+                    APK_NAME=$(basename "$APK")
+                    APK_SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+                    echo "url=https://github.com/${REPO}/releases/download/v${VERSION}/${APK_NAME}" >> $GITHUB_OUTPUT
+                    echo "name=${APK_NAME}" >> $GITHUB_OUTPUT
+                    echo "sha256=${APK_SHA}" >> $GITHUB_OUTPUT
+                  else
+                    echo "url=${{ steps.status.outputs.release_url }}" >> $GITHUB_OUTPUT
+                    echo "name=" >> $GITHUB_OUTPUT
+                    echo "sha256=" >> $GITHUB_OUTPUT
+                  fi
             # ── Discord 알림 ──────────────────────────────────────────────
             - name: Discord 빌드 완료 알림
               if: ${{ secrets.DISCORD_WEBHOOK != '' }}
@@ -309,8 +326,9 @@ jobs:
                           {"name": "커밋",  "value": "`${{ steps.status.outputs.sha_short }}`", "inline": true},
                           {"name": "커밋 메시지", "value": "${{ steps.status.outputs.commit_msg }}", "inline": false},
                           {"name": "📦 파일 크기", "value": "${{ steps.status.outputs.file_sizes }}", "inline": false},
-                          {"name": "� SHA-256", "value": "${{ steps.status.outputs.file_hashes }}", "inline": false},
-                          {"name": "�📥 최신 빌드 다운로드", "value": "[⬇ exe / apk 파일 받기](${{ steps.status.outputs.release_url }})", "inline": false}
+                          {"name": "🔒 무결성 검증 완료", "value": "${{ steps.status.outputs.file_hashes }}", "inline": false},
+                          {"name": "📲 최신 APK 폰에 설치하기", "value": "[⬇ 직접 다운로드 (APK)](${{ steps.apk-url.outputs.url }})\n💾 파일: ${{ steps.apk-url.outputs.name }}", "inline": false},
+                          {"name": "📥 전체 릴리스 다운로드", "value": "[⬇ exe / apk 파일 받기](${{ steps.status.outputs.release_url }})", "inline": false}
                         ],
                         "footer": {"text": "GitHub Actions • ${{ github.workflow }}"},
                         "timestamp": "${{ github.event.head_commit.timestamp }}"

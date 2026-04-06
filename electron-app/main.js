@@ -247,11 +247,13 @@ function getDynamicThreads() {
 // 가용 RAM < 2 GB → ultrafast  |  < 4 GB → fast  |  그 이상 → medium
 // caller가 'libx264' 이외 코덱을 쓸 땐 무시됨
 function getDynamicPreset(userPreset) {
-  // 사용자가 명시적으로 'ultrafast'/'veryfast' 지정한 경우 우선 사용
+  // 사용자가 명시적으로 고속 preset을 지정한 경우 우선 사용
   if (['ultrafast', 'superfast', 'veryfast'].includes(userPreset)) return userPreset;
   const freeMB = os.freemem() / 1048576;
   if (freeMB < 2048) return 'ultrafast';
   if (freeMB < 4096) return 'fast';
+  // RAM ≥ 8GB + 미지정 → 'slow' (고화질 모드, CRF 18과 연동 #21)
+  if (freeMB >= 8192 && !userPreset) return 'slow';
   return userPreset || 'medium';
 }
 
@@ -858,7 +860,8 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
     );
   }
 
-  const ALLOWED_EXT = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv)$/i;
+  // 동영상 + 이미지 모두 허용 (이미지는 -loop 1으로 정지 영상 스트림으로 변환)
+  const ALLOWED_EXT = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv|jpg|jpeg|png|webp|gif)$/i;
   for (const clip of editList) {
     const rawPath = (clip.path || '').replace(/^file:\/\/\//, '').replace(/\//g, path.sep);
     if (!rawPath) {
@@ -868,7 +871,7 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
     }
     if (!ALLOWED_EXT.test(rawPath)) {
       throw new Error(
-        `지원하지 않는 파일 형식입니다: "${path.basename(rawPath)}"\n지원 형식: mp4, mov, avi, mkv, webm 등`,
+        `지원하지 않는 파일 형식입니다: "${path.basename(rawPath)}"\n지원 형식: mp4, mov, avi, mkv, webm, jpg, png, webp 등`,
       );
     }
     if (!fs.existsSync(rawPath)) {
@@ -997,6 +1000,9 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     autoPlayAfter = false, // #86 완료 후 영상 자동 재생
     isPremium = false, // #92 무료/유료 구분
     endingCredit = true, // #92 무료 사용자 엔딩 크레딧 여부
+    boxblur = true, // #13 해상도 불일치 시 boxblur 배경 채우기 (autoReframe=false 시 활성)
+    unsharp = false, // #24 선명도 향상 필터 (unsharp mask)
+    nightMode = false, // #28 야간/노이즈 영상 hqdn3d 제거 필터
   } = options;
 
   const videoCodec = options._forceLibx264 ? 'libx264' : hw.codec;
@@ -1023,14 +1029,22 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     });
 
     // 입력 파일들
+    const _IS_VIDEO = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv)$/i;
     snappedList.forEach((clip) => {
-      const cleanPath = clip.path.replace(/^file:\/\/\//, '').replace(/\//g, path.sep);
-      // HEVC(H.265) / VP9 / AV1 등 비표준 코덱을 안전하게 소프트웨어 디코딩
-      // -vf format=yuv420p 는 complexFilter에서 설정하므로 여기선 hwaccel만 세팅
-      cmd = cmd.addInputOption('-hwaccel', 'auto');
-      // 손상 프레임 건너뜀 + PTS 재계산 (검은 화면 주요 원인 케이스 대응)
-      cmd = cmd.addInputOption('-fflags', '+genpts+igndts');
-      if ((clip.start || 0) > 0) cmd = cmd.addInputOption('-ss', String(clip.start));
+      const cleanPath = clip.path
+        .replace(/^\/file:\/\/\//, '')
+        .replace(/^file:\/\/\//, '')
+        .replace(/\//g, path.sep);
+      if (_IS_VIDEO.test(cleanPath)) {
+        // 동영상 입력: HEVC/H.265 소프트웨어 디코딩 + 손상 프레임 복구
+        cmd = cmd.addInputOption('-hwaccel', 'auto');
+        cmd = cmd.addInputOption('-fflags', '+genpts+igndts');
+        if ((clip.start || 0) > 0) cmd = cmd.addInputOption('-ss', String(clip.start));
+      } else {
+        // 이미지 입력 (.jpg/.png/.webp 등): -loop 1로 정지 영상 스트림 생성 (#1 동영상 엔진)
+        cmd = cmd.addInputOption('-loop', '1');
+        cmd = cmd.addInputOption('-framerate', String(fps));
+      }
       cmd = cmd.addInputOption('-t', String(Math.max(0.1, clip.duration || 3)));
       cmd = cmd.input(cleanPath);
     });
@@ -1049,20 +1063,32 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     // ── 필터 그래프 ──────────────────────────────────────────────────────
     const filters = [];
 
-    // 각 씬 스케일·크롭 (#35 자동 리프레임)
+    // 각 씬 스케일·크롭 (#35 자동 리프레임, #11 비디오 스트림, #13 boxblur, #24 unsharp, #28 hqdn3d)
     // format=yuv420p 선행 → HEVC/AV1 등 비표준 픽셀 포맷으로 인한 검은 화면 방지
     for (let i = 0; i < n; i++) {
       const speed = speedRamp !== 1.0 ? `,setpts=${1 / speedRamp}*PTS` : '';
+      const ptsReset = ',setpts=PTS-STARTPTS'; // 클립 간 타임스탬프 리셋 — 검은 화면 방지 (#14)
+      const sharpFilter = unsharp ? ',unsharp=5:5:0.8:3:3:0.4' : ''; // #24 선명도 보정
+      const noiseFilter = nightMode ? ',hqdn3d=4:3:6:4.5' : ''; // #28 야간 노이즈 제거
       if (autoReframe) {
+        // 9:16 자동 크롭: 2배 확대 후 중앙 크롭, sws_flags=lanczos (#26)
         filters.push(
-          `[${i}:v]format=yuv420p,scale=${width * 2}:-2,` +
+          `[${i}:v]format=yuv420p,scale=${width * 2}:-2:flags=lanczos,` +
             `crop=${width}:${height}:(iw-${width})/2:(ih-${height})/2,` +
-            `setsar=1,fps=${fps}${speed}[v${i}]`,
+            `setsar=1,fps=${fps}${ptsReset}${speed}${sharpFilter}${noiseFilter}[v${i}]`,
+        );
+      } else if (boxblur) {
+        // boxblur 배경 채우기: 원본 비율 유지 + 블러 배경으로 빈 공간 채움 (#13 해상도 불일치)
+        filters.push(
+          `[${i}:v]split=2[bg${i}_r][fg${i}_r]`,
+          `[bg${i}_r]format=yuv420p,scale=${width}:${height}:flags=lanczos,setsar=1,boxblur=20[bg${i}]`,
+          `[fg${i}_r]format=yuv420p,scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos[fg${i}]`,
+          `[bg${i}][fg${i}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=${fps}${ptsReset}${speed}${sharpFilter}${noiseFilter}[v${i}]`,
         );
       } else {
         filters.push(
-          `[${i}:v]format=yuv420p,scale=${width}:${height}:force_original_aspect_ratio=increase,` +
-            `crop=${width}:${height},setsar=1,fps=${fps}${speed}[v${i}]`,
+          `[${i}:v]format=yuv420p,scale=${width}:${height}:force_original_aspect_ratio=increase:flags=lanczos,` +
+            `crop=${width}:${height},setsar=1,fps=${fps}${ptsReset}${speed}${sharpFilter}${noiseFilter}[v${i}]`,
         );
       }
     }
@@ -1138,20 +1164,22 @@ async function _doRender(event, editList, outputPath, options, jobId) {
 
     cmd.complexFilter(filters.join(';'), [lastVid]);
 
-    // 오디오 출력 (#32 BGM 믹싱, #85 노멀라이즈)
-    const _afadeFilter = `afade=t=out:st=${Math.max(0, snappedTotalDur - 1).toFixed(3)}:d=1`;
+    // 오디오 출력 (#32 BGM 믹싱, #85 노멀라이즈, #7 샘플레이트 통일)
+    // aresample=44100: 모든 오디오를 44100Hz로 통일 → A/V 싱크 불일치 방지
+    const _fadeStart = Math.max(0, snappedTotalDur - 1).toFixed(3);
+    const _afadeStr = `afade=t=out:st=${_fadeStart}:d=1`;
     if (hasBgm) {
       const normFilter = normalizeAudio ? `,loudnorm=I=-16:LRA=11:TP=-1.5` : '';
       cmd.audioFilter(
-        `[${n}:a]aloop=loop=-1:size=2000000000,atrim=duration=${snappedTotalDur},volume=${bgmVolume}${normFilter},${_afadeFilter}[bgm_a]`,
+        `[${n}:a]aresample=44100,aloop=loop=-1:size=2000000000,atrim=duration=${snappedTotalDur},volume=${bgmVolume}${normFilter},${_afadeStr}[bgm_a]`,
       );
       cmd.addOption('-map', '[bgm_a]');
     } else if (normalizeAudio) {
       // BGM 없이 원본 오디오만 노멀라이즈 + 마지막 1초 페이드아웃
-      cmd.audioFilter(`loudnorm=I=-16:LRA=11:TP=-1.5,${_afadeFilter}`);
+      cmd.audioFilter(`aresample=44100,loudnorm=I=-16:LRA=11:TP=-1.5,${_afadeStr}`);
     } else {
       // 원본 오디오 그대로지만 마지막 1초 페이드아웃 적용
-      cmd.audioFilter(_afadeFilter);
+      cmd.audioFilter(`aresample=44100,${_afadeStr}`);
     }
 
     // 출력 옵션 (#7 하드웨어코덱, #78 2패스, #80 스레드)
@@ -1174,8 +1202,12 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       twoPass && videoCodec === 'libx264'
         ? `-pass 2 -passlogfile "${path.join(os.tmpdir(), 'moovlog_pass')}"`
         : '',
-      // 최소 비트레이트 5,000 kbps 강제 (깊두기 현상 방지)
-      videoCodec === 'libx264' ? `-minrate 2000k -maxrate 8000k -bufsize 10000k` : '',
+      // 인스타 릴스 권장 최소 비트레이트 5,000 kbps 보장 (#23)
+      videoCodec === 'libx264' ? `-minrate 5000k -maxrate 8000k -bufsize 16000k` : '',
+      // 키프레임 간격 30 고정 → 깔두기 현상 방지 (#25)
+      videoCodec === 'libx264' ? '-g 30' : '',
+      // BT.709 색공간 명시 → 색 빠짐 현상 방지 (#27)
+      videoCodec === 'libx264' ? '-color_primaries bt709 -color_trc bt709 -colorspace bt709' : '',
       `-threads ${getDynamicThreads()}`, // #97 동적 스레드
       '-c:a aac',
       '-b:a 192k', // 128k에서 192k로 상향
@@ -1306,6 +1338,57 @@ async function _doRender(event, editList, outputPath, options, jobId) {
 // ═══════════════════════════════════════════════════════════════════════════
 // §9  단일 목적 IPC들
 // ═══════════════════════════════════════════════════════════════════════════
+
+// ── 키워드 거리 기반 클립 정렬 (#3 맥락 분석) ──────────────────────────────
+// 블로그 본문/파일명 분석으로 클립 순서를 자동 최적화:
+//   - 제목과 가장 가까운 이미지 → 1번 클립 (후킹)
+//   - 볶음밥/메뉴판/주차 등 → 마지막 배치
+//   - screenshot/unnamed → 뒤로 밀기
+ipcMain.handle('sort-clips-by-keywords', (_, { clips, title = '', bodyText = '' }) => {
+  const LAST_KW = /볶음밥|메뉴판|주차|디저트|후식|계산서|영수증|출구|주차장|실내|전경|인테리어/i;
+  const MAIN_KW = /고기|메인|삼겹살|갈비|스테이크|회|초밥|랍스터|새우|불고기|맛집|대표|시그니처/i;
+  const SKIP_KW = /screenshot|unnamed|img_\d{4}|kakao|thumbnail/i;
+
+  // 제목 토큰 추출 (2글자 이상)
+  const titleTokens = title.split(/\s+/).filter((w) => w.length >= 2);
+
+  const scored = clips.map((clip, idx) => {
+    const src = clip.path || clip.src || '';
+    const filename = path.basename(src).toLowerCase();
+    const alt = (clip.alt || clip.caption || clip.description || '').toLowerCase();
+    const combined = `${filename} ${alt}`;
+
+    let score = idx * 10; // 기본: 원래 순서 유지
+
+    // 마지막 배치 키워드 → 높은 점수
+    if (LAST_KW.test(combined)) score = 100000 + idx;
+
+    // 메인 음식 키워드 → 낮은 점수 (앞으로)
+    if (MAIN_KW.test(combined) && !LAST_KW.test(combined)) score = -1000 + idx;
+
+    // 제목 키워드 매칭 → 가장 앞 (1번 클립, 후킹)
+    if (titleTokens.some((w) => combined.includes(w))) score = -10000 + idx;
+
+    // 본문 거리 기반 정렬: bodyText에서 이미지 위치를 파악해 순서 결정
+    if (bodyText && src) {
+      const fname = path.basename(src);
+      const pos = bodyText.indexOf(fname);
+      if (pos !== -1) {
+        // 본문 내 등장 위치를 0–9999 범위로 정규화해 기본 score 보정
+        const normalizedPos = Math.round((pos / Math.max(bodyText.length, 1)) * 9999);
+        if (score > -1000) score = normalizedPos + idx;
+      }
+    }
+
+    // 품질 낮은 파일명 → 뒤로 밀기
+    if (SKIP_KW.test(filename)) score = 50000 + idx;
+
+    return { ...clip, _score: score };
+  });
+
+  scored.sort((a, b) => a._score - b._score);
+  return scored.map(({ _score, ...clip }) => clip);
+});
 
 // ffprobe 미디어 분석
 ipcMain.handle(
