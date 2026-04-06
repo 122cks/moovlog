@@ -862,6 +862,7 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
 
   // 동영상 + 이미지 모두 허용 (이미지는 -loop 1으로 정지 영상 스트림으로 변환)
   const ALLOWED_EXT = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv|jpg|jpeg|png|webp|gif)$/i;
+  const _validationErrors = []; // [#2] 마소 파일 전체 수집
   for (const clip of editList) {
     const rawPath = (clip.path || '').replace(/^file:\/\/\//, '').replace(/\//g, path.sep);
     if (!rawPath) {
@@ -875,10 +876,21 @@ ipcMain.handle('render-video', async (event, { editList, outputPath, options = {
       );
     }
     if (!fs.existsSync(rawPath)) {
-      throw new Error(
-        `소스 파일을 찾을 수 없습니다: "${path.basename(rawPath)}"\n경로를 확인하거나 파일을 다시 추가해주세요.`,
-      );
+      _validationErrors.push({ index: editList.indexOf(clip), name: path.basename(rawPath) });
     }
+  }
+  // [#2] 누락 파일이 있으면 UI에 인덱스 전송 후 한번에 throw
+  if (_validationErrors.length > 0) {
+    const missingNames = _validationErrors
+      .map((c, i) => `${i + 1}. ${c.name} (${c.index + 1}번째 클립)`)
+      .join('\n');
+    // 렌더러에 누락 클립 인덱스 전송 (빨간색 표시용)
+    event.sender.send('render-validation-error', {
+      missingIndices: _validationErrors.map((c) => c.index),
+    });
+    throw new Error(
+      `소스 파일을 찾을 수 없습니다 (${_validationErrors.length}개):\n${missingNames}\n\n경로를 확인하거나 파일을 다시 추가해주세요.`,
+    );
   }
   // ─────────────────────────────────────────────────────────────────────
   const jid = jobId || `job_${Date.now()}`;
@@ -1412,6 +1424,19 @@ ipcMain.handle('sort-clips-by-keywords', (_, { clips, title = '', bodyText = '' 
   });
 
   scored.sort((a, b) => a._score - b._score);
+
+  // [#4] 이미지 20장 이상이면 동영상(.mp4 등)을 무조건 상위 5개 안에 배치
+  const _IS_VID = /\.(mp4|mov|avi|mkv|webm|m4v|mts|m2ts|flv|wmv)$/i;
+  if (clips.length >= 20) {
+    const videoItems = scored.filter((c) => _IS_VID.test(c.path || c.src || ''));
+    const otherItems = scored.filter((c) => !_IS_VID.test(c.path || c.src || ''));
+    // 동영상 상위 5개를 맨 앞으로, 나머지 동영상은 기타 뒤에 배치
+    const topVidoes = videoItems.slice(0, 5);
+    const restVideos = videoItems.slice(5);
+    scored.length = 0;
+    scored.push(...topVidoes, ...otherItems, ...restVideos);
+  }
+
   return scored.map(({ _score, ...clip }) => clip);
 });
 

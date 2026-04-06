@@ -32,8 +32,20 @@ function normalizeRestaurantName(name) {
 }
 
 export function initFirebase() {
-  if (!firebaseConfig.apiKey || !firebaseConfig.appId) {
-    console.log('[Firebase] API ???놁쓬 ??濡쒖뺄 紐⑤뱶');
+  // #3 API 키 형식 Pre-check (Firebase Web API Key = 'AIza' + 35자)
+  const rawKey = firebaseConfig.apiKey;
+  if (!rawKey || !firebaseConfig.appId) {
+    console.log('[Firebase] API 키 없음 → Firebase 비활성 모드');
+    return false;
+  }
+  if (!/^AIza[0-9A-Za-z\-_]{35}$/.test(rawKey)) {
+    const badMsg =
+      `Firebase API 키 형식이 올바르지 않습니다.\n` +
+      `현재 값: "${rawKey.slice(0, 12)}..."\n\n` +
+      `Firebase 콘솔 → 프로젝트 설정 → 웹 API 키를 복사해서 .env.local의\n` +
+      `VITE_FIREBASE_API_KEY 값을 교체하세요.`;
+    console.error('[Firebase] API 키 형식 오류 — 비활성 모드 실행');
+    window.dispatchEvent(new CustomEvent('firebase-auth-error', { detail: { code: 'invalid-api-key', message: badMsg } }));
     return false;
   }
   try {
@@ -41,15 +53,38 @@ export function initFirebase() {
     storage = getStorage(app);
     db      = getFirestore(app);
     auth    = getAuth(app);
-    // #28 ?듬챸 Auth ?먮룞 濡쒓렇??
+    // #28 익명 Auth 자동 로그인 상태 감지
     onAuthStateChanged(auth, user => {
       _currentUserId = user?.uid || null;
     });
-    signInAnonymously(auth).catch(() => {});
-    console.log('[Firebase] 珥덇린???꾨즺 ??moovlog-be7a6');
+    // #1 인증 실패 시 에러 코드별 친절한 안내 이벤트
+    signInAnonymously(auth).catch(err => {
+      const code = err?.code || '';
+      let userMsg = '';
+      if (code === 'auth/operation-not-allowed') {
+        userMsg =
+          `Firebase 콘솔에서 '익명 로그인(Anonymous)' 기능을 활성화해야 합니다.\n\n` +
+          `Firebase 콘솔 → Build → Authentication\n→ Sign-in method → Anonymous → 사용 설정`;
+      } else if (/auth\/api-key|auth\/invalid-api-key/.test(code)) {
+        userMsg =
+          `Firebase API 키가 유효하지 않습니다.\n` +
+          `.env.local의 VITE_FIREBASE_API_KEY 값을 확인하세요.`;
+      } else if (err?.message?.includes('400')) {
+        userMsg =
+          `Firebase 인증 400 오류:\n` +
+          `1. Firebase 콘솔 → Authentication → Sign-in method에서\n   '익명 로그인'을 활성화하세요.\n` +
+          `2. Google Cloud → API 제한사항에 Identity Toolkit API가 포함됐는지 확인하세요.\n\n` +
+          `오류 코드: ${code || 'unknown'}`;
+      }
+      if (userMsg) {
+        window.dispatchEvent(new CustomEvent('firebase-auth-error', { detail: { code, message: userMsg } }));
+      }
+      console.warn('[Firebase] 인증 실패:', code, err?.message);
+    });
+    console.log('[Firebase] 초기화 완료 → moovlog-be7a6');
     return true;
   } catch (e) {
-    console.warn('[Firebase] 珥덇린???ㅽ뙣:', e.message);
+    console.warn('[Firebase] 초기화 실패:', e.message);
     return false;
   }
 }

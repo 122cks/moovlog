@@ -42,6 +42,25 @@ export default function App() {
 
     initFirebase();
 
+    // #1 Firebase 인증 에러 → 친절한 팝업 안내
+    const onFirebaseAuthErr = (e) => {
+      const msg = e.detail?.message || 'Firebase 인증 오류가 발생했습니다.';
+      // 일렉트론에서는 alert, 웹에서는 console.error로
+      if (window.electronAPI) {
+        // 일렉트론 환경: 간단한 alert 대신 콘솔 출력 (IPC 날날한 창 1개만 열림)
+        console.error('🔐 Firebase 인증 오류:', msg);
+      }
+      // 웹 환경 및 일렉트론 모두 ꆳ짜 toast나 alert 노옵
+      const alreadyShown = sessionStorage.getItem('_fb_auth_err');
+      if (!alreadyShown) {
+        sessionStorage.setItem('_fb_auth_err', '1');
+        // eslint-disable-next-line no-alert
+        alert(`🔐 Firebase 인증 오류\n\n${msg}`);
+      }
+    };
+    window.addEventListener('firebase-auth-error', onFirebaseAuthErr);
+    return () => window.removeEventListener('firebase-auth-error', onFirebaseAuthErr);
+
     document.title = '무브먼트 Shorts Creator v2';
 
     // ── 조기 COI 감지 ──────────────────────────────────────────────────────────

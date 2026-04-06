@@ -89,4 +89,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   watchFolder: (folderPath, watchId) => ipcRenderer.invoke('watch-folder', { folderPath, watchId }),
   unwatchFolder: (watchId) => ipcRenderer.invoke('unwatch-folder', watchId),
   onFolderNewFile: (cb) => subscribe('folder-new-file', cb),
+
+  // ── [#2] 렌더 검증 오류 — 누락 클립 인덱스 목록 ─────────────────────
+  // missingIndices: 존재하지 않는 파일의 editList 인덱스 배열
+  // 렌더러에서 이 이벤트를 받아 해당 클립을 빨간색으로 하이라이트 하세요.
+  onRenderValidationError: (cb) => subscribe('render-validation-error', cb),
 });
