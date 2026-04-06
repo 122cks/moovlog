@@ -1,8 +1,12 @@
-// MOOVLOG Shorts Creator — Service Worker v2.63
+// MOOVLOG Shorts Creator — Service Worker v2.71
 // 네트워크 우선 전략: API 요청은 캐시하지 않고 앱 쉘만 캐시
 
 const BASE_PATH = new URL(self.registration.scope).pathname;
-const CACHE_NAME = 'moovlog-v2.67-20260406-1';
+const CACHE_NAME = 'moovlog-v2.71-20260406-1';
+// FFmpeg WASM CDN 파일 — 버전 고정이므로 영구 캐시 (다음 버전 업 시 캐시명 변경)
+const WASM_CACHE  = 'moovlog-ffmpeg-wasm-v0.12.6';
+const WASM_NAMES  = ['ffmpeg-core.js', 'ffmpeg-core.wasm', 'ffmpeg-core.worker.js'];
+const WASM_HOSTS  = ['jsdelivr.net', 'unpkg.com', 'fastly.jsdelivr.net'];
 const STATIC_ASSETS = [
   BASE_PATH,
   `${BASE_PATH}index.html`,
@@ -67,6 +71,29 @@ self.addEventListener('fetch', e => {
         headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
         return new Response(cached.body, { status: cached.status, statusText: cached.statusText, headers });
       })
+    );
+    return;
+  }
+
+  // ── FFmpeg WASM CDN 파일 캐싱 (버전 고정 = 영구 캐시 가능) ────────────────
+  // @ffmpeg/core@0.12.6 URL은 변하지 않으므로 한 번 다운로드하면 다시 받지 않음
+  // → 두 번째 접속부터 WASM 로딩 시간 20~30초 → 1초 이하로 단축
+  const isWasmCdn = WASM_NAMES.some(n => url.pathname.endsWith(n)) &&
+                    WASM_HOSTS.some(h => url.hostname.includes(h));
+  if (isWasmCdn) {
+    e.respondWith(
+      caches.open(WASM_CACHE).then(cache =>
+        cache.match(e.request).then(cached => {
+          if (cached) {
+            console.log('[SW] WASM cache hit:', url.pathname.split('/').pop());
+            return cached;
+          }
+          return fetch(e.request).then(res => {
+            if (res.ok) cache.put(e.request, res.clone());
+            return res;
+          }).catch(() => cached || new Response('WASM 다운로드 실패', { status: 503 }));
+        })
+      )
     );
     return;
   }
