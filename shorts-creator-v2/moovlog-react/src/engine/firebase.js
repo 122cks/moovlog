@@ -1,5 +1,6 @@
-// src/engine/firebase.js
-// Firebase Storage / Firestore ?�퍼
+﻿// src/engine/firebase.js  v2.73
+// Firebase Storage / Firestore ?섑띁
+// 異붽? 援ы쁽: #21-30 (EDL ?숆린?? 湲곌린媛??꾨줈?앺듃 怨듭쑀, 異⑸룎 ?닿껐, Auth)
 
 import { initializeApp } from 'firebase/app';
 import {
@@ -7,8 +8,12 @@ import {
 } from 'firebase/storage';
 import {
   getFirestore, collection, addDoc, serverTimestamp,
-  query, orderBy, limit, getDocs, doc, updateDoc, where, deleteDoc,
+  query, orderBy, limit, getDocs, doc, updateDoc, where,
+  deleteDoc, onSnapshot, setDoc, getDoc,
 } from 'firebase/firestore';
+import {
+  getAuth, signInAnonymously, onAuthStateChanged,
+} from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY || '',
@@ -19,28 +24,32 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID || '',
 };
 
-let storage = null, db = null, sessionDocId = null;
+let storage = null, db = null, auth = null, sessionDocId = null;
+let _currentUserId = null;
 
 function normalizeRestaurantName(name) {
-  return String(name || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLowerCase();
+  return String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 export function initFirebase() {
   if (!firebaseConfig.apiKey || !firebaseConfig.appId) {
-    console.log('[Firebase] API ???�음 ??로컬 모드');
+    console.log('[Firebase] API ???놁쓬 ??濡쒖뺄 紐⑤뱶');
     return false;
   }
   try {
     const app = initializeApp(firebaseConfig);
     storage = getStorage(app);
     db      = getFirestore(app);
-    console.log('[Firebase] 초기???�료 ??moovlog-be7a6');
+    auth    = getAuth(app);
+    // #28 ?듬챸 Auth ?먮룞 濡쒓렇??
+    onAuthStateChanged(auth, user => {
+      _currentUserId = user?.uid || null;
+    });
+    signInAnonymously(auth).catch(() => {});
+    console.log('[Firebase] 珥덇린???꾨즺 ??moovlog-be7a6');
     return true;
   } catch (e) {
-    console.warn('[Firebase] 초기???�패:', e.message);
+    console.warn('[Firebase] 珥덇린???ㅽ뙣:', e.message);
     return false;
   }
 }
@@ -54,7 +63,7 @@ async function fbUpload(blob, storagePath) {
     console.log('[Firebase ??', storagePath);
     return url;
   } catch (e) {
-    console.warn('[Firebase] ?�로???�패:', e.message);
+    console.warn('[Firebase] ?낅줈???ㅽ뙣:', e.message);
     return null;
   }
 }
@@ -65,7 +74,7 @@ export async function firebaseUploadOriginals(files, restaurantName, pipelineSes
   await Promise.all(
     files.map((m, i) =>
       fbUpload(m.file, `originals/${session}/${i}_${m.file.name}`)
-        .catch(e => console.warn(`[Firebase] ?�일 ${i} ?�로???�패:`, e.message))
+        .catch(e => console.warn(`[Firebase] ?뚯씪 ${i} ?낅줈???ㅽ뙣:`, e.message))
     )
   );
 }
@@ -76,20 +85,21 @@ export async function firebaseSaveSession(script, restaurantName) {
   try {
     const normalized = normalizeRestaurantName(restaurantName);
     const docRef = await addDoc(collection(db, 'sessions'), {
-      restaurant: restaurantName || '',
+      restaurant:    restaurantName || '',
       restaurantKey: normalized,
-      template:   'auto',
-      sceneCount: script.scenes.length,
-      title:      script.title || '',
-      version:    'v2.72-react',
-      videoUrl:   null,
-      ext:        null,
-      createdAt:  serverTimestamp(),
+      template:      'auto',
+      sceneCount:    script.scenes.length,
+      title:         script.title || '',
+      version:       'v2.73-react',
+      videoUrl:      null,
+      ext:           null,
+      userId:        _currentUserId,
+      createdAt:     serverTimestamp(),
     });
     sessionDocId = docRef.id;
-    console.log('[Firebase] ?�션 ?�??', sessionDocId);
+    console.log('[Firebase] ?몄뀡 ???', sessionDocId);
   } catch (e) {
-    console.warn('[Firebase] ?�션 ?�???�패:', e.message);
+    console.warn('[Firebase] ?몄뀡 ????ㅽ뙣:', e.message);
   }
 }
 
@@ -98,18 +108,19 @@ export async function firebaseUploadVideo(blob, ext, restaurantName, pipelineSes
   const session = pipelineSessionId || `${Date.now()}_${(restaurantName || 'noname').replace(/\s+/g, '_')}`;
   const url = await fbUpload(blob, `generated/${session}/video.${ext}`);
   if (!url) return;
-    try {
+  try {
     await addDoc(collection(db, 'generations'), {
       restaurant: restaurantName || '',
       videoUrl: url, ext,
-      version: 'v2.72-react',
+      version: 'v2.73-react',
+      userId: _currentUserId,
       createdAt: serverTimestamp(),
     });
     if (sessionDocId) {
       await updateDoc(doc(db, 'sessions', sessionDocId), { videoUrl: url, ext });
     }
   } catch (e) {
-    console.warn('[Firebase] Firestore 기록 ?�패:', e.message);
+    console.warn('[Firebase] Firestore 湲곕줉 ?ㅽ뙣:', e.message);
   }
 }
 
@@ -123,31 +134,182 @@ export async function firebaseLoadRecentSession() {
     snap.forEach(d => { if (!latest && d.data().videoUrl) latest = { id: d.id, ...d.data() }; });
     return latest;
   } catch (e) {
-    console.warn('[Firebase] 최근 ?�션 로드 ?�패:', e.message);
+    console.warn('[Firebase] 理쒓렐 ?몄뀡 濡쒕뱶 ?ㅽ뙣:', e.message);
     return null;
   }
 }
 
-// ?�?�?� 블로�??�스???�???�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// #22  EDL(?몄쭛 吏?쒖꽌) Firestore ?????湲곌린 媛??몄쭛 ?곹깭 ?숆린??
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+export async function saveEDLToFirestore(edl, projectId = null) {
+  if (!db) return null;
+  try {
+    const data = {
+      ...edl,
+      userId:    _currentUserId,
+      updatedAt: serverTimestamp(),
+      platform:  typeof window !== 'undefined' && window.electronAPI?.isElectron
+        ? 'electron' : 'web',
+    };
+    if (projectId) {
+      await setDoc(doc(db, 'projects', projectId), data, { merge: true });
+      console.log('[Firebase] EDL ?낅뜲?댄듃:', projectId);
+      return projectId;
+    } else {
+      const docRef = await addDoc(collection(db, 'projects'), {
+        ...data,
+        createdAt: serverTimestamp(),
+      });
+      console.log('[Firebase] EDL ?좉퇋 ???', docRef.id);
+      return docRef.id;
+    }
+  } catch (e) {
+    console.warn('[Firebase] EDL ????ㅽ뙣:', e.message);
+    return null;
+  }
+}
+
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// #23  EDL ?ㅼ떆媛?援щ룆 ???ㅻⅨ 湲곌린?먯꽌 蹂寃????먮룞 諛섏쁺
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+export function subscribeEDL(projectId, onChange) {
+  if (!db || !projectId) return () => {};
+  const unsub = onSnapshot(doc(db, 'projects', projectId), snap => {
+    if (snap.exists()) onChange({ id: snap.id, ...snap.data() });
+  });
+  return unsub;
+}
+
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// #25  '理쒓렐 ?묒뾽???꾨줈?앺듃' 紐⑸줉 濡쒕뱶
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+export async function loadProjects(maxCount = 20) {
+  if (!db) return [];
+  try {
+    const constraints = [orderBy('updatedAt', 'desc'), limit(maxCount)];
+    if (_currentUserId) constraints.unshift(where('userId', '==', _currentUserId));
+    const q    = query(collection(db, 'projects'), ...constraints);
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.warn('[Firebase] ?꾨줈?앺듃 紐⑸줉 濡쒕뱶 ?ㅽ뙣:', e.message);
+    return [];
+  }
+}
+
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// #24  ??遺꾩꽍 ?곗씠???대낫?닿린/遺덈윭?ㅺ린 (#24 JSON ?숆린??
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+export async function exportSceneData(projectId, sceneData) {
+  if (!db) return;
+  try {
+    await updateDoc(doc(db, 'projects', projectId), {
+      sceneAnalysis: JSON.stringify(sceneData),
+      analysisAt:    serverTimestamp(),
+    });
+  } catch (e) {
+    console.warn('[Firebase] ???곗씠??????ㅽ뙣:', e.message);
+  }
+}
+
+export async function importSceneData(projectId) {
+  if (!db) return null;
+  try {
+    const snap = await getDoc(doc(db, 'projects', projectId));
+    if (!snap.exists()) return null;
+    const raw = snap.data().sceneAnalysis;
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    console.warn('[Firebase] ???곗씠??濡쒕뱶 ?ㅽ뙣:', e.message);
+    return null;
+  }
+}
+
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// #27  湲곌린 媛??ㅼ젙媛??숆린??(?ㅽ겕紐⑤뱶, ??κ꼍濡???
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+export async function syncSettings(settings) {
+  if (!db || !_currentUserId) return;
+  try {
+    await setDoc(doc(db, 'user_settings', _currentUserId), {
+      ...settings,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (e) {
+    console.warn('[Firebase] ?ㅼ젙 ?숆린???ㅽ뙣:', e.message);
+  }
+}
+
+export async function loadSettings() {
+  if (!db || !_currentUserId) return {};
+  try {
+    const snap = await getDoc(doc(db, 'user_settings', _currentUserId));
+    return snap.exists() ? snap.data() : {};
+  } catch (e) {
+    console.warn('[Firebase] ?ㅼ젙 濡쒕뱶 ?ㅽ뙣:', e.message);
+    return {};
+  }
+}
+
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+// #30  異⑸룎 ?닿껐 ??理쒖쥌 ?섏젙 ?쒓컙(updatedAt) 湲곕컲 蹂묓빀
+// ?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧?먥븧??
+export async function mergeWithConflictResolution(projectId, localEDL) {
+  if (!db) return localEDL;
+  try {
+    const snap   = await getDoc(doc(db, 'projects', projectId));
+    if (!snap.exists()) {
+      await saveEDLToFirestore(localEDL, projectId);
+      return localEDL;
+    }
+    const remote = snap.data();
+    const localTs  = localEDL.updatedAt  || 0;
+    const remoteTs = remote.updatedAt?.seconds || 0;
+
+    if (localTs >= remoteTs) {
+      // 濡쒖뺄??理쒖떊 ???먭꺽 ??뼱?곌린
+      await saveEDLToFirestore(localEDL, projectId);
+      console.log('[Firebase] 異⑸룎 ?닿껐: 濡쒖뺄 ?곗꽑');
+      return localEDL;
+    } else {
+      // ?먭꺽??理쒖떊 ??濡쒖뺄 ?낅뜲?댄듃
+      console.log('[Firebase] 異⑸룎 ?닿껐: ?먭꺽 ?곗꽑');
+      return { id: projectId, ...remote };
+    }
+  } catch (e) {
+    console.warn('[Firebase] 異⑸룎 ?닿껐 ?ㅽ뙣:', e.message);
+    return localEDL;
+  }
+}
+
+// ?? ?꾩옱 濡쒓렇???ъ슜??ID 怨듦컻 ????????????????????????????????????????????
+export function getCurrentUserId() { return _currentUserId; }
+export function isFirebaseReady()  { return !!db; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 블로그 포스트 저장/조회
+// ═══════════════════════════════════════════════════════════════════════════
 export async function saveBlogPost(blogData) {
   if (!db) return null;
   try {
     const docRef = await addDoc(collection(db, 'blog_posts'), {
-      restaurant: blogData.restaurant || '',
-      location:   blogData.location || '',
-      title:      blogData.title || '',
-      body:       blogData.body || '',
+      restaurant:       blogData.restaurant || '',
+      location:         blogData.location || '',
+      title:            blogData.title || '',
+      body:             blogData.body || '',
       naverClipTags:    blogData.naver_clip_tags || '',
       youtubeTags:      blogData.youtube_shorts_tags || '',
       instagramCaption: blogData.instagram_caption || '',
       tiktokTags:       blogData.tiktok_tags || '',
-      keywords:   blogData.keywords || [],
-      createdAt:  serverTimestamp(),
+      keywords:         blogData.keywords || [],
+      userId:           _currentUserId,
+      createdAt:        serverTimestamp(),
     });
-    console.log('[Firebase] 블로�??�??', docRef.id);
+    console.log('[Firebase] 블로그 저장:', docRef.id);
     return docRef.id;
   } catch (e) {
-    console.warn('[Firebase] 블로�??�???�패:', e.message);
+    console.warn('[Firebase] 블로그 저장 실패:', e.message);
     return null;
   }
 }
@@ -161,7 +323,7 @@ export async function getRecentBlogPosts(limitN = 20) {
     snap.forEach(d => results.push({ id: d.id, ...d.data() }));
     return results;
   } catch (e) {
-    console.warn('[Firebase] 블로�?목록 로드 ?�패:', e.message);
+    console.warn('[Firebase] 블로그 목록 로드 실패:', e.message);
     return [];
   }
 }
@@ -170,7 +332,6 @@ export async function searchBlogPosts(keyword) {
   if (!db || !keyword?.trim()) return [];
   const kw = keyword.trim();
   try {
-    // restaurant ?�드 ?�방 ?�치 검??(Firestore??full-text 미�?????startAt/endAt 방식)
     const q = query(
       collection(db, 'blog_posts'),
       orderBy('restaurant'),
@@ -183,12 +344,14 @@ export async function searchBlogPosts(keyword) {
     snap.forEach(d => results.push({ id: d.id, ...d.data() }));
     return results;
   } catch (e) {
-    console.warn('[Firebase] 블로�?검???�패:', e.message);
+    console.warn('[Firebase] 블로그 검색 실패:', e.message);
     return [];
   }
 }
 
-// ?�?�?� SNS ?�그 ?�???�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�?�
+// ═══════════════════════════════════════════════════════════════════════════
+// SNS 태그 저장
+// ═══════════════════════════════════════════════════════════════════════════
 export async function saveSNSTags(tagsData) {
   if (!db) return null;
   try {
@@ -199,17 +362,20 @@ export async function saveSNSTags(tagsData) {
       instagramCaption: tagsData.instagram_caption || '',
       tiktokTags:       tagsData.tiktok_tags || '',
       hashtags:         tagsData.hashtags || '',
+      userId:           _currentUserId,
       createdAt:        serverTimestamp(),
     });
-    console.log('[Firebase] SNS ?�그 ?�??', docRef.id);
+    console.log('[Firebase] SNS 태그 저장:', docRef.id);
     return docRef.id;
   } catch (e) {
-    console.warn('[Firebase] SNS ?�그 ?�???�패:', e.message);
+    console.warn('[Firebase] SNS 태그 저장 실패:', e.message);
     return null;
   }
 }
 
-// ?�?�?� 마�????�트 ?�??(?�폼 ?�성 ???�동 ?�?? ?�?�?�?�?�?�?�?�?�?�?�?�
+// ═══════════════════════════════════════════════════════════════════════════
+// 마케팅 키트 저장/조회/삭제
+// ═══════════════════════════════════════════════════════════════════════════
 export async function saveMarketingKit(data) {
   if (!db) return null;
   try {
@@ -229,12 +395,13 @@ export async function saveMarketingKit(data) {
       hashtags:          data.hashtags || '',
       theme:             data.theme || '',
       vibeColor:         data.vibe_color || '',
+      userId:            _currentUserId,
       createdAt:         serverTimestamp(),
     });
-    console.log('[Firebase] 마�????�트 ?�??', docRef.id);
+    console.log('[Firebase] 마케팅 키트 저장:', docRef.id);
     return docRef.id;
   } catch (e) {
-    console.warn('[Firebase] 마�????�트 ?�???�패:', e.message);
+    console.warn('[Firebase] 마케팅 키트 저장 실패:', e.message);
     return null;
   }
 }
@@ -242,7 +409,6 @@ export async function saveMarketingKit(data) {
 export async function getMarketingKits(limitN = 20) {
   if (!db) return [];
   try {
-    // 중복 ?�거�??�해 ??많이 가?��????�라?�언?�에??dedup
     const fetchN = Math.max(limitN * 4, 80);
     const q    = query(collection(db, 'marketing_kits'), orderBy('createdAt', 'desc'), limit(fetchN));
     const snap = await getDocs(q);
@@ -250,16 +416,12 @@ export async function getMarketingKits(limitN = 20) {
     const results = [];
     snap.forEach(d => {
       const data = { id: d.id, ...d.data() };
-      // restaurantKey(?�규???? ?�선, ?�으�?restaurant ?�문???�림
-      const key = data.restaurantKey || String(data.restaurant || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      if (!seen.has(key)) {
-        seen.add(key);
-        results.push(data);
-      }
+      const key  = data.restaurantKey || String(data.restaurant || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      if (!seen.has(key)) { seen.add(key); results.push(data); }
     });
     return results.slice(0, limitN);
   } catch (e) {
-    console.warn('[Firebase] 마�????�트 목록 ?�패:', e.message);
+    console.warn('[Firebase] 마케팅 키트 목록 실패:', e.message);
     return [];
   }
 }
@@ -278,21 +440,16 @@ export async function searchMarketingKits(keyword) {
     const snap = await getDocs(q);
     const seen = new Set();
     const results = [];
-    // createdAt ?�림차순 ?�렬 ??dedup
     const docs = [];
     snap.forEach(d => docs.push({ id: d.id, ...d.data() }));
-    docs.sort((a, b) => {
-      const ta = a.createdAt?.toMillis?.() ?? 0;
-      const tb = b.createdAt?.toMillis?.() ?? 0;
-      return tb - ta;
-    });
+    docs.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
     docs.forEach(data => {
       const key = data.restaurantKey || String(data.restaurant || '').trim().toLowerCase().replace(/\s+/g, ' ');
       if (!seen.has(key)) { seen.add(key); results.push(data); }
     });
     return results;
   } catch (e) {
-    console.warn('[Firebase] 마�????�트 검???�패:', e.message);
+    console.warn('[Firebase] 마케팅 키트 검색 실패:', e.message);
     return [];
   }
 }
@@ -301,56 +458,42 @@ export async function deleteMarketingKit(id) {
   if (!db || !id) return;
   try {
     await deleteDoc(doc(db, 'marketing_kits', id));
-    console.log('[Firebase] 마�????�트 ??��:', id);
+    console.log('[Firebase] 마케팅 키트 삭제:', id);
   } catch (e) {
-    console.warn('[Firebase] 마�????�트 ??�� ?�패:', e.message);
+    console.warn('[Firebase] 마케팅 키트 삭제 실패:', e.message);
     throw e;
   }
 }
 
-// ?�?�?� ?�당�?기�? 기존 ?�이????�� (같�? ?�당 ?�생?????��? ?�?�?�?�
+// ─── 특정 식당명의 기존 데이터 일괄 삭제 ────────────────────────────────
 async function deleteDocsByRestaurant(collectionName, restaurantName) {
   if (!db || !restaurantName) return 0;
   try {
     const normalized = normalizeRestaurantName(restaurantName);
-    const q = query(
-      collection(db, collectionName),
-      where('restaurantKey', '==', normalized),
-      limit(30),
-    );
+    const q    = query(collection(db, collectionName), where('restaurantKey', '==', normalized), limit(30));
     const snap = await getDocs(q);
     if (!snap.empty) {
       await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
-      console.log(`[Firebase] ${collectionName} 기존 ${snap.size}�???�� (${restaurantName})`);
       return snap.size;
     }
-
-    // 구버???�이???�환: restaurantKey ?�는 문서??restaurant ?�문?�로 1???�백 ??��
-    const legacyQ = query(
-      collection(db, collectionName),
-      where('restaurant', '==', restaurantName.trim()),
-      limit(30),
-    );
+    const legacyQ    = query(collection(db, collectionName), where('restaurant', '==', restaurantName.trim()), limit(30));
     const legacySnap = await getDocs(legacyQ);
     if (legacySnap.empty) return 0;
     await Promise.all(legacySnap.docs.map(d => deleteDoc(d.ref)));
-    console.log(`[Firebase] ${collectionName} ?�거??${legacySnap.size}�???�� (${restaurantName})`);
     return legacySnap.size;
   } catch (e) {
-    console.warn(`[Firebase] ${collectionName} ??�� ?�패:`, e.message);
+    console.warn(`[Firebase] ${collectionName} 삭제 실패:`, e.message);
     return 0;
   }
 }
 
-/**
- * 기존 ?�션·마�????�트�???��?�고 ???�이?�로 ?��? * 같�? ?�당명으�??�생????Firebase??중복 ?�적?��? ?�도�??? */
 export async function firebaseReplaceRestaurantData(script, restaurantName, marketingData) {
   if (!db) return;
-  // 기존 ?�코????�� (병렬)
   await Promise.all([
     deleteDocsByRestaurant('sessions', restaurantName),
     deleteDocsByRestaurant('marketing_kits', restaurantName),
   ]);
-  // ???�이???�??  await firebaseSaveSession(script, restaurantName).catch(() => {});
+  await firebaseSaveSession(script, restaurantName).catch(() => {});
   if (marketingData) await saveMarketingKit(marketingData).catch(() => {});
 }
+

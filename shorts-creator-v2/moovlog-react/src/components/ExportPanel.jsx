@@ -1,20 +1,32 @@
 // src/components/ExportPanel.jsx
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useVideoStore } from '../store/videoStore.js';
 import { getAudioCtx } from '../engine/tts.js';
 import { downloadBlob, sanitizeName } from '../engine/utils.js';
 import { firebaseUploadVideo } from '../engine/firebase.js';
 import { renderFrameToCtx, ASPECT_MAP_EX } from './VideoPlayer.jsx';
 import { renderVideoWithFFmpeg, renderCinematicFinish, extractThumbnail } from '../engine/VideoRenderer.js';
+import RenderProgressBar from './RenderProgressBar.jsx';
+import ExportSettings    from './ExportSettings.jsx';
+import { shareVideo, copyToClipboard, openInstagramShare, openTikTokShare } from '../engine/socialShare.js';
+import { suggestHashtags } from '../engine/aiFeatures.js';
 import * as Mp4Muxer  from 'mp4-muxer';
 import * as WebmMuxer from 'webm-muxer';
 
 export default function ExportPanel() {
   const { script, audioBuffers, restaurantName, addToast, setExporting, exporting, pipelineSessionId, files,
     ffmpegBlob, ffmpegRendering, ffmpegProgress, ffmpegMsg } = useVideoStore();
-  const [btnText, setBtnText] = useState('영상 저장하기');
-  const [thumbBusy, setThumbBusy] = useState(false);
-  const [hybridBusy, setHybridBusy] = useState(false);
+  const [btnText,       setBtnText]       = useState('영상 저장하기');
+  const [thumbBusy,     setThumbBusy]     = useState(false);
+  const [hybridBusy,    setHybridBusy]    = useState(false);
+  // Electron + 소셜 공유 상태
+  const [selectedPreset, setSelectedPreset] = useState('balanced');
+  const [presetObj,      setPresetObj]      = useState(null);
+  const [electronJobId,  setElectronJobId]  = useState(null);
+  const [showSettings,   setShowSettings]   = useState(false);
+  const [hashtags,       setHashtags]       = useState(null);
+  const [hashtagBusy,    setHashtagBusy]    = useState(false);
+  const lastBlobRef = useRef(null);
 
   const doExport = async () => {
     if (exporting) return;
@@ -137,6 +149,75 @@ export default function ExportPanel() {
     addToast('시네마틱 MP4 저장 완료!', 'ok');
   };
 
+  // ── Electron 로컬 렌더링 (#1-10, #31-40) ──────────────────────────────
+  const doElectronRender = async () => {
+    const api = window.electronAPI;
+    if (!api?.renderVideo) { addToast('Electron 앱에서만 사용 가능합니다', 'inf'); return; }
+    if (!script?.scenes?.length) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
+
+    try {
+      const outputPath = await api.saveFile({
+        title: '영상 저장 위치 선택',
+        defaultPath: `moovlog_${sanitizeName(restaurantName)}_${Date.now()}.mp4`,
+      });
+      if (!outputPath) return;
+
+      const editList = script.scenes.map((sc) => ({
+        path:     sc.path || '',
+        start:    sc.start    || 0,
+        duration: sc.duration || 3,
+      }));
+
+      const opts = {
+        theme:    script.theme,
+        fps:      30,
+        crf:      presetObj?.crf  ?? 22,
+        preset:   presetObj?.preset ?? 'medium',
+        twoPass:  presetObj?.twoPass ?? false,
+      };
+
+      const result = await api.renderVideo(editList, outputPath, opts);
+      setElectronJobId(result?.jobId || 'render-' + Date.now());
+      addToast('Electron 렌더링 시작! 진행률을 아래서 확인하세요 🎬', 'ok');
+    } catch (e) {
+      addToast('Electron 렌더 오류: ' + (e?.message || String(e)), 'err');
+    }
+  };
+
+  // ── 소셜 공유 (#81-89) ────────────────────────────────────────────────
+  const doShareVideo = async () => {
+    const blob = ffmpegBlob || lastBlobRef.current;
+    if (!blob) { addToast('먼저 영상을 생성해주세요', 'err'); return; }
+    const tags = hashtags?.instagram || `#맛집 #${sanitizeName(restaurantName)} #맛스타그램`;
+    const result = await shareVideo(blob, `${restaurantName}\n${tags}`, `moovlog_${sanitizeName(restaurantName)}.mp4`);
+    if (result === 'shared')     addToast('공유 완료!', 'ok');
+    else if (result === 'copied') addToast('텍스트를 클립보드에 복사했습니다', 'ok');
+    else                          addToast('이 브라우저는 공유를 지원하지 않습니다', 'inf');
+  };
+
+  const doGenHashtags = async () => {
+    if (hashtagBusy) return;
+    if (!restaurantName) { addToast('식당명을 먼저 입력해주세요', 'err'); return; }
+    setHashtagBusy(true);
+    try {
+      const result = await suggestHashtags(restaurantName, script?.title || '');
+      setHashtags(result);
+      await copyToClipboard(result.instagram);
+      addToast('해시태그 생성 완료! Instagram용 클립보드에 복사됨 📋', 'ok');
+    } catch (e) {
+      addToast('해시태그 생성 실패: ' + e.message, 'err');
+    } finally {
+      setHashtagBusy(false);
+    }
+  };
+
+  const doCopyHashtag = async (platform) => {
+    if (!hashtags) { addToast('먼저 해시태그를 생성해주세요', 'inf'); return; }
+    const text = hashtags[platform] || '';
+    const ok = await copyToClipboard(text);
+    if (ok) addToast(`${platform} 해시태그 복사 완료!`, 'ok');
+  };
+
   return (
     <div className="dl-box">
       <p className="dl-title"><i className="fas fa-download" /> 영상 저장</p>
@@ -180,6 +261,85 @@ export default function ExportPanel() {
       >
         <i className={`fas ${thumbBusy ? 'fa-spinner fa-spin' : 'fa-image'}`} /> {thumbBusy ? '썸네일 추출 중...' : '베스트 썸네일 저장'}
       </button>
+
+      {/* ── Electron 로컬 렌더링 ──────────────────────────────────────── */}
+      {typeof window !== 'undefined' && window.electronAPI?.isElectron && (
+        <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc' }}>🖥️ 로컬 고품질 렌더</span>
+            <button
+              onClick={() => setShowSettings(v => !v)}
+              style={{ background: 'transparent', border: '1px solid #4a4a8a', color: '#888', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}
+            >
+              ⚙️ {showSettings ? '닫기' : '설정'}
+            </button>
+          </div>
+
+          {showSettings && (
+            <ExportSettings
+              selected={selectedPreset}
+              onSelect={(p) => { setSelectedPreset(p.id); setPresetObj(p); }}
+              disabled={!!electronJobId}
+            />
+          )}
+
+          <button
+            onClick={doElectronRender}
+            disabled={!!electronJobId}
+            style={{
+              width: '100%', marginTop: 8,
+              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              color: '#fff', border: 'none', borderRadius: 8,
+              padding: '10px 0', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              opacity: electronJobId ? 0.6 : 1,
+            }}
+          >
+            <i className="fas fa-bolt" /> FFmpeg 로컬 렌더링 시작
+          </button>
+
+          <RenderProgressBar
+            jobId={electronJobId}
+            onClose={() => setElectronJobId(null)}
+          />
+        </div>
+      )}
+
+      {/* ── 소셜 공유 & 해시태그 ─────────────────────────────────────── */}
+      <div style={{ marginTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#a5b4fc', marginBottom: 8 }}>📲 공유 & 해시태그</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button className="dl-audio-btn" onClick={doShareVideo}
+            style={{ flex: 1, minWidth: 120 }}
+            title="Web Share API로 직접 공유"
+          >
+            <i className="fas fa-share-nodes" /> 영상 공유
+          </button>
+          <button className="dl-audio-btn" onClick={doGenHashtags} disabled={hashtagBusy}
+            style={{ flex: 1, minWidth: 120 }}
+            title="AI 해시태그 자동 생성"
+          >
+            <i className={`fas ${hashtagBusy ? 'fa-spinner fa-spin' : 'fas fa-hashtag'}`} />
+            {hashtagBusy ? ' 생성 중...' : ' AI 해시태그'}
+          </button>
+        </div>
+
+        {/* 해시태그 결과 */}
+        {hashtags && (
+          <div style={{ marginTop: 8, fontSize: 11, color: '#888', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {[['instagram', '🟣 IG'], ['tiktok', '⚫ TT'], ['naver', '🟢 블로그']].map(([key, label]) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                <button
+                  onClick={() => doCopyHashtag(key)}
+                  style={{ background: '#1a1a2e', border: '1px solid #333', color: '#aaa', borderRadius: 4, padding: '2px 6px', fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  {label} 복사
+                </button>
+                <span style={{ flex: 1, wordBreak: 'break-word', color: '#666' }}>{hashtags[key]?.slice(0, 60)}...</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

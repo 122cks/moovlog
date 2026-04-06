@@ -1,10 +1,13 @@
 /**
- * @moovlog/shared — FFmpeg 플랫폼 어댑터
+ * @moovlog/shared — FFmpeg 플랫폼 어댑터  v2.73
  * 웹(WASM), Electron(로컬 바이너리), React Native(ffmpeg-kit) 차이를 추상화
  *
  * 사용법:
  *   const adapter = getFFmpegAdapter();
- *   const blob = await adapter.render(edl, onProgress);
+ *   const result  = await adapter.render(edl, onProgress);
+ *
+ * 모든 어댑터 공통 인터페이스:
+ *   { platform, render(edl, onProgress) → Promise<Blob|string>, info() → object }
  */
 
 /**
@@ -24,17 +27,66 @@ export function detectPlatform() {
 }
 
 /**
+ * 플랫폼 정보 반환
+ * @returns {{ platform: string, version: string, hwaccel: string|null, threads: number }}
+ */
+export async function getPlatformInfo() {
+  const platform = detectPlatform();
+
+  if (platform === "electron") {
+    try {
+      const status = await window.electronAPI.ffmpegStatus();
+      return {
+        platform,
+        version: status?.version || "unknown",
+        hwaccel: status?.hwaccel || "libx264",
+        threads: status?.cpuThreads || navigator.hardwareConcurrency || 4,
+      };
+    } catch {
+      return { platform, version: "unknown", hwaccel: "libx264", threads: 4 };
+    }
+  }
+
+  if (platform === "native") {
+    return {
+      platform,
+      version: "ffmpeg-kit-react-native",
+      hwaccel: "h264_mediacodec",
+      threads: navigator.hardwareConcurrency || 4,
+    };
+  }
+
+  return {
+    platform: "web",
+    version: "ffmpeg.wasm",
+    hwaccel: null,
+    threads: navigator.hardwareConcurrency || 4,
+  };
+}
+
+/**
  * 플랫폼별 FFmpeg 어댑터 반환
- * 각 어댑터는 { render(edl, onProgress) → Promise<Blob|string> } 인터페이스 구현
+ * 각 어댑터는 { platform, render, info } 인터페이스 구현
  */
 export function getFFmpegAdapter() {
   const platform = detectPlatform();
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Electron: IPC → 로컬 ffmpeg.exe (#1-10)
+  // ─────────────────────────────────────────────────────────────────────
   if (platform === "electron") {
     return {
       platform,
+
+      async info() {
+        try {
+          return await window.electronAPI.ffmpegStatus();
+        } catch {
+          return {};
+        }
+      },
+
       /**
-       * Electron: window.electronAPI.renderVideo() 호출 → 로컬 ffmpeg.exe 실행
        * @param {import('./edl.js').EDL} edl
        * @param {(msg:string, pct:number)=>void} [onProgress]
        * @returns {Promise<string>} 출력 파일 경로
@@ -42,67 +94,107 @@ export function getFFmpegAdapter() {
       async render(edl, onProgress) {
         const api = window.electronAPI;
 
-        // 저장 경로 선택
         const outputPath = await api.saveFile({
           title: "영상 저장 위치 선택",
-          defaultPath: `moovlog_${edl.restaurantName}_${Date.now()}.mp4`,
+          defaultPath: `moovlog_${edl.restaurantName || "output"}_${Date.now()}.mp4`,
         });
         if (!outputPath) throw new Error("저장 경로가 선택되지 않았습니다");
 
-        // 진행률 구독
-        const editList = edl.scenes.map((sc) => ({
-          path: sc.path,
-          start: sc.start || 0,
-          duration: sc.duration || 3,
+        const editList = (edl.scenes || []).map((sc) => ({
+          path: sc.path || "",
+          start: sc.start ?? 0,
+          duration: sc.duration ?? 3,
         }));
 
-        const unsubscribe = api.onRenderProgress(({ pct, msg }) => {
-          onProgress?.(msg, pct);
+        const unsubProgress = api.onRenderProgress?.(({ pct, msg }) => {
+          onProgress?.(msg || "", pct || 0);
+        });
+
+        const unsubLog = api.onRenderLog?.((line) => {
+          onProgress?.(`[log] ${line}`, -1);
         });
 
         try {
           const result = await api.renderVideo(editList, outputPath, {
-            theme: edl.theme,
-            fps: 30,
-            crf: 22,
-            preset: "fast",
+            theme: edl.theme || "food",
+            fps: edl.fps || 30,
+            crf: edl.crf || 22,
+            preset: edl.preset || "medium",
+            twoPass: edl.twoPass || false,
           });
-          return result.outputPath;
+          return result?.outputPath || outputPath;
         } finally {
-          unsubscribe();
+          unsubProgress?.();
+          unsubLog?.();
         }
       },
     };
   }
 
-  if (platform === "web") {
+  // ─────────────────────────────────────────────────────────────────────
+  // React Native: ffmpeg-kit 위임 (#11-20)
+  // ─────────────────────────────────────────────────────────────────────
+  if (platform === "native") {
     return {
-      platform,
+      platform: "native",
+
+      async info() {
+        return {
+          platform: "native",
+          version: "ffmpeg-kit-react-native",
+          hwaccel: "h264_mediacodec",
+        };
+      },
+
       /**
-       * 웹: VideoRenderer.js의 renderVideoWithFFmpeg() 동적 임포트
+       * RenderBridge.renderWithAndroid 동적 임포트 후 호출
        * @param {import('./edl.js').EDL} edl
-       * @param {Array}  files  - videoStore.files
-       * @param {Object} script - videoStore.script
        * @param {(msg:string, pct:number)=>void} [onProgress]
-       * @returns {Promise<Blob>}
+       * @returns {Promise<string>} 출력 파일 경로
        */
-      async render(edl, files, script, onProgress) {
-        const { renderVideoWithFFmpeg } = await import(
+      async render(edl, onProgress) {
+        // android-rn/src/RenderBridge.js 동적 임포트
+        const { renderWithAndroid } = await import(
           /* webpackIgnore: true */
-          "/src/engine/VideoRenderer.js"
-        );
-        return renderVideoWithFFmpeg(edl.scenes, files, script, onProgress);
+          "../../apps/android-rn/src/RenderBridge.js"
+        ).catch(() => {
+          throw new Error(
+            "RenderBridge를 찾을 수 없습니다. android-rn 빌드를 확인하세요.",
+          );
+        });
+
+        const outputPath = `/storage/emulated/0/DCIM/moovlog/output_${Date.now()}.mp4`;
+        return renderWithAndroid(edl.scenes || [], outputPath, {
+          theme: edl.theme || "food",
+          onProgress: onProgress || (() => {}),
+        });
       },
     };
   }
 
-  // React Native
+  // ─────────────────────────────────────────────────────────────────────
+  // Web: VideoRenderer.js 동적 임포트
+  // ─────────────────────────────────────────────────────────────────────
   return {
-    platform: "native",
-    async render(edl, _files, _script, onProgress) {
-      // ffmpeg-kit-react-native は별도 패키지에서 구현
-      // 여기서는 구조만 정의
-      throw new Error("Native 어댑터는 apps/android에서 구현됩니다");
+    platform: "web",
+
+    async info() {
+      return { platform: "web", version: "ffmpeg.wasm", hwaccel: null };
+    },
+
+    /**
+     * @param {import('./edl.js').EDL} edl
+     * @param {Array}  files   - videoStore.files
+     * @param {Object} script  - videoStore.script
+     * @param {(msg:string, pct:number)=>void} [onProgress]
+     * @returns {Promise<Blob>}
+     */
+    async render(edl, files, script, onProgress) {
+      const { renderVideoWithFFmpeg } = await import(
+        /* webpackIgnore: true */
+        "/src/engine/VideoRenderer.js"
+      );
+      return renderVideoWithFFmpeg(edl.scenes, files, script, onProgress);
     },
   };
 }

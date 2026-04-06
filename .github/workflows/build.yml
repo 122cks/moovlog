@@ -1,0 +1,157 @@
+# .github/workflows/build.yml
+# GitHub Actions — 웹 + Electron 자동 빌드 (#46)
+# 트리거: main 브랜치 push 또는 PR
+
+name: 🚀 Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────
+  # Job 1: 웹앱 빌드 + GitHub Pages 배포
+  # ────────────────────────────────────────────────────────────────────
+  build-web:
+    name: 🌐 Web Build (Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: shorts-creator-v2/moovlog-react
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache:        'npm'
+          cache-dependency-path: shorts-creator-v2/moovlog-react/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔨 Build
+        env:
+          VITE_FIREBASE_API_KEY:        ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_APP_ID:         ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_GEMINI_API_KEY:          ${{ secrets.VITE_GEMINI_API_KEY }}
+          VITE_GOOGLE_CLIENT_ID:        ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        run: npm run build
+
+      - name: 📊 Build size report
+        run: du -sh dist/ && ls -lh dist/assets/
+
+      - name: 🚀 Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir:  shorts-creator-v2/moovlog-react/dist
+          destination_dir: shorts-creator
+          keep_files: false
+
+  # ────────────────────────────────────────────────────────────────────
+  # Job 2: Electron 앱 빌드 (Windows, macOS)
+  # ────────────────────────────────────────────────────────────────────
+  build-electron-win:
+    name: 🖥️ Electron (Windows Portable)
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install electron-app deps
+        working-directory: electron-app
+        run: npm ci
+
+      - name: 🔨 Build web first
+        working-directory: shorts-creator-v2/moovlog-react
+        run: npm ci && npm run build
+        env:
+          VITE_FIREBASE_API_KEY:        ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_APP_ID:         ${{ secrets.VITE_FIREBASE_APP_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+
+      - name: 📦 Build Electron Portable
+        working-directory: electron-app
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name:           moovlog-electron-win-portable
+          path:           electron-app/dist-electron/*.exe
+          retention-days: 30
+
+  build-electron-mac:
+    name: 🍎 Electron (macOS DMG)
+    runs-on: macos-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install deps
+        working-directory: electron-app
+        run: npm ci
+
+      - name: 🔨 Build web
+        working-directory: shorts-creator-v2/moovlog-react
+        run: npm ci && npm run build
+
+      - name: 📦 Build Electron DMG
+        working-directory: electron-app
+        run: npm run build:mac
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name:           moovlog-electron-mac-dmg
+          path:           electron-app/dist-electron/*.dmg
+          retention-days: 30
+
+  # ────────────────────────────────────────────────────────────────────
+  # Job 3: 성능 테스트 로그 (#44)
+  # ────────────────────────────────────────────────────────────────────
+  perf-test:
+    name: ⏱️ Performance Test
+    runs-on: ubuntu-latest
+    needs: build-web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install
+        working-directory: shorts-creator-v2/moovlog-react
+        run: npm ci
+
+      - name: 🧪 Run tests
+        working-directory: shorts-creator-v2/moovlog-react
+        run: npm test -- --reporter=verbose 2>&1 | tee perf-report.txt || true
+
+      - name: 📤 Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: shorts-creator-v2/moovlog-react/perf-report.txt
+          retention-days: 7
