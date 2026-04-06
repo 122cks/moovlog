@@ -40,11 +40,12 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    // APK 파일명 자동 변경: Moovlog_Shorts_v2.74.apk
+    // APK 파일명 자동 변경: Moovlog_Shorts_v2.76_20260407.apk
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
             if (variant.buildType.name == "release") {
-                outputFileName = "Moovlog_Shorts_v${variant.versionName}.apk"
+                def date = new Date().format('yyyyMMdd')
+                outputFileName = "Moovlog_Shorts_v${variant.versionName}_${date}.apk"
             }
         }
     }

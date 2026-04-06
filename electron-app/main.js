@@ -138,6 +138,13 @@ function getFileHash(filePath) {
 // §3  하드웨어 가속 감지 (#7 – NVENC / QuickSync / AMF / VideoToolbox)
 // ═══════════════════════════════════════════════════════════════════════════
 let _hwaccelCache = null;
+
+// 최근 렌더링 목록 (max 5) — { path, title, time }
+const _recentRenders = [];
+function addRecentRender(filePath) {
+  _recentRenders.unshift({ path: filePath, title: path.basename(filePath), time: Date.now() });
+  if (_recentRenders.length > 5) _recentRenders.pop();
+}
 async function detectHwaccel() {
   if (_hwaccelCache) return _hwaccelCache;
   if (!FFMPEG_PATH) return (_hwaccelCache = { codec: 'libx264', accel: null });
@@ -387,10 +394,19 @@ function createTray() {
 function setTrayProgress(pct) {
   if (!tray) return;
   const label = pct < 0 ? '대기 중' : pct >= 100 ? '✅ 렌더링 완료' : `렌더링 ${pct}%`;
+  const recentItems =
+    _recentRenders.length > 0
+      ? _recentRenders.map((r) => ({
+          label: r.title,
+          click: () => shell.showItemInFolder(r.path),
+        }))
+      : [{ label: '(없음)', enabled: false }];
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: '무브먼트 Shorts Creator', enabled: false },
       { label, enabled: false },
+      { type: 'separator' },
+      { label: '최근 렌더링', submenu: recentItems },
       { type: 'separator' },
       {
         label: '창 표시',
@@ -802,10 +818,66 @@ ipcMain.handle('get-render-presets', async () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // §8  메인 렌더링 IPC (#1-10, #31-40, #74, #76, #78, #79, #80)
 // ═══════════════════════════════════════════════════════════════════════════
+// GPU 코덱 오류 여부 판별 (NVENC / QSV / AMF 관련 FFmpeg 에러 메시지)
+function isHwaccelError(err) {
+  const msg = (err?.message || String(err)).toLowerCase();
+  return /nvenc|h264_nvenc|h264_qsv|h264_amf|no hardware|hardware encoder|init_encoder|direct3d|amf_context/.test(msg);
+}
+
 ipcMain.handle('render-video', async (event, { editList, outputPath, options = {}, jobId }) => {
   if (!FFMPEG_PATH) throw new Error('FFmpeg를 찾을 수 없습니다. 경로를 확인해주세요.');
   const jid = jobId || `job_${Date.now()}`;
-  return enqueueRender(() => _doRender(event, editList, outputPath, options, jid));
+  const MAX_ATTEMPTS = 3;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const opts = attempt === 1 ? options : { ...options, _forceLibx264: true };
+      if (attempt > 1) {
+        event.sender.send('render-log', {
+          msg: `[폴백] GPU 코덱 오류 → libx264로 재시도 (${attempt}/${MAX_ATTEMPTS})`,
+          jobId: jid,
+        });
+      }
+      return await enqueueRender(() => _doRender(event, editList, outputPath, opts, jid));
+    } catch (err) {
+      const isGpuErr = isHwaccelError(err);
+      console.warn(`[render-video] 시도 ${attempt} 실패 (GPU오류=${isGpuErr}):`, err?.message);
+      if (!isGpuErr || attempt >= MAX_ATTEMPTS) throw err;
+      // GPU 오류: 캐시 무효화 후 다음 시도에서 libx264 강제 사용
+      _hwaccelCache = null;
+    }
+  }
+});
+
+// ── 폴더 와처 IPC ─────────────────────────────────────────────────────────
+// watch-folder: 지정 폴더에 VIDEO 파일이 생기면 renderer에 'folder-new-file' 이벤트 전송
+const _activeWatchers = new Map(); // watchId → FSWatcher
+ipcMain.handle('watch-folder', (event, { folderPath, watchId }) => {
+  if (_activeWatchers.has(watchId)) {
+    try {
+      _activeWatchers.get(watchId).close();
+    } catch (_) {}
+  }
+  const watcher = fs.watch(folderPath, { persistent: false }, (evtType, filename) => {
+    if (evtType === 'rename' && filename && /\.(mp4|mov|avi|mkv|webm)$/i.test(filename)) {
+      const fullPath = path.join(folderPath, filename);
+      // 파일이 실제로 존재하는 경우만(생성 이벤트) 전송
+      if (fs.existsSync(fullPath)) {
+        event.sender.send('folder-new-file', { watchId, filePath: fullPath, filename });
+      }
+    }
+  });
+  _activeWatchers.set(watchId, watcher);
+  return { ok: true };
+});
+ipcMain.handle('unwatch-folder', (_, watchId) => {
+  if (_activeWatchers.has(watchId)) {
+    try {
+      _activeWatchers.get(watchId).close();
+    } catch (_) {}
+    _activeWatchers.delete(watchId);
+  }
+  return true;
 });
 
 // ── 렌더링 취소 (#5) ─────────────────────────────────────────────────────
@@ -875,7 +947,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
     endingCredit = true, // #92 무료 사용자 엔딩 크레딧 여부
   } = options;
 
-  const videoCodec = hw.codec;
+  const videoCodec = options._forceLibx264 ? 'libx264' : hw.codec;
   const LUT = getLutFilter(theme);
   const totalDur = editList.reduce((s, c) => s + Math.max(0.1, c.duration || 3), 0);
   const n = editList.length;
@@ -1075,6 +1147,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       autoSaveClear();
       send('✅ 렌더링 완료!', 100);
       setTrayProgress(100); // #79
+      addRecentRender(outputPath); // 트레이 최근 렌더링 목록 업데이트
 
       // Windows 알림 (#9)
       if (Notification.isSupported()) {

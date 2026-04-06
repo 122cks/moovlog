@@ -265,6 +265,14 @@ jobs:
                   # 커밋 메시지 첫 줄 (100자 제한)
                   COMMIT_MSG=$(git log -1 --pretty=format:"%s" | cut -c1-100)
                   echo "commit_msg=${COMMIT_MSG}" >> $GITHUB_OUTPUT
+                  # 파일 크기 계산 (release-files/ 없으면 N/A)
+                  if ls release-files/ 2>/dev/null | grep -qE '\.(exe|apk)$'; then
+                    SIZES=$(find release-files/ -name '*.exe' -o -name '*.apk' | \
+                      xargs -I{} sh -c 'printf "%s: %s\n" "$(basename {})" "$(du -sh {} | cut -f1)"' 2>/dev/null | tr '\n' '\n' || echo 'N/A')
+                  else
+                    SIZES='N/A'
+                  fi
+                  echo "file_sizes=${SIZES}" >> $GITHUB_OUTPUT
 
             # ── Discord 알림 ──────────────────────────────────────────────
             - name: Discord 빌드 완료 알림
@@ -282,7 +290,8 @@ jobs:
                           {"name": "버전",  "value": "v${{ steps.ver.outputs.version }}", "inline": true},
                           {"name": "커밋",  "value": "`${{ steps.status.outputs.sha_short }}`", "inline": true},
                           {"name": "커밋 메시지", "value": "${{ steps.status.outputs.commit_msg }}", "inline": false},
-                          {"name": "배포",  "value": "[Release 페이지](${{ steps.status.outputs.release_url }})", "inline": false}
+                          {"name": "📦 파일 크기", "value": "${{ steps.status.outputs.file_sizes }}", "inline": false},
+                          {"name": "📥 최신 빌드 다운로드", "value": "[⬇ exe / apk 파일 받기](${{ steps.status.outputs.release_url }})", "inline": false}
                         ],
                         "footer": {"text": "GitHub Actions • ${{ github.workflow }}"},
                         "timestamp": "${{ github.event.head_commit.timestamp }}"
@@ -298,6 +307,47 @@ jobs:
                   URL="${{ steps.status.outputs.release_url }}"
                   COMMIT="${{ steps.status.outputs.commit_msg }}"
                   MSG="${EMOJI} *무브먼트 Shorts Creator ${VERSION}*"$'\n'"${{ steps.status.outputs.msg }}"$'\n\n'"📝 ${COMMIT}"$'\n\n'"📦 [릴리스 다운로드](${URL})"
+                  curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+                    -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+                    -d "parse_mode=Markdown" \
+                    -d "disable_web_page_preview=false" \
+                    --data-urlencode "text=${MSG}"
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  JOB 5 : 빌드 실패 전용 알림  (tag push 시 앞 job이 하나라도 실패하면 실행)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    notify-failure:
+        name: Build Failure Alert
+        needs: [build-windows, build-android, release]
+        runs-on: ubuntu-latest
+        if: failure() && startsWith(github.ref, 'refs/tags/')
+        steps:
+            - name: Discord 빌드 실패 알림
+              if: ${{ secrets.DISCORD_WEBHOOK != '' }}
+              run: |
+                  LOGS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  TAG="${{ github.ref_name }}"
+                  curl -s -X POST "${{ secrets.DISCORD_WEBHOOK }}" \
+                    -H "Content-Type: application/json" \
+                    -d '{
+                      "embeds": [{
+                        "title": "🚨 빌드 실패 — 무브먼트 Shorts Creator '"${TAG}"'",
+                        "description": "Actions 파이프라인이 실패했습니다. 로그를 확인하세요.",
+                        "color": 15158332,
+                        "fields": [
+                          {"name": "에러 로그", "value": "[▶ Actions 실행 보기]('"${LOGS_URL}"')", "inline": false}
+                        ],
+                        "footer": {"text": "GitHub Actions • ${{ github.workflow }}"}
+                      }]
+                    }'
+
+            - name: Telegram 빌드 실패 알림
+              if: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+              run: |
+                  LOGS_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  TAG="${{ github.ref_name }}"
+                  MSG="🚨 *빌드 실패 — ${TAG}*"$'\n'"Actions 파이프라인이 실패했습니다."$'\n\n'"[▶ 에러 로그 보기](${LOGS_URL})"
                   curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
                     -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
                     -d "parse_mode=Markdown" \
