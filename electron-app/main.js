@@ -298,10 +298,132 @@ function setTrayProgress(pct) {
   tray.setToolTip(`무브먼트 — ${label}`);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// §10  애플리케이션 메뉴 (#15, #18, #19)
+// ═══════════════════════════════════════════════════════════════════════════
+function buildAppMenu() {
+  const template = [
+    {
+      label: "파일",
+      submenu: [
+        {
+          label: "자동 저장 불러오기",
+          accelerator: "CmdOrCtrl+Shift+S",
+          click: () => mainWindow?.webContents.send("menu-load-autosave"),
+        },
+        { type: "separator" },
+        { label: "종료", role: "quit" },
+      ],
+    },
+    {
+      label: "보기",
+      submenu: [
+        {
+          label: "개발자 도구",
+          accelerator: "F12",
+          click: () => mainWindow?.webContents.toggleDevTools(),
+        },
+        { type: "separator" },
+        { label: "실제 크기", role: "resetZoom" },
+        { label: "확대", role: "zoomIn" },
+        { label: "축소", role: "zoomOut" },
+        { type: "separator" },
+        { label: "전체화면", role: "togglefullscreen" },
+      ],
+    },
+    {
+      label: "렌더링",
+      submenu: [
+        {
+          label: "렌더링 취소",
+          accelerator: "CmdOrCtrl+.",
+          click: () => mainWindow?.webContents.send("menu-cancel-render"),
+        },
+        {
+          label: "렌더링 일시정지 / 재개",
+          accelerator: "CmdOrCtrl+P",
+          click: () => mainWindow?.webContents.send("menu-toggle-pause"),
+        },
+        { type: "separator" },
+        {
+          label: "FFmpeg 상태 확인",
+          click: () => {
+            const available = !!FFMPEG_PATH;
+            dialog
+              .showMessageBox(mainWindow, {
+                type: available ? "info" : "error",
+                title: "FFmpeg 상태",
+                message: available
+                  ? `✅ FFmpeg 경로:\n${FFMPEG_PATH}`
+                  : "❌ FFmpeg를 찾을 수 없습니다.",
+                detail: available
+                  ? undefined
+                  : "https://github.com/BtbN/FFmpeg-Builds/releases 에서 다운로드 후 PATH에 추가하거나 프로젝트 ffmpeg-bin 폴더에 복사하세요.",
+                buttons: available
+                  ? ["확인"]
+                  : ["다운로드 페이지 열기", "닫기"],
+              })
+              .then(({ response }) => {
+                if (!available && response === 0)
+                  shell.openExternal(
+                    "https://github.com/BtbN/FFmpeg-Builds/releases",
+                  );
+              });
+          },
+        },
+      ],
+    },
+    {
+      label: "도움말",
+      submenu: [
+        {
+          label: `버전 v${app.getVersion()}`,
+          enabled: false,
+        },
+        { type: "separator" },
+        {
+          label: "GitHub 페이지",
+          click: () => shell.openExternal("https://github.com/122cks/moovlog"),
+        },
+        {
+          label: "릴리스 노트",
+          click: () =>
+            shell.openExternal("https://github.com/122cks/moovlog/releases"),
+        },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 app.whenReady().then(async () => {
   loadHashCache();
+  buildAppMenu();
   createWindow();
   createTray();
+
+  // FFmpeg 없음 경고 (#1)
+  if (!FFMPEG_PATH) {
+    setTimeout(() => {
+      if (!mainWindow) return;
+      dialog
+        .showMessageBox(mainWindow, {
+          type: "error",
+          title: "FFmpeg 없음",
+          message: "FFmpeg 바이너리를 찾을 수 없습니다.",
+          detail:
+            "렌더링 기능을 사용하려면 FFmpeg가 필요합니다.\nhttps://github.com/BtbN/FFmpeg-Builds/releases 에서 다운로드 후\nPATH에 추가하거나 ffmpeg-bin 폴더에 복사하세요.",
+          buttons: ["다운로드 페이지 열기", "나중에"],
+        })
+        .then(({ response }) => {
+          if (response === 0)
+            shell.openExternal(
+              "https://github.com/BtbN/FFmpeg-Builds/releases",
+            );
+        });
+    }, 2000);
+  }
+
   detectHwaccel().catch(() => {}); // 백그라운드 감지
   app.on("activate", () => {
     if (!mainWindow) createWindow();

@@ -181,3 +181,169 @@
 ## 📝 라이선스
 
 개인 용도로 자유롭게 사용하세요!
+
+---
+
+# 🎬 무브먼트 Shorts Creator — 설치형 앱 (v2.73)
+
+웹에서 이용하거나, PC·Android에 설치해 간편하게 사용할 수 있습니다.
+
+- **웹**: https://122cks.github.io/moovlog/shorts-creator/
+- **PC (Windows)**: 아래 Electron 앱 설치
+- **Android**: 아래 APK 설치
+
+---
+
+## 💻 PC 앱 (Windows) — Electron
+
+### 다운로드 & 설치
+
+1. [GitHub Releases](https://github.com/122cks/moovlog/releases)에서 `무브먼트 Shorts Creator Setup X.X.X.exe` 다운로드
+2. 실행 → 설치 폴더 선택 → Install 클릭
+3. 설치 완료 후 바탕화면 아이콘 또는 시작 메뉴에서 실행
+
+> FFmpeg가 설치되어 있지 않으면 앱 실행 시 경고 메시지가 표시됩니다.  
+> FFmpeg 다운로드: https://ffmpeg.org/download.html  
+> 다운로드 후 `ffmpeg.exe`를 PATH에 추가하거나 앱이 설치된 폴더에 복사하세요.
+
+### PC 앱 주요 기능
+
+- 보기 메뉴 → 개발자 도구 (F12)
+- 렌더링 메뉴 → 취소 (Ctrl+.), 일시정지/재개 (Ctrl+P)
+- 자동 업데이트 (electron-updater)
+
+### PC 앱 직접 빌드
+
+```powershell
+# 의존성 설치 (루트 및 electron-app/)
+npm install
+cd electron-app
+npm install
+
+# NSIS 설치 프로그램 빌드 (Windows)
+npm run build:win-installer
+# 출력: dist-electron/무브먼트 Shorts Creator Setup X.X.X.exe
+```
+
+**빌드 요구사항:**
+- Node.js 18+
+- npm 9+
+- Windows 10/11 x64
+
+---
+
+## 📱 Android 앱
+
+### 다운로드 & 설치
+
+1. [GitHub Releases](https://github.com/122cks/moovlog/releases)에서 `moovlog-shorts-creator-release.apk` 다운로드
+2. Android 설정 → 보안 → **알 수 없는 앱 설치** 허용
+3. APK 파일 실행 → 설치 → 앱 열기
+4. 첫 실행 시 카메라·마이크·미디어 접근 권한 허용
+
+> 현재 앱은 **WebView 방식**으로 `https://122cks.github.io/moovlog/shorts-creator/`를 전체화면으로 표시합니다.
+
+### Android APK 직접 빌드
+
+#### 1. Android Studio 설치
+
+1. https://developer.android.com/studio 에서 Android Studio 다운로드 & 설치
+2. 설치 완료 후 Android Studio 실행 → **SDK Manager** 열기
+   - `SDK Platforms` 탭: Android 14 (API 34) 설치
+   - `SDK Tools` 탭: Android SDK Build-Tools 34, Android SDK Platform-Tools 설치
+3. 환경 변수 설정:
+   ```powershell
+   # 시스템 환경 변수에 추가 (또는 PowerShell 세션에서 임시 설정)
+   $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+   $env:PATH += ";$env:ANDROID_HOME\platform-tools;$env:ANDROID_HOME\tools"
+   ```
+
+#### 2. Java 설치 확인
+
+```powershell
+java --version
+# java 17 이상 필요 (JDK 17 or 21 권장)
+# 미설치 시: https://adoptium.net/ 에서 JDK 17 LTS 다운로드
+```
+
+#### 3. APK 빌드
+
+```powershell
+cd android-app
+
+# 릴리즈 APK 빌드 (서명 포함)
+.\gradlew.bat assembleRelease
+
+# 출력 위치
+# android-app/app/build/outputs/apk/release/app-release.apk
+```
+
+**빌드 요구사항:**
+- JDK 17 이상 (Java 25도 동작하나, JDK 17 LTS 권장)
+- Android Studio 설치 (또는 Android SDK Command Line Tools)
+- ANDROID_HOME 환경 변수 설정
+- 인터넷 연결 (Gradle 의존성 다운로드)
+
+#### 4. keystore 서명 설정
+
+`android-app/app/build.gradle`의 `signingConfigs.release` 확인:
+```gradle
+signingConfigs {
+    release {
+        storeFile     file("../moovlog.keystore")
+        storePassword "..."
+        keyAlias      "moovlog"
+        keyPassword   "..."
+    }
+}
+```
+`moovlog.keystore` 파일은 `android-app/` 상위 폴더에 위치해야 합니다.
+
+---
+
+## 🛠 개발 환경 설정
+
+### 전체 구조
+
+```
+moovlog/
+├── electron-app/          # PC 앱 (Electron)
+│   ├── main.js            # 메인 프로세스 (IPC, 메뉴, FFmpeg)
+│   ├── preload.js         # 컨텍스트 브리지
+│   ├── build/icon.ico     # 앱 아이콘
+│   └── dist-electron/     # 빌드 출력
+├── android-app/           # Android 앱 (Native Gradle/WebView)
+│   ├── app/src/main/
+│   │   ├── java/com/moovlog/shorts/MainActivity.java
+│   │   └── AndroidManifest.xml
+│   └── moovlog.keystore   # 서명 키스토어 (상위 폴더)
+├── shorts-creator-v2/     # 웹 앱 (React + Vite)
+└── shorts-creator/        # 웹 앱 (Legacy HTML)
+```
+
+### 웹 앱 개발
+
+```bash
+cd shorts-creator-v2
+npm install
+npm run dev        # 개발 서버 (Vite)
+npm run build      # 프로덕션 빌드
+```
+
+### Electron 앱 개발
+
+```bash
+cd electron-app
+npm install
+npm start          # 개발 실행
+npm run dev        # NODE_ENV=development 로 실행
+```
+
+---
+
+## 📦 릴리즈 파일 목록
+
+| 파일 | 플랫폼 | 설명 |
+|------|--------|------|
+| `무브먼트 Shorts Creator Setup X.X.X.exe` | Windows 10/11 | NSIS 설치 프로그램 |
+| `moovlog-shorts-creator-release.apk` | Android 8+ | 서명된 APK |

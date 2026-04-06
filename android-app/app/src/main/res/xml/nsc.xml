@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+    <!-- GitHub Pages (HTTPS 전용) -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">122cks.github.io</domain>
+    </domain-config>
+    <!-- 개발 환경 로컬 서버 -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
     </domain-config>
 </network-security-config>
