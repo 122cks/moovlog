@@ -13,6 +13,7 @@
     "build:mac": "npx electron-builder@26.8.1 --mac dmg",
     "clean": "node -e \"require('fs').rmSync('./dist-electron',{recursive:true,force:true})\"",
     "build:clean": "npm run clean && npm run build:win-installer",
+    "build:fresh": "node -e \"require('fs').rmSync('./dist-electron',{recursive:true,force:true});\" && npm run build:win-installer",
     "reinstall": "node -e \"require('fs').rmSync('./node_modules',{recursive:true,force:true});require('fs').rmSync('./package-lock.json',{force:true});\" && npm install"
   },
   "dependencies": {
@@ -47,7 +48,7 @@
     "win": {
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": [
             "x64"
           ]
@@ -61,7 +62,11 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "shortcutName": "Moovlog Shorts Creator",
-      "artifactName": "Moovlog-${version}-Setup.exe"
+      "artifactName": "Moovlog-${version}-Setup.exe",
+      "language": "1042",
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     },
     "mac": {
       "target": "dmg",
