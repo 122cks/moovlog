@@ -100,4 +100,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── [#8 에러 로그 스냅샷] FFmpeg 오류 시 editList 경로 리포트 저장 ──
   renderErrorSnapshot: (opts) => ipcRenderer.invoke('render-error-snapshot', opts),
+
+  // ── [§15 씬 자동 감지] CapCut 스타일 영상 자동컷 ─────────────────────
+  // { filePath, threshold?, maxScenes? } → [{ index, time, duration, thumbnailPath }]
+  detectSceneChanges: (opts) => ipcRenderer.invoke('detect-scene-changes', opts),
 });

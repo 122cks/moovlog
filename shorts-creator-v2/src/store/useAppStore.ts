@@ -5,7 +5,7 @@
    ============================================================ */
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { AppState, MediaItem, LoadedMedia, VideoScript, Toast, PipelinePhase, StepProgress } from '@/types/state';
+import type { AppState, MediaItem, LoadedMedia, VideoScript, Toast, PipelinePhase, StepProgress, SceneCut } from '@/types/state';
 import type { TemplateKey, HookKey } from '@/types/state';
 
 /* ── 액션 타입 정의 ── */
@@ -45,6 +45,12 @@ interface AppActions {
   setExporting:   (v: boolean) => void;
   setExportProgress: (v: number) => void;
 
+  // [§15] 씬 자동 감지
+  setSceneCuts:       (cuts: SceneCut[]) => void;
+  toggleSceneCut:     (index: number) => void;
+  updateSceneCut:     (index: number, patch: Partial<SceneCut>) => void;
+  setDetectingScenes: (v: boolean) => void;
+
   // 토스트
   pushToast:      (msg: string, type: Toast['type']) => void;
   removeToast:    (id: string) => void;
@@ -71,6 +77,8 @@ const INITIAL: AppState & { toasts: Toast[] } = {
   stepProgress: [],
   exporting: false,
   exportProgress: 0,
+  sceneCuts: [],
+  detectingScenes: false,
   toasts: [],
 };
 
@@ -143,6 +151,23 @@ export const useAppStore = create<AppState & { toasts: Toast[] } & AppActions>()
       /* ── 내보내기 ── */
       setExporting: (exporting) => set({ exporting }, false, 'setExporting'),
       setExportProgress: (exportProgress) => set({ exportProgress }, false, 'setExportProgress'),
+
+      /* ── [§15 씨 자동 감지] ── */
+      setSceneCuts: (sceneCuts) => set({ sceneCuts }, false, 'setSceneCuts'),
+      toggleSceneCut: (index) =>
+        set((s) => ({
+          sceneCuts: s.sceneCuts.map((c) =>
+            c.index === index ? { ...c, selected: !c.selected } : c,
+          ),
+        }), false, 'toggleSceneCut'),
+      updateSceneCut: (index, patch) =>
+        set((s) => ({
+          sceneCuts: s.sceneCuts.map((c) =>
+            c.index === index ? { ...c, ...patch } : c,
+          ),
+        }), false, 'updateSceneCut'),
+      setDetectingScenes: (detectingScenes) =>
+        set({ detectingScenes }, false, 'setDetectingScenes'),
 
       /* ── 토스트 ── */
       pushToast: (message, type) => {

@@ -5,18 +5,9 @@ import { useCallback, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { TemplatePicker } from '@/components/TemplatePicker';
+import { SceneCutPhase } from '@/components/SceneCutPhase';
 import { runPipeline } from '@/hooks/usePipeline';
 import type { MediaItem } from '@/types/state';
-
-// [Electron 경로] window.electronAPI 타입 선언 (런타임 감지)
-declare global {
-  interface Window {
-    electronAPI?: {
-      isElectron: boolean;
-      extractThumbnail: (opts: { filePath: string; time?: number }) => Promise<string>;
-    };
-  }
-}
 
 export function UploadPhase() {
   const files         = useAppStore((s) => s.files);
@@ -28,6 +19,8 @@ export function UploadPhase() {
   const pushToast     = useAppStore((s) => s.pushToast);
   const fileInputRef  = useRef<HTMLInputElement>(null);
   const [dragging, setDragging]  = useState(false);
+  // [§15] 씬 자동컷 모달
+  const [showSceneCut, setShowSceneCut] = useState(false);
 
   const acceptFiles = useCallback((raw: File[]) => {
     const valid = raw.filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
@@ -69,6 +62,22 @@ export function UploadPhase() {
     if (!name.trim())  { pushToast('음식점 이름을 입력해주세요', 'err'); return; }
     runPipeline();
   };
+
+  // [§15] 영상 자동컷 버튼 표시 조건: Electron + 동영상 파일이 1개 이상
+  const videoFiles = files.filter((f) => f.type === 'video' && f.path);
+  const canSceneCut = window.electronAPI?.isElectron && videoFiles.length === 1;
+  const sceneCutFile = canSceneCut ? videoFiles[0] : null;
+
+  // 씬컷 모달 표시
+  if (showSceneCut && sceneCutFile) {
+    return (
+      <SceneCutPhase
+        videoFile={sceneCutFile.file}
+        videoPath={sceneCutFile.path!}
+        onClose={() => setShowSceneCut(false)}
+      />
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6 px-4 py-10">
@@ -129,6 +138,18 @@ export function UploadPhase() {
         </div>
       )}
 
+      {/* [§15] 영상 자동컷 버튼 — Electron + 동영상 1개 선택 시 표시 */}
+      {canSceneCut && (
+        <button
+          onClick={() => setShowSceneCut(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-emerald-500 bg-emerald-500/10 py-3 font-bold text-emerald-400 transition hover:bg-emerald-500/20 active:scale-95"
+        >
+          <span className="text-lg">🎬</span>
+          <span className="text-sm">영상 자동컷 (CapCut 스타일)</span>
+          <span className="ml-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-normal">FFmpeg</span>
+        </button>
+      )}
+
       {/* 음식점 이름 */}
       <input
         type="text"
@@ -157,3 +178,4 @@ export function UploadPhase() {
     </div>
   );
 }
+

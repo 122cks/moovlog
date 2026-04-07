@@ -98,6 +98,25 @@ export type HookKey =
   | 'ranking'
   | 'pov';
 
+/**
+ * [§15 씬 자동 감지] FFmpeg detect-scene-changes 결과 단위
+ * 영상에서 자동 추출된 씬 컷 정보
+ */
+export interface SceneCut {
+  /** 영상 내 시작 시각 (초) */
+  time: number;
+  /** 씬 재생 길이 (초). 마지막 씬은 null → 수동 입력 */
+  duration: number | null;
+  /** FFmpeg 추출 썸네일 절대 경로 */
+  thumbnailPath: string | null;
+  /** 사용자 선택 여부 */
+  selected: boolean;
+  /** 자막/메모 */
+  caption: string;
+  /** 내부 인덱스 */
+  index: number;
+}
+
 /** 전체 앱 상태 — Zustand 스토어 shape */
 export interface AppState {
   /* ── 입력 ── */
@@ -131,6 +150,11 @@ export interface AppState {
   /* ── 내보내기 ── */
   exporting: boolean;
   exportProgress: number; // 0..1
+
+  /* ── [§15] 씬 자동 감지 결과 ── */
+  sceneCuts: SceneCut[];
+  /** 씬 감지 중 여부 */
+  detectingScenes: boolean;
 }
 
 export type PipelinePhase = 'idle' | 'loading' | 'result' | 'error';

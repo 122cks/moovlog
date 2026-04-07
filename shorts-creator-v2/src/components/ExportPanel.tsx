@@ -6,22 +6,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { exportWebCodecs } from '@/export/webcodecs';
 
-// [Electron] window.electronAPI 런타임 감지 타입
-declare global {
-  interface Window {
-    electronAPI?: {
-      isElectron: boolean;
-      renderVideo: (editList: unknown[], outputPath: string, options: unknown, jobId: string) => Promise<{ outputPath: string; success: boolean }>;
-      saveFile: (opts: { title?: string; defaultPath?: string }) => Promise<string | null>;
-      showInFolder: (p: string) => Promise<void>;
-      onRenderProgress: (cb: (data: { pct: number; msg: string; jobId: string; eta?: string }) => void) => () => void;
-      sortClipsByKeywords: (opts: { clips: unknown[]; title?: string }) => Promise<unknown[]>;
-      cleanupTmpFiles: () => Promise<{ deleted: number }>;
-      renderErrorSnapshot: (opts: { editList: unknown[]; errorMsg: string }) => Promise<{ ok: boolean; path?: string }>;
-    };
-  }
-}
-
 // [#5 인코딩 진행률] 퍼센트별 🥩 메시지 매핑
 function getMeatMsg(pct: number): string {
   if (pct < 5)  return '재료 준비 중... 🍖';
@@ -76,12 +60,11 @@ export function ExportPanel() {
     });
 
     try {
-      // [#4 고기 영상 자동 탐지] 파일명 우선순위 정렬
-      const rawClips = files.map((f, i) => ({ ...f, _idx: i }));
-      const sortedClips = await window.electronAPI.sortClipsByKeywords({
-        clips: rawClips,
+      // [#4 고기 영상 자동 탐지] 파일명 우선순위 정렬 (순서 참고용, editList는 media_idx 기반)
+      void window.electronAPI.sortClipsByKeywords({
+        clips: files.map((f, i) => ({ ...f, _idx: i })),
         title: restaurantName,
-      }) as (typeof rawClips[0])[];
+      });
 
       // editList 빌드 — path 기반 (FFmpeg 필수)
       const editList = script.scenes.map((scene) => {

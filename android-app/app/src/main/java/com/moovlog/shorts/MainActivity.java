@@ -4,18 +4,22 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.view.View;
 import android.view.animation.AlphaAnimation;
 import android.webkit.ConsoleMessage;
+import android.webkit.DownloadListener;
 import android.webkit.GeolocationPermissions;
 import android.content.Context;
 import android.media.MediaScannerConnection;
@@ -26,6 +30,7 @@ import android.webkit.MimeTypeMap;
 import android.database.Cursor;
 import android.provider.OpenableColumns;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import android.webkit.PermissionRequest;
@@ -108,11 +113,74 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new MoovlogBridge(), "MoovlogNative");
         webView.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
 
-        // ── WebViewClient: 로딩 완료 시 스플래시 제거 ───────────────────
+        // ── DownloadListener: blob: URL 다운로드 처리 (#save) ──────────
+        // Android WebView는 blob: URL을 기본 다운로드 관리자로 처리할 수 없으므로
+        // JS를 주입해 base64로 변환한 뒤 네이티브 브릿지로 전달
+        webView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent,
+                    String contentDisposition, String mimeType, long contentLength) {
+                if (url.startsWith("blob:")) {
+                    // blob: URL → JS로 base64 변환 후 saveVideoToGallery 호출
+                    String filename = "moovlog_video.mp4";
+                    // Content-Disposition에서 파일명 파싱 시도
+                    if (contentDisposition != null && contentDisposition.contains("filename=")) {
+                        try {
+                            filename = contentDisposition
+                                    .replaceAll(".*filename=\"([^\"]+)\".*", "$1");
+                        } catch (Exception ignored) {}
+                    }
+                    final String finalFilename = filename;
+                    String js = "(function(){" +
+                        "var url='" + url.replace("'", "\\'") + "';" +
+                        "fetch(url).then(function(r){return r.blob();}).then(function(blob){" +
+                        "var reader=new FileReader();" +
+                        "reader.onloadend=function(){" +
+                        "var b64=reader.result.split(',')[1];" +
+                        "MoovlogNative.saveVideoToGallery(b64,'" + finalFilename + "');" +
+                        "};" +
+                        "reader.readAsDataURL(blob);" +
+                        "}).catch(function(e){" +
+                        "MoovlogNative.showToast('다운로드 실패: '+e.message);" +
+                        "});" +
+                        "})()";
+                    webView.evaluateJavascript(js, null);
+                }
+            }
+        });
+
+        // ── WebViewClient: 로딩 완료 시 스플래시 제거 + blob 다운로드 JS 주입 ──
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
+                // blob: URL <a download> 클릭 가로채기 JS 주입
+                String interceptJs = "(function(){" +
+                    "if(window._moovlogBlobHandlerInstalled)return;" +
+                    "window._moovlogBlobHandlerInstalled=true;" +
+                    "document.addEventListener('click',function(e){" +
+                    "var a=e.target;" +
+                    "while(a&&a.tagName!=='A')a=a.parentElement;" +
+                    "if(!a||!a.download)return;" +
+                    "var href=a.getAttribute('href');" +
+                    "if(!href||!href.startsWith('blob:'))return;" +
+                    "e.preventDefault();e.stopPropagation();" +
+                    "var filename=a.download||'moovlog_video.mp4';" +
+                    "MoovlogNative.showToast('저장 중... 잠시 기다려주세요');" +
+                    "fetch(href).then(function(r){return r.blob();})"+
+                    ".then(function(blob){" +
+                    "var reader=new FileReader();" +
+                    "reader.onloadend=function(){" +
+                    "var b64=reader.result.split(',')[1];" +
+                    "MoovlogNative.saveVideoToGallery(b64,filename);" +
+                    "};" +
+                    "reader.readAsDataURL(blob);" +
+                    "}).catch(function(e){" +
+                    "MoovlogNative.showToast('저장 실패: '+e);" +
+                    "});" +
+                    "},true);" +
+                    "})()";
+                view.evaluateJavascript(interceptJs, null);
                 new Handler(Looper.getMainLooper()).postDelayed(
                         MainActivity.this::hideSplash, 800);
             }
@@ -523,6 +591,56 @@ public class MainActivity extends Activity {
                 }
             } catch (Exception e) { /* ignore */ }
             return -1.0;
+        }
+
+        // ── [브릿지 #save] 갤러리/다운로드 폴더에 base64 영상 저장
+        // JS: MoovlogNative.saveVideoToGallery(base64Data, filename)
+        @JavascriptInterface
+        public void saveVideoToGallery(String base64Data, String filename) {
+            new Handler(Looper.getMainLooper()).post(() -> {
+                try {
+                    byte[] data = android.util.Base64.decode(
+                            base64Data, android.util.Base64.DEFAULT);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        // Android 10+: MediaStore Downloads
+                        ContentValues values = new ContentValues();
+                        values.put(MediaStore.Downloads.DISPLAY_NAME, filename);
+                        values.put(MediaStore.Downloads.MIME_TYPE, "video/mp4");
+                        values.put(MediaStore.Downloads.IS_PENDING, 1);
+                        Uri uri = getContentResolver().insert(
+                                MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                        if (uri == null) throw new Exception("MediaStore URI 생성 실패");
+                        try (OutputStream os = getContentResolver().openOutputStream(uri)) {
+                            if (os == null) throw new Exception("OutputStream 열기 실패");
+                            os.write(data);
+                        }
+                        values.clear();
+                        values.put(MediaStore.Downloads.IS_PENDING, 0);
+                        getContentResolver().update(uri, values, null, null);
+                    } else {
+                        // Android 9 이하: 외부 저장소 Downloads 폴더
+                        File downloadsDir = Environment.getExternalStoragePublicDirectory(
+                                Environment.DIRECTORY_DOWNLOADS);
+                        //noinspection ResultOfMethodCallIgnored
+                        downloadsDir.mkdirs();
+                        File outFile = new File(downloadsDir, filename);
+                        try (FileOutputStream fos = new FileOutputStream(outFile)) {
+                            fos.write(data);
+                        }
+                        MediaScannerConnection.scanFile(
+                                MainActivity.this,
+                                new String[]{outFile.getAbsolutePath()},
+                                new String[]{"video/mp4"}, null);
+                    }
+                    Toast.makeText(MainActivity.this,
+                            "✅ 저장 완료! 다운로드 폴더를 확인하세요.",
+                            Toast.LENGTH_LONG).show();
+                } catch (Exception e) {
+                    Toast.makeText(MainActivity.this,
+                            "저장 실패: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                }
+            });
         }
 
         // ── [브릿지 #7] Android 13+ 사진/동영상 권한 거부 시 설정창 안내

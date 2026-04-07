@@ -1730,6 +1730,79 @@ ipcMain.handle('add-subtitle', async (_, { videoPath, srtPath, outputPath }) => 
   );
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// §15 씬 자동 감지 — CapCut 스타일 영상 자동컷 (FFmpeg scdet 필터)
+// detect-scene-changes: { filePath, threshold=0.3, maxScenes=20 }
+//   → [{ time, index, thumbnailPath }] 반환
+// ═══════════════════════════════════════════════════════════════════════════
+ipcMain.handle('detect-scene-changes', async (event, { filePath, threshold = 0.3, maxScenes = 20 }) => {
+  if (!FFMPEG_PATH) throw new Error('FFmpeg를 찾을 수 없습니다.');
+  const cleanFilePath = path.normalize(
+    (filePath || '')
+      .replace(/^file:\/\/\//, '')
+      .replace(/[^\\/]*\.asar[\\/]/g, '')
+      .replace(/\//g, path.sep),
+  );
+  if (!fs.existsSync(cleanFilePath)) throw new Error(`파일을 찾을 수 없습니다: ${cleanFilePath}`);
+
+  const thumbDir = path.join(os.tmpdir(), `moovlog_scenes_${Date.now()}`);
+  fs.mkdirSync(thumbDir, { recursive: true });
+
+  // ── Step 1: 씬 변화 타임스탬프 추출 (showinfo 파싱) ─────────────────
+  const timestamps = await new Promise((resolve, reject) => {
+    const args = [
+      '-y', '-i', cleanFilePath,
+      '-vf', `select='gt(scene,${threshold})',showinfo`,
+      '-vsync', '0',
+      '-an',
+      '-f', 'null',
+      process.platform === 'win32' ? 'NUL' : '/dev/null',
+    ];
+    let stderr = '';
+    const proc = cp.spawn(FFMPEG_PATH, args);
+    proc.stderr.on('data', (d) => (stderr += d.toString()));
+    proc.on('close', () => {
+      // showinfo 출력: "pts_time:5.005000" 패턴 파싱
+      const times = [...stderr.matchAll(/pts_time:([\d.]+)/g)]
+        .map((m) => parseFloat(m[1]))
+        .filter((t) => !isNaN(t));
+      // 첫 씬(0초)은 항상 포함, 중복 제거, 최대 maxScenes개
+      const all = [0, ...times].sort((a, b) => a - b);
+      const unique = all.filter((t, i) => i === 0 || t - all[i - 1] > 0.5);
+      resolve(unique.slice(0, maxScenes));
+    });
+    proc.on('error', reject);
+  });
+
+  // ── Step 2: 각 씬 시작 시각에서 썸네일 추출 ────────────────────────
+  const scenes = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const t = timestamps[i];
+    const thumbPath = path.join(thumbDir, `scene_${String(i).padStart(3, '0')}.jpg`);
+    await new Promise((resolve) => {
+      const args = [
+        '-y', '-ss', String(t),
+        '-i', cleanFilePath,
+        '-vframes', '1',
+        '-vf', 'scale=320:-2',
+        '-q:v', '3',
+        thumbPath,
+      ];
+      const proc = cp.spawn(FFMPEG_PATH, args);
+      proc.on('close', resolve);
+      proc.on('error', resolve); // 실패해도 계속
+    });
+    const nextTime = timestamps[i + 1];
+    scenes.push({
+      index: i,
+      time: t,
+      duration: nextTime !== undefined ? Math.max(1, nextTime - t) : null, // 마지막은 null
+      thumbnailPath: fs.existsSync(thumbPath) ? thumbPath : null,
+    });
+  }
+  return scenes;
+});
+
 // 영상 분할 (#57 — 15초 쇼츠 자동 분할)
 ipcMain.handle('split-video', async (_, { videoPath, segmentDuration = 15, outputDir }) => {
   if (!FFMPEG_PATH) throw new Error('FFmpeg 없음');
