@@ -1280,10 +1280,10 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       const sharpFilter = unsharp ? ',unsharp=5:5:0.8:3:3:0.4' : ''; // #24 선명도 보정
       const noiseFilter = nightMode ? ',hqdn3d=4:3:6:4.5' : ''; // #28 야간 노이즈 제거
       if (autoReframe) {
-        // 9:16 자동 크롭: 2배 확대 후 중앙 크롭, sws_flags=lanczos (#26)
+        // 9:16 자동 크롭: 높이 기준 스케일 후 중앙 크롭 (#26) — 가로/세로 모든 비율 정상 처리
         filters.push(
-          `[${i}:v]format=yuv420p,scale=${width * 2}:-2:flags=lanczos,` +
-            `crop=${width}:${height}:(iw-${width})/2:(ih-${height})/2,` +
+          `[${i}:v]format=yuv420p,scale=-2:${height}:flags=lanczos,` +
+            `crop=${width}:${height}:(iw-${width})/2:0,` +
             `setsar=1,fps=${fps}${ptsReset}${speed}${sharpFilter}${noiseFilter}[v${i}]`,
         );
       } else if (boxblur) {
@@ -1302,23 +1302,39 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       }
     }
 
+    // 씬별 자막 drawtext 적용 후 concat 입력 라벨 결정
+    const clipFinalLabels = snappedList.map((clip, i) => {
+      if (clip.caption) {
+        const cap = String(clip.caption)
+          .replace(/\\/g, '\\\\')
+          .replace(/'/g, "\\'")
+          .replace(/:/g, '\\:');
+        filters.push(
+          `[v${i}]drawtext=text='${cap}':fontsize=48:fontcolor=white:` +
+            `x=(w-text_w)/2:y=h-120:box=1:boxcolor=black@0.6:boxborderw=12[vcap${i}]`,
+        );
+        return `vcap${i}`;
+      }
+      return `v${i}`;
+    });
+
     // concat 또는 xfade (#8, #34)
     let lastVid = 'vc';
     if (crossfade > 0 && n > 1) {
       // xfade 연쇄 — snappedList 기준 duration으로 offset 계산
-      let prev = 'v0';
+      let prev = clipFinalLabels[0];
       for (let i = 1; i < n; i++) {
         const out = i === n - 1 ? 'vc' : `cf${i}`;
         const offset = snappedList
           .slice(0, i)
           .reduce((s, c) => s + Math.max(0.1, c.duration || 3) - crossfade, 0);
         filters.push(
-          `[${prev}][v${i}]xfade=transition=fade:duration=${crossfade}:offset=${Math.max(0, offset)}[${out}]`,
+          `[${prev}][${clipFinalLabels[i]}]xfade=transition=fade:duration=${crossfade}:offset=${Math.max(0, offset)}[${out}]`,
         );
         prev = out;
       }
     } else {
-      filters.push(`${snappedList.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[vc]`);
+      filters.push(`${clipFinalLabels.map((l) => `[${l}]`).join('')}concat=n=${n}:v=1:a=0[vc]`);
     }
 
     // LUT 색감 (#39)
@@ -1568,6 +1584,7 @@ async function _doRender(event, editList, outputPath, options, jobId) {
       }
     }
 
+    send('렌더링 준비 중...', 1);
     cmd.run();
   });
 }
@@ -1735,73 +1752,87 @@ ipcMain.handle('add-subtitle', async (_, { videoPath, srtPath, outputPath }) => 
 // detect-scene-changes: { filePath, threshold=0.3, maxScenes=20 }
 //   → [{ time, index, thumbnailPath }] 반환
 // ═══════════════════════════════════════════════════════════════════════════
-ipcMain.handle('detect-scene-changes', async (event, { filePath, threshold = 0.3, maxScenes = 20 }) => {
-  if (!FFMPEG_PATH) throw new Error('FFmpeg를 찾을 수 없습니다.');
-  const cleanFilePath = path.normalize(
-    (filePath || '')
-      .replace(/^file:\/\/\//, '')
-      .replace(/[^\\/]*\.asar[\\/]/g, '')
-      .replace(/\//g, path.sep),
-  );
-  if (!fs.existsSync(cleanFilePath)) throw new Error(`파일을 찾을 수 없습니다: ${cleanFilePath}`);
+ipcMain.handle(
+  'detect-scene-changes',
+  async (event, { filePath, threshold = 0.3, maxScenes = 20 }) => {
+    if (!FFMPEG_PATH) throw new Error('FFmpeg를 찾을 수 없습니다.');
+    const cleanFilePath = path.normalize(
+      (filePath || '')
+        .replace(/^file:\/\/\//, '')
+        .replace(/[^\\/]*\.asar[\\/]/g, '')
+        .replace(/\//g, path.sep),
+    );
+    if (!fs.existsSync(cleanFilePath)) throw new Error(`파일을 찾을 수 없습니다: ${cleanFilePath}`);
 
-  const thumbDir = path.join(os.tmpdir(), `moovlog_scenes_${Date.now()}`);
-  fs.mkdirSync(thumbDir, { recursive: true });
+    const thumbDir = path.join(os.tmpdir(), `moovlog_scenes_${Date.now()}`);
+    fs.mkdirSync(thumbDir, { recursive: true });
 
-  // ── Step 1: 씬 변화 타임스탬프 추출 (showinfo 파싱) ─────────────────
-  const timestamps = await new Promise((resolve, reject) => {
-    const args = [
-      '-y', '-i', cleanFilePath,
-      '-vf', `select='gt(scene,${threshold})',showinfo`,
-      '-vsync', '0',
-      '-an',
-      '-f', 'null',
-      process.platform === 'win32' ? 'NUL' : '/dev/null',
-    ];
-    let stderr = '';
-    const proc = cp.spawn(FFMPEG_PATH, args);
-    proc.stderr.on('data', (d) => (stderr += d.toString()));
-    proc.on('close', () => {
-      // showinfo 출력: "pts_time:5.005000" 패턴 파싱
-      const times = [...stderr.matchAll(/pts_time:([\d.]+)/g)]
-        .map((m) => parseFloat(m[1]))
-        .filter((t) => !isNaN(t));
-      // 첫 씬(0초)은 항상 포함, 중복 제거, 최대 maxScenes개
-      const all = [0, ...times].sort((a, b) => a - b);
-      const unique = all.filter((t, i) => i === 0 || t - all[i - 1] > 0.5);
-      resolve(unique.slice(0, maxScenes));
-    });
-    proc.on('error', reject);
-  });
-
-  // ── Step 2: 각 씬 시작 시각에서 썸네일 추출 ────────────────────────
-  const scenes = [];
-  for (let i = 0; i < timestamps.length; i++) {
-    const t = timestamps[i];
-    const thumbPath = path.join(thumbDir, `scene_${String(i).padStart(3, '0')}.jpg`);
-    await new Promise((resolve) => {
+    // ── Step 1: 씬 변화 타임스탬프 추출 (showinfo 파싱) ─────────────────
+    const timestamps = await new Promise((resolve, reject) => {
       const args = [
-        '-y', '-ss', String(t),
-        '-i', cleanFilePath,
-        '-vframes', '1',
-        '-vf', 'scale=320:-2',
-        '-q:v', '3',
-        thumbPath,
+        '-y',
+        '-i',
+        cleanFilePath,
+        '-vf',
+        `select='gt(scene,${threshold})',showinfo`,
+        '-vsync',
+        '0',
+        '-an',
+        '-f',
+        'null',
+        process.platform === 'win32' ? 'NUL' : '/dev/null',
       ];
+      let stderr = '';
       const proc = cp.spawn(FFMPEG_PATH, args);
-      proc.on('close', resolve);
-      proc.on('error', resolve); // 실패해도 계속
+      proc.stderr.on('data', (d) => (stderr += d.toString()));
+      proc.on('close', () => {
+        // showinfo 출력: "pts_time:5.005000" 패턴 파싱
+        const times = [...stderr.matchAll(/pts_time:([\d.]+)/g)]
+          .map((m) => parseFloat(m[1]))
+          .filter((t) => !isNaN(t));
+        // 첫 씬(0초)은 항상 포함, 중복 제거, 최대 maxScenes개
+        const all = [0, ...times].sort((a, b) => a - b);
+        const unique = all.filter((t, i) => i === 0 || t - all[i - 1] > 0.5);
+        resolve(unique.slice(0, maxScenes));
+      });
+      proc.on('error', reject);
     });
-    const nextTime = timestamps[i + 1];
-    scenes.push({
-      index: i,
-      time: t,
-      duration: nextTime !== undefined ? Math.max(1, nextTime - t) : null, // 마지막은 null
-      thumbnailPath: fs.existsSync(thumbPath) ? thumbPath : null,
-    });
-  }
-  return scenes;
-});
+
+    // ── Step 2: 각 씬 시작 시각에서 썸네일 추출 ────────────────────────
+    const scenes = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      const t = timestamps[i];
+      const thumbPath = path.join(thumbDir, `scene_${String(i).padStart(3, '0')}.jpg`);
+      await new Promise((resolve) => {
+        const args = [
+          '-y',
+          '-ss',
+          String(t),
+          '-i',
+          cleanFilePath,
+          '-vframes',
+          '1',
+          '-vf',
+          'scale=320:-2',
+          '-q:v',
+          '3',
+          thumbPath,
+        ];
+        const proc = cp.spawn(FFMPEG_PATH, args);
+        proc.on('close', resolve);
+        proc.on('error', resolve); // 실패해도 계속
+      });
+      const nextTime = timestamps[i + 1];
+      scenes.push({
+        index: i,
+        time: t,
+        duration: nextTime !== undefined ? Math.max(1, nextTime - t) : null, // 마지막은 null
+        thumbnailPath: fs.existsSync(thumbPath) ? thumbPath : null,
+      });
+    }
+    return scenes;
+  },
+);
 
 // 영상 분할 (#57 — 15초 쇼츠 자동 분할)
 ipcMain.handle('split-video', async (_, { videoPath, segmentDuration = 15, outputDir }) => {

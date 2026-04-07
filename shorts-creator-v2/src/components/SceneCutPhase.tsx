@@ -43,6 +43,7 @@ export function SceneCutPhase({ videoFile, videoPath, onClose }: SceneCutPhasePr
   const [exportPct, setExportPct] = useState(0);
   const [renderMsg, setRenderMsg] = useState('');
   const [eta, setEta] = useState<string | null>(null);
+  const [showSubPanel, setShowSubPanel] = useState(true);
   const unsubRef = useRef<(() => void) | null>(null);
 
   const selectedCuts = sceneCuts.filter((c) => c.selected);
@@ -89,7 +90,7 @@ export function SceneCutPhase({ videoFile, videoPath, onClose }: SceneCutPhasePr
 
     const jobId = `scene_${Date.now()}`;
     unsubRef.current = window.electronAPI.onRenderProgress((data) => {
-      if (!data.jobId.startsWith(jobId.slice(0, 8))) return;
+      if (data.jobId !== jobId) return;
       setExportPct(data.pct);
       setRenderMsg(getMeatMsg(data.pct));
       if (data.eta) setEta(data.eta);
@@ -212,6 +213,42 @@ export function SceneCutPhase({ videoFile, videoPath, onClose }: SceneCutPhasePr
           </div>
         )}
       </div>
+
+      {/* 자막 목록 패널 */}
+      {selectedCuts.length > 0 && !exporting && (
+        <div className="border-t border-zinc-800 bg-zinc-950">
+          <button
+            className="flex w-full items-center gap-2 px-4 py-2 text-xs text-zinc-400 hover:text-white"
+            onClick={() => setShowSubPanel((v) => !v)}
+          >
+            <span>{showSubPanel ? '▼' : '▶'}</span>
+            <span className="font-bold">📝 자막 목록</span>
+            <span className="ml-1 rounded-full bg-zinc-800 px-1.5 text-zinc-400">{selectedCuts.length}개 씼</span>
+          </button>
+          {showSubPanel && (
+            <div className="max-h-44 overflow-y-auto px-4 pb-3">
+              <div className="flex flex-col gap-2">
+                {selectedCuts.map((cut) => (
+                  <div key={cut.index} className="flex items-center gap-2">
+                    <div className="w-16 shrink-0">
+                      <p className="text-[11px] font-bold text-zinc-300">SCENE {cut.index + 1}</p>
+                      <p className="text-[10px] text-zinc-500">{fmtTime(cut.time)} · {(cut.duration ?? 3).toFixed(1)}s</p>
+                    </div>
+                    <input
+                      type="text"
+                      value={cut.caption}
+                      maxLength={30}
+                      placeholder="자막 입력..."
+                      onChange={(e) => updateSceneCut(cut.index, { caption: e.target.value })}
+                      className="flex-1 rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs text-white outline-none focus:ring-1 focus:ring-brand-pink placeholder:text-zinc-600"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 하단 내보내기 바 */}
       <div className="border-t border-zinc-800 bg-zinc-900 p-4">
